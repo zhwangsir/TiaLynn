@@ -141,6 +141,9 @@ pub fn run() {
             // 主窗口微调（置顶、跨 space）
             window::configure_main_window(app.handle());
 
+            // 全局鼠标轮询 → 窗口外穿透、窗口内可交互
+            window::spawn_mouse_tracker(app.handle().clone());
+
             // 系统托盘
             tray::build_tray(app.handle())?;
 

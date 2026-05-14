@@ -12,6 +12,33 @@
 
 ---
 
+## [0.1.2] — 2026-05-15
+
+### 修复（实测发现的致命交互 bug）
+
+**所有 UI 失效**：点击设置按钮、立绘拖动、输入框输入全部失败。
+
+**根因**：原方案在前端用 mousemove 监听切换 `ignore_cursor_events`。但当 `ignore=true`（穿透）后，webview 完全收不到任何鼠标事件，导致前端**永远无法把 ignore 切回 false**。一旦穿透就锁死。
+
+**修复**：把穿透判定从前端 mousemove 改为 **Rust 后台线程轮询全局鼠标位置**。
+- 新增 `src-tauri/src/window.rs::spawn_mouse_tracker`
+- 用 `device_query@2` crate 每 40ms 拿全局鼠标坐标
+- 与 Tauri 的 `outer_position` / `outer_size` 比对（Retina 物理像素一致，已实测 DPR=2 数值匹配）
+- 鼠标在窗口外 → `set_ignore_cursor_events(true)`
+- 鼠标在窗口内 → `set_ignore_cursor_events(false)`，webview 立刻可交互
+
+**副作用**：v0.1.2 暂时**退化为矩形穿透**（窗口内透明区不再穿透）。像素级穿透留到 v0.2，那时需要把前端 alpha buffer 通过 event 同步到 Rust 端。
+
+前端 `alpha/sampler.ts` 现在只保留 mousedown→drag 逻辑，UI 元素白名单（input/button/[data-uichrome]）保护设置面板和输入框。
+
+实测确认日志：
+```
+mouse=(1320,621) window=(160,160,1120,1600) inside=false → ignore=true
+```
+device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
+
+---
+
 ## [0.1.1] — 2026-05-15
 
 ### 修复（首次实测发现的真实问题）
@@ -71,6 +98,7 @@
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.2
 [0.1.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.0
