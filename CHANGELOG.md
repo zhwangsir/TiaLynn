@@ -12,6 +12,29 @@
 
 ---
 
+## [0.1.1] — 2026-05-15
+
+### 修复（首次实测发现的真实问题）
+- **Live2D 加载失败 Network error**：根因是 Tauri asset 协议解析含空格的相对路径会失败。改走 vite middleware `/live2d/*`（dev）+ closeBundle 复制到 dist/（prod），跨环境一致。
+- **鼠标无法拖动窗口**：alpha sampler 加 mousedown 监听，命中立绘时 invoke `window_start_drag` 启动 native 拖窗。
+- **缺设置界面**：新增右上角齿轮 → SettingsPanel.vue，包含 LLM endpoint/model/api key、TTS provider/sidecar URL，带"测试连通"按钮，配置持久化到 `config.json`。
+
+### 稳定性
+- LLM `connect_timeout = 5s`（避免 endpoint 不可达时卡 120s）
+- Live2D 加载失败显示中文错误卡片（不再静默 console.error）
+- `chat::token`/`chat::end` listen 提前到 store 创建期，避免事件 race
+- TTS 自动播放 + 嘴型同步串联：`chat::end → speakWithLipSync → AnalyserNode RMS → ParamMouthOpenY`
+- 移除冗余 import 与未使用变量
+
+### 新增
+- `window_start_drag` Tauri command + `core:window:allow-start-dragging` capability
+- `config_load` / `config_save` / `config_test_llm` Tauri command
+- `src/audio/speaker.ts` TTS 播放 + lipSync 协调模块
+- `src/components/SettingsPanel.vue`
+- `src/stores/config.ts`
+
+---
+
 ## [0.1.0] — 2026-05-15
 
 ### 新增（Foundation 基础框架）
@@ -48,5 +71,6 @@
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/wangzhenyu/TiaLynn/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/wangzhenyu/TiaLynn/releases/tag/v0.1.0
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.1
+[0.1.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.0
