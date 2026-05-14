@@ -1,0 +1,12 @@
+# v0.1 骨架依赖（轻量）
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.9
+pydantic>=2.9
+
+# v0.2 启用 Qwen3-TTS 后追加（取消注释）：
+# torch>=2.4
+# torchaudio>=2.4
+# transformers>=4.46
+# accelerate>=1.1
+# soundfile>=0.12

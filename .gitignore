@@ -1,0 +1,46 @@
+# --- Node / Vite ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Tauri / Rust ---
+src-tauri/target/
+src-tauri/gen/
+target/
+**/*.rs.bk
+
+# --- IDE ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# --- 个人/敏感资产（NOT 入仓） ---
+# Live2D 模型（受 Live2D 商业授权约束，使用者各自获取）
+HuTao-Live2D/
+# 用户私人录音样本
+example_voice/
+# 旧的精灵图素材
+sprite_sheet_part*.png
+
+# --- Python sidecar venv ---
+sidecar/**/.venv/
+sidecar/**/__pycache__/
+sidecar/**/*.pyc
+
+# --- 用户数据 ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- 临时 ---
+.tialynn/
+tmp/
