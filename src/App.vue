@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref } from 'vue'
 import Live2DStage from './components/Live2DStage.vue'
 import DialogBubble from './components/DialogBubble.vue'
 import InputBar from './components/InputBar.vue'
+import SettingsPanel from './components/SettingsPanel.vue'
 import { useSoulStore } from './stores/soul'
 import { useDialogStore } from './stores/dialog'
 import { useEmotionStore } from './stores/emotion'
@@ -30,5 +31,6 @@ onBeforeUnmount(() => {
     <Live2DStage v-if="ready" />
     <DialogBubble v-if="dialog.currentText" :text="dialog.currentText" />
     <InputBar v-if="ready" />
+    <SettingsPanel />
   </div>
 </template>

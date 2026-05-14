@@ -5,6 +5,7 @@ defineProps<{ text: string }>()
 <template>
   <div
     class="bubble"
+    data-uichrome="1"
     :style="{
       top: '60px',
       left: '50%',

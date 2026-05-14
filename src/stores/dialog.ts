@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { ChatMessage, EmotionId } from '@/types/soul'
 import { useEmotionStore } from './emotion'
+import { speakWithLipSync } from '@/audio/speaker'
 
 interface ChatTokenPayload {
   stream_id: string
@@ -22,22 +23,27 @@ export const useDialogStore = defineStore('dialog', () => {
   const streaming = ref(false)
   const activeStreamId = ref<string | null>(null)
 
-  // 流式回调注册（单次注册即可）
-  let listenersBound = false
+  // store 创建时立即并行 listen，避免 token 事件到来时还没绑定。
+  const bindReady: Promise<void> = bindListeners()
 
-  async function bindListeners() {
-    if (listenersBound) return
-    listenersBound = true
+  function bindListeners(): Promise<void> {
+    return Promise.all([listenTokens(), listenEnds()]).then(() => undefined)
+  }
 
-    await listen<ChatTokenPayload>('chat::token', (e) => {
+  function listenTokens(): Promise<UnlistenFn> {
+    return listen<ChatTokenPayload>('chat::token', (e) => {
       if (e.payload.stream_id !== activeStreamId.value) return
       currentText.value += e.payload.delta
     })
+  }
 
-    await listen<ChatEndPayload>('chat::end', (e) => {
+  function listenEnds(): Promise<UnlistenFn> {
+    return listen<ChatEndPayload>('chat::end', (e) => {
       if (e.payload.stream_id !== activeStreamId.value) return
       const emotion = useEmotionStore()
+      const emoId: EmotionId = e.payload.emotion ?? emotion.current
       if (e.payload.emotion) emotion.set(e.payload.emotion)
+
       history.value.push({
         role: 'assistant',
         content: e.payload.full_text,
@@ -46,16 +52,22 @@ export const useDialogStore = defineStore('dialog', () => {
       })
       streaming.value = false
       activeStreamId.value = null
-      // 5 秒后自动隐藏气泡（除非新对话进来）
+
+      // TTS + 嘴型同步（错误占位不发声）
+      if (e.payload.full_text && !e.payload.full_text.startsWith('(出错了')) {
+        void speakWithLipSync(e.payload.full_text, emoId)
+      }
+
+      // 5 秒后自动收起气泡（除非新对话进来）
       setTimeout(() => {
         if (!streaming.value) currentText.value = ''
       }, 5000)
     })
   }
 
-  async function send(message: string) {
+  async function send(message: string): Promise<void> {
     if (streaming.value) return
-    await bindListeners()
+    await bindReady
 
     const emotion = useEmotionStore()
     emotion.infer(message)
@@ -68,13 +80,13 @@ export const useDialogStore = defineStore('dialog', () => {
       const id = await invoke<string>('chat_send', { message })
       activeStreamId.value = id
     } catch (e) {
-      console.error('[dialog] send failed', e)
-      currentText.value = `(出错了：${e})`
+      console.warn('[dialog] send failed', e)
+      currentText.value = `(出错了：${describe(e)})`
       streaming.value = false
     }
   }
 
-  async function loadHistory() {
+  async function loadHistory(): Promise<void> {
     try {
       const recent = await invoke<ChatMessage[]>('memory_recent', { limit: 20 })
       history.value = recent
@@ -85,3 +97,9 @@ export const useDialogStore = defineStore('dialog', () => {
 
   return { history, currentText, streaming, send, loadHistory }
 })
+
+function describe(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'string') return e
+  return JSON.stringify(e)
+}

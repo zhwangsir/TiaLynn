@@ -25,3 +25,11 @@ pub fn window_toggle_visible(app: tauri::AppHandle) -> AppResult<bool> {
         Ok(false)
     }
 }
+
+#[tauri::command]
+pub fn window_start_drag(app: tauri::AppHandle) -> AppResult<()> {
+    if let Some(w) = app.get_webview_window("main") {
+        w.start_dragging()?;
+    }
+    Ok(())
+}

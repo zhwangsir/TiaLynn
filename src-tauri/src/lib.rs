@@ -72,6 +72,11 @@ impl AppState {
     pub fn runtime_config(&self) -> RuntimeConfig {
         self.config.lock().map(|g| g.clone()).unwrap_or_default()
     }
+    pub fn replace_runtime_config(&self, cfg: RuntimeConfig) {
+        if let Ok(mut g) = self.config.lock() {
+            *g = cfg;
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -101,6 +106,22 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(state)
         .setup(|app| {
+            // 启动时尝试加载磁盘上的运行时配置
+            if let Some(cfg_dir) = dirs::config_dir() {
+                let path = cfg_dir.join("TiaLynn").join("config.json");
+                if path.exists() {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        if let Ok(dto) =
+                            serde_json::from_str::<commands::config::ConfigDto>(&text)
+                        {
+                            let s = app.state::<AppState>();
+                            s.replace_runtime_config(dto.into());
+                            tracing::info!("loaded runtime config from {}", path.display());
+                        }
+                    }
+                }
+            }
+
             // 启动时尝试加载灵魂
             if let Some(path) = locate_default_soul() {
                 if let Ok(cfg) = SoulConfig::load_from_path(&path) {
@@ -134,6 +155,10 @@ pub fn run() {
             commands::tts::tts_speak,
             commands::window::window_set_ignore_cursor,
             commands::window::window_toggle_visible,
+            commands::window::window_start_drag,
+            commands::config::config_load,
+            commands::config::config_save,
+            commands::config::config_test_llm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

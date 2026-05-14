@@ -14,7 +14,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <form class="input-bar" @submit.prevent="onSubmit">
+  <form class="input-bar" data-uichrome="1" @submit.prevent="onSubmit">
     <input
       v-model="text"
       type="text"
