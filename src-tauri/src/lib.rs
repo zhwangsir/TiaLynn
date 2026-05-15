@@ -153,6 +153,7 @@ pub fn run() {
             commands::soul::soul_load,
             commands::soul::soul_resolve_asset,
             commands::chat::chat_send,
+            commands::chat::chat_send_proactive,
             commands::memory::memory_recent,
             commands::memory::memory_append_observation,
             commands::tts::tts_speak,

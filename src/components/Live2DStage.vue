@@ -4,6 +4,7 @@ import { TiaLynnRenderer } from '@/live2d/renderer'
 import { startEyeBlink } from '@/live2d/eyeBlink'
 import { startMouseFocus } from '@/live2d/focus'
 import { registerCanvas } from '@/alpha/sampler'
+import { startIdleBehavior } from '@/behavior/idle'
 import { useSoulStore } from '@/stores/soul'
 import { useEmotionStore } from '@/stores/emotion'
 import { DEFAULT_EMOTION_PARAMS } from '@/emotion/mapping'
@@ -13,6 +14,7 @@ const loadError = ref<string | null>(null)
 let renderer: TiaLynnRenderer | null = null
 let stopBlink: (() => void) | null = null
 let stopFocus: (() => void) | null = null
+let stopIdle: (() => void) | null = null
 
 const soul = useSoulStore()
 const emotion = useEmotionStore()
@@ -56,9 +58,10 @@ onMounted(async () => {
     return
   }
 
-  // 启动自动眨眼 + 视线跟随
+  // 启动自动眨眼 + 视线跟随 + idle 自主动作
   stopBlink = startEyeBlink(renderer)
   stopFocus = startMouseFocus(renderer)
+  stopIdle = startIdleBehavior(renderer)
 
   // 初始情绪
   applyEmotion()
@@ -88,6 +91,7 @@ function applyEmotion() {
 onBeforeUnmount(() => {
   stopBlink?.()
   stopFocus?.()
+  stopIdle?.()
   renderer?.destroy()
   renderer = null
 })

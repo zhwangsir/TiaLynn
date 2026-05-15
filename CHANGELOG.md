@@ -6,9 +6,36 @@
 
 ### 路线
 - Qwen3-TTS sidecar 实装 + voice clone
-- sqlite-vec 长期向量记忆
+- sqlite-vec 长期向量记忆 + alpha buffer 跨进程像素穿透回归
 - 屏幕感知 + Vision LLM
 - RPA 键鼠操作
+
+---
+
+## [0.1.3] — 2026-05-15
+
+### 修复（实测发现的两个交互降级）
+
+**1. 视线跟随只在窗口内有效**
+- 根因：`focus.ts` 用 `window.mousemove`，与穿透同一个 bug——窗口外 webview 收不到事件，视线卡在最后位置
+- 修复：Rust mouse tracker 现在每 80ms `emit("mouse::global", payload)`，前端监听该事件驱动视线
+- 副带改进：renderer.setFocus 现在加 clamp + 联动 ParamAngleZ / ParamBodyAngleX，视线跟随更生动
+- 现效果：鼠标在屏幕任何位置，TiaLynn 的视线都跟着转
+
+**2. 自主行为太少**
+- 原仅有 eyeBlink + 程序化呼吸，立绘看起来"愣着"
+- 新增 `src/behavior/idle.ts`：每 8-15s 随机触发一个 idle 动作（轻歪头/看远/撇嘴/微笑/脸红/深呼吸 共 8 种）
+- 新增 `src/behavior/emotionTick.ts`：每 30s tick 一次情绪衰减，跌破阈值时自动回归 neutral
+- 新增 `src/behavior/autoComment.ts`：按 `behavior.auto_comment_interval_sec` 周期 ±25% 抖动触发主动开口
+- 新增 Rust `chat_send_proactive` command：autoComment 走单独路径，hint 注入 system prompt，**不污染对话历史**
+- 时段感知 prompt：根据当前时间（早晨/正午/午后/傍晚/深夜）拼 prompt，让主动话题贴合时段
+
+### 新增
+- `src/behavior/{idle,autoComment,emotionTick}.ts`
+- `chat_send_proactive` Tauri command
+- `dialog.sendProactive()` store action
+- `mouse::global` 全局鼠标位置事件（80ms 节流）
+- `GlobalMouseEvent` payload 类型（含物理坐标 + 窗口 rect + scale_factor）
 
 ---
 
@@ -98,7 +125,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.3
 [0.1.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.2
 [0.1.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.0

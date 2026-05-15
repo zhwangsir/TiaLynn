@@ -76,21 +76,29 @@ export class TiaLynnRenderer {
   }
 
   /**
-   * 视线跟随：把鼠标位置（屏幕坐标）映射到 ParamAngleX/Y + ParamEyeBallX/Y。
+   * 视线跟随：把鼠标位置（webview CSS 像素，可超出 viewport）映射到
+   * ParamAngleX/Y + ParamEyeBallX/Y。
+   *
+   * 坐标可以是负值或大于 viewport 尺寸——意味着鼠标在窗口外，但视线仍能指向。
    */
   setFocus(screenX: number, screenY: number): void {
     if (!this.model) return
     const w = this.app.screen.width
     const h = this.app.screen.height
-    const nx = ((screenX - w / 2) / (w / 2)) * 30 // -30..30
-    const ny = ((screenY - h / 2) / (h / 2)) * 20 // -20..20
+    // 用大于半边的"饱和距离"防止鼠标稍微出窗口就立刻撞到上限
+    const halfW = Math.max(w / 2, 320)
+    const halfH = Math.max(h / 2, 360)
+    const nx = clamp((screenX - w / 2) / halfW, -1, 1) // -1..1
+    const ny = clamp((screenY - h / 2) / halfH, -1, 1) // -1..1
     const core = (this.model.internalModel as any).coreModel
     if (!core) return
     try {
-      core.setParameterValueById('ParamAngleX', nx * 0.5)
-      core.setParameterValueById('ParamAngleY', -ny * 0.5)
-      core.setParameterValueById('ParamEyeBallX', nx / 30)
-      core.setParameterValueById('ParamEyeBallY', -ny / 20)
+      core.setParameterValueById('ParamAngleX', nx * 30)
+      core.setParameterValueById('ParamAngleY', -ny * 20)
+      core.setParameterValueById('ParamAngleZ', nx * 8) // 轻微歪头跟随
+      core.setParameterValueById('ParamBodyAngleX', nx * 10)
+      core.setParameterValueById('ParamEyeBallX', nx)
+      core.setParameterValueById('ParamEyeBallY', -ny)
     } catch {
       /* 参数不存在则忽略 */
     }
@@ -161,4 +169,8 @@ export class TiaLynnRenderer {
       this.model.y = this.app.screen.height / 2 + 50
     }
   }
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, x))
 }

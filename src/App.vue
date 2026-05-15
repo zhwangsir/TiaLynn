@@ -8,22 +8,35 @@ import { useSoulStore } from './stores/soul'
 import { useDialogStore } from './stores/dialog'
 import { useEmotionStore } from './stores/emotion'
 import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
+import { startEmotionTick } from './behavior/emotionTick'
+import { startAutoComment } from './behavior/autoComment'
 
 const soul = useSoulStore()
 const dialog = useDialogStore()
 const emotion = useEmotionStore()
 const ready = ref(false)
 
+let stopEmotionTick: (() => void) | null = null
+let stopAutoComment: (() => void) | null = null
+
 onMounted(async () => {
   await soul.load()
   emotion.init(soul.config?.emotions?.initial ?? 'neutral')
   startAlphaHitTest()
+  // 行为调度（需要 soul 先加载完）
+  stopEmotionTick = startEmotionTick()
+  stopAutoComment = startAutoComment()
   ready.value = true
 })
 
 onBeforeUnmount(() => {
   stopAlphaHitTest()
+  stopEmotionTick?.()
+  stopAutoComment?.()
 })
+
+// 抑制 TS 未使用变量警告
+void dialog
 </script>
 
 <template>

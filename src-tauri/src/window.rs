@@ -1,4 +1,21 @@
-use tauri::{Manager, Runtime, WebviewWindow};
+use serde::Serialize;
+use tauri::{Emitter, Manager, Runtime, WebviewWindow};
+
+#[derive(Clone, Serialize)]
+pub struct GlobalMouseEvent {
+    /// 全局鼠标物理像素坐标（device_query 报告）
+    pub mouse_phys_x: i32,
+    pub mouse_phys_y: i32,
+    /// 主窗口物理像素 rect
+    pub win_phys_x: i32,
+    pub win_phys_y: i32,
+    pub win_phys_w: u32,
+    pub win_phys_h: u32,
+    /// 主窗口 scale factor（用于前端把物理坐标换算回 CSS 像素）
+    pub scale_factor: f64,
+    /// 鼠标是否在窗口内
+    pub inside: bool,
+}
 
 /// 启动时对主窗口做平台特化设置（macOS：跨 Space）。
 pub fn configure_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
@@ -37,6 +54,7 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
     std::thread::spawn(move || {
         let device = DeviceState::new();
         let mut last_ignore: Option<bool> = None;
+        let mut emit_counter: u32 = 0;
         loop {
             std::thread::sleep(Duration::from_millis(40));
             let Some(window) = app.get_webview_window("main") else {
@@ -46,12 +64,14 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
             let mouse = device.get_mouse();
             let (mx, my) = (mouse.coords.0, mouse.coords.1);
 
-            let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            let (Ok(pos), Ok(size), Ok(sf)) = (
+                window.outer_position(),
+                window.outer_size(),
+                window.scale_factor(),
+            ) else {
                 continue;
             };
 
-            // 把窗口位置转为以左上为原点的逻辑像素（device_query 已经是物理像素，
-            // PhysicalPosition/Size 也是物理像素，所以直接比较即可）。
             let left = pos.x;
             let top = pos.y;
             let right = left + size.width as i32;
@@ -60,6 +80,7 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
             let inside = mx >= left && mx < right && my >= top && my < bottom;
             let want_ignore = !inside;
 
+            // 1. 切换穿透状态（仅在状态变化时）
             if last_ignore != Some(want_ignore) {
                 if let Err(e) = window.set_ignore_cursor_events(want_ignore) {
                     tracing::warn!("set_ignore_cursor_events failed: {e}");
@@ -69,6 +90,22 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
                     mx, my, left, top, right, bottom, inside, want_ignore
                 );
                 last_ignore = Some(want_ignore);
+            }
+
+            // 2. emit 全局鼠标事件给前端（每 80ms 一次，降低 IPC 开销）
+            emit_counter = emit_counter.wrapping_add(1);
+            if emit_counter % 2 == 0 {
+                let payload = GlobalMouseEvent {
+                    mouse_phys_x: mx,
+                    mouse_phys_y: my,
+                    win_phys_x: left,
+                    win_phys_y: top,
+                    win_phys_w: size.width,
+                    win_phys_h: size.height,
+                    scale_factor: sf,
+                    inside,
+                };
+                let _ = window.emit("mouse::global", payload);
             }
         }
     });

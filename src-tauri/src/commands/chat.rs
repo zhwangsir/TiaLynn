@@ -18,6 +18,100 @@ pub struct ChatEndPayload {
     pub emotion: Option<String>,
 }
 
+/// 用于 autoComment：让 TiaLynn 主动开口。
+/// 与 chat_send 区别：
+///   - hint 作为额外 system 消息插入，不当作 user 消息落库；
+///   - assistant 输出仍正常落库 + emit 事件，前端按普通流程显示。
+#[tauri::command]
+pub async fn chat_send_proactive(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    hint: String,
+) -> AppResult<String> {
+    let stream_id = uuid::Uuid::new_v4().to_string();
+    let stream_id_clone = stream_id.clone();
+
+    let soul = state
+        .soul()
+        .ok_or_else(|| AppError::Other("soul not loaded".into()))?;
+    let emotion = state.emotion();
+    let mut system_prompt = soul.build_system_prompt(&emotion, None);
+    system_prompt.push_str("\n\n## 本轮特殊指令\n");
+    system_prompt.push_str(&hint);
+
+    let history = state.memory().recent_messages(20)?;
+    let mut messages = vec![ChatMessage {
+        role: "system".into(),
+        content: system_prompt,
+    }];
+    for m in history {
+        messages.push(ChatMessage {
+            role: m.role,
+            content: m.content,
+        });
+    }
+
+    let cfg = state.runtime_config();
+    if cfg.llm_endpoint.is_empty() {
+        return Err(AppError::LlmNotConfigured);
+    }
+    let provider = OpenAiCompatProvider::new(
+        cfg.llm_endpoint.clone(),
+        if cfg.llm_api_key.is_empty() {
+            None
+        } else {
+            Some(cfg.llm_api_key.clone())
+        },
+    );
+    let opts = ChatOptions {
+        model: cfg.llm_model.clone(),
+        temperature: 0.95,
+        max_tokens: Some(160),
+    };
+
+    let memory = state.memory_arc();
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut full_text = String::new();
+        match provider.chat_stream(messages, opts).await {
+            Ok(mut stream) => {
+                while let Some(t) = stream.next().await {
+                    match t {
+                        Ok(piece) => {
+                            full_text.push_str(&piece);
+                            let _ = app_handle.emit(
+                                "chat::token",
+                                ChatTokenPayload {
+                                    stream_id: stream_id_clone.clone(),
+                                    delta: piece,
+                                },
+                            );
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("proactive chat_stream open failed: {e}");
+            }
+        }
+
+        if !full_text.is_empty() {
+            let _ = memory.append_message("assistant", &full_text, None);
+        }
+        let _ = app_handle.emit(
+            "chat::end",
+            ChatEndPayload {
+                stream_id: stream_id_clone,
+                full_text,
+                emotion: None,
+            },
+        );
+    });
+
+    Ok(stream_id)
+}
+
 #[tauri::command]
 pub async fn chat_send(
     app: tauri::AppHandle,

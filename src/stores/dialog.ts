@@ -65,6 +65,20 @@ export const useDialogStore = defineStore('dialog', () => {
     })
   }
 
+  async function sendProactive(hint: string): Promise<void> {
+    if (streaming.value) return
+    await bindReady
+    currentText.value = ''
+    streaming.value = true
+    try {
+      const id = await invoke<string>('chat_send_proactive', { hint })
+      activeStreamId.value = id
+    } catch (e) {
+      console.warn('[dialog] proactive send failed', e)
+      streaming.value = false
+    }
+  }
+
   async function send(message: string): Promise<void> {
     if (streaming.value) return
     await bindReady
@@ -95,7 +109,7 @@ export const useDialogStore = defineStore('dialog', () => {
     }
   }
 
-  return { history, currentText, streaming, send, loadHistory }
+  return { history, currentText, streaming, send, sendProactive, loadHistory }
 })
 
 function describe(e: unknown): string {
