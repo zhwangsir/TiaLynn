@@ -5,9 +5,41 @@
 ## [Unreleased]
 
 ### 路线
-- v0.3.2：水墨视觉重塑 + 桌宠细节（zZ / 扬尘 / 边缘吸附茶杯）
+- v0.3.3：水墨视觉重塑 + 桌宠细节
 - v0.4.0：屏幕感知 + Vision LLM
 - v0.5.0：RPA 键鼠操作
+
+---
+
+## [0.3.2] — 2026-05-16 — Stability Pass
+
+### 关键 bug 修复（实测发现的 5 个问题）
+
+**1. webview 进程崩溃 → 看不到立绘**
+- 根因：Cubism 2 dylanNew CDN 异步加载与 WKWebView 不兼容
+- 修复：移除 Cubism 2 CDN；把 Cubism 4 core JS 本地化到 `public/live2dcubismcore.min.js`（避免任何 CDN 嫌疑）
+- Cubism 2 模型支持留 v0.4 用本地版重做
+
+**2. ConfigDto 部分字段无 #[serde(default)] → config.json 缺字段时全部加载失败**
+- 给 `ConfigDto` 加 `#[serde(default)]` (struct 级别) + 手动 impl Default 委托给 RuntimeConfig::default()
+- 之后任意字段缺失都会回落到合理默认，不会让前端 store 加载失败
+
+**3. 模型抽动**
+- 根因：persona FSM 用 `setInterval(1000ms)` 跑 walk/run/sit 的 sin 波动 → 按 1Hz 采样的正弦看着像抽搐
+- 修复：拆分为决策 1Hz + 动画 60Hz（RAF）。决策仍每秒一次，但 idle offset 的 sin 波在每帧更新
+
+**4. 眨眼频率过快**
+- scheduleNext 没检查 stopped flag → stop 后旧 loop 还在排队
+- 加 stopped 检查 + 间隔从 2.5-5.5s 放慢到 3.5-7s（更接近真实人眨眼频率）
+
+**5. 设置按钮打不开**
+- alpha mask 128×96 分辨率覆盖不了 32×32 的齿轮按钮 → 鼠标穿透
+- 暂时禁用 alpha mask 推送（`startMaskPush()` 关闭），mouse tracker 退化为纯 rect 穿透（与 v0.2.3 一致）
+- 像素穿透留 v0.4 用更高分辨率 mask 或 DOM hit-region 重做
+
+### 体验改进
+- 自主散步首次延迟从 60s 缩到 **20s**（启动后更快看到效果）
+- 菜单 → 行为 → **"立即散步一次"** 按钮（不等间隔，立刻验证移动）
 
 ---
 
@@ -366,7 +398,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.2
 [0.3.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.1
 [0.3.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.0
 [0.2.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.3

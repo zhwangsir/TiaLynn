@@ -141,6 +141,15 @@ async function onRemoveModelSearchPath(path: string) {
   await config.scanModels()
 }
 
+async function onWalkNow() {
+  try {
+    const { persona } = await import('@/behavior/persona')
+    await persona.walkNow()
+  } catch (e) {
+    console.warn('[settings] walk_now failed:', e)
+  }
+}
+
 function pickModel(m: { dir: string; model_file: string }) {
   form.live2d_model_dir = m.dir
   form.live2d_model_file = m.model_file
@@ -381,6 +390,13 @@ function emotionLabel(id: string): string {
         step="0.05"
         :disabled="!form.motion_enabled"
       />
+
+      <div class="row" style="margin-top: 8px">
+        <button class="ghost" type="button" @click="onWalkNow" :disabled="!form.motion_enabled">
+          立即散步一次
+        </button>
+        <span class="hint-inline">立刻去随机位置（不等间隔）</span>
+      </div>
 
       <h3 style="margin-top: 14px">Idle 微动作</h3>
       <label>Idle 动作最小间隔 ({{ form.idle_min_sec }}s)</label>

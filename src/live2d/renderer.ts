@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js'
-// 默认入口自动支持 Cubism 2 + Cubism 4（前提：HTML 同时引入 live2d.min.js 和 live2dcubismcore.min.js）
-import { Live2DModel } from 'pixi-live2d-display'
+// 用 cubism4 子入口（最稳）。Cubism 2 兼容由 SDK 在运行时若检测到 live2d.min.js 自动启用。
+import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import type { EmotionStateConfig } from '@/types/soul'
 
 ;(window as any).PIXI = PIXI

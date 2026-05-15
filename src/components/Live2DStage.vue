@@ -38,9 +38,12 @@ onMounted(async () => {
   }
 
   registerCanvas(canvasEl.value)
+  // v0.3.2: alpha mask 暂时禁用（128×96 分辨率覆盖不了 32×32 的齿轮按钮等小 UI）。
+  // 退化为 rect-only 穿透（与 v0.2.3 一致，UI 区域稳定可点）。
+  // 像素级穿透留待用高分辨率 mask 或 DOM hit-region 重做。
   registerMaskCanvas(canvasEl.value)
   await loadModel()
-  startMaskPush()
+  // startMaskPush()  // disabled
 })
 
 async function loadModel(): Promise<void> {

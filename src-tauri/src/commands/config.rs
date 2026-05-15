@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use tauri::{Emitter, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ConfigDto {
     pub llm_endpoint: String,
     pub llm_model: String,
@@ -49,6 +50,12 @@ pub struct ConfigDto {
     pub motion_speed: f32,
     #[serde(default)]
     pub extra_model_dirs: Vec<String>,
+}
+
+impl Default for ConfigDto {
+    fn default() -> Self {
+        ConfigDto::from(&RuntimeConfig::default())
+    }
 }
 
 fn default_motion_enabled() -> bool {

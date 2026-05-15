@@ -4,10 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TiaLynn</title>
-    <!-- Live2D Cubism 4 Core Runtime（model3.json 用） -->
-    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    <!-- Live2D Cubism 2 Core Runtime（旧版 model.json 用） -->
-    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    <!-- Live2D Cubism 4 Core Runtime（本地，避免 WKWebView 加载 CDN 时崩溃） -->
+    <script src="/live2dcubismcore.min.js"></script>
   </head>
   <body class="m-0 p-0 bg-transparent overflow-hidden">
     <div id="app"></div>

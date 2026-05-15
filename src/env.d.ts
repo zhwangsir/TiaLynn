@@ -6,8 +6,9 @@ declare module '*.vue' {
   export default component
 }
 
-// pixi-live2d-display 默认入口（同时支持 Cubism 2 + 4）的最小类型声明。
-declare module 'pixi-live2d-display' {
+// pixi-live2d-display cubism4 子入口（v0.3.1 回退为更稳的 cubism4 入口；
+// Cubism 2 模型暂不支持，留 v0.3.2 单独调试）。
+declare module 'pixi-live2d-display/cubism4' {
   import { Container } from 'pixi.js'
   export class Live2DModel extends Container {
     static from(url: string, opts?: { autoInteract?: boolean }): Promise<Live2DModel>

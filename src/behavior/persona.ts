@@ -45,7 +45,8 @@ class Persona {
   private mouseInside = false
   private lastMouseMoveAt = performance.now()
   private lastMouseGlobal = { x: 0, y: 0 }
-  private tickHandle: number | null = null
+  private decisionHandle: number | null = null
+  private rafHandle: number | null = null
   private motionRequestActive = false
 
   // 移动控制配置（从 store 读）
@@ -54,7 +55,8 @@ class Persona {
   private motionMaxSec = 300
   private motionSpeed = 1.0
 
-  private nextMotionAt = performance.now() + 60_000 // 启动 60s 后才考虑首次移动
+  // 启动后多久才考虑首次自主移动（缩短到 20s，让用户尽快看到效果）
+  private nextMotionAt = performance.now() + 20_000
 
   attach(renderer: TiaLynnRenderer): void {
     this.renderer = renderer
@@ -70,6 +72,12 @@ class Persona {
     this.motionMinSec = Math.max(20, opts.minSec)
     this.motionMaxSec = Math.max(this.motionMinSec + 10, opts.maxSec)
     this.motionSpeed = Math.max(0.3, Math.min(3, opts.speed))
+  }
+
+  /** 设置面板"立即散步"按钮触发：跳过等待，立刻去随机位置 */
+  async walkNow(): Promise<void> {
+    this.nextMotionAt = 0
+    await this.maybeScheduleMotion(performance.now())
   }
 
   async start(): Promise<void> {
@@ -114,25 +122,40 @@ class Persona {
       }),
     ])
 
-    if (this.tickHandle === null) {
-      this.tickHandle = window.setInterval(() => this.tick(), 1000)
+    // 决策每秒一次（心情漂移 / 状态转换 / 调度移动）
+    if (this.decisionHandle === null) {
+      this.decisionHandle = window.setInterval(() => this.decisionTick(), 1000)
+    }
+    // 状态参数动画 60Hz（否则 1Hz 的 sin 采样会"抽搐"）
+    if (this.rafHandle === null) {
+      this.rafLoop()
     }
   }
 
   stop(): void {
-    if (this.tickHandle !== null) {
-      clearInterval(this.tickHandle)
-      this.tickHandle = null
+    if (this.decisionHandle !== null) {
+      clearInterval(this.decisionHandle)
+      this.decisionHandle = null
+    }
+    if (this.rafHandle !== null) {
+      cancelAnimationFrame(this.rafHandle)
+      this.rafHandle = null
     }
   }
 
-  private tick(): void {
+  /** 60Hz：跑当前状态的连续动画 */
+  private rafLoop = (): void => {
+    this.tickState()
+    this.rafHandle = requestAnimationFrame(this.rafLoop)
+  }
+
+  /** 1Hz：心情漂移 + 决策 + 自主移动调度 */
+  private decisionTick(): void {
     const now = performance.now()
     const hour = new Date().getHours()
     const inDeepNight = hour >= 0 && hour < 6
     const inNight = hour >= 22 || hour < 7
 
-    // 1. 自然漂移
     if (this.state === 'sleep') {
       this.energy = Math.min(100, this.energy + 1.2)
     } else if (inDeepNight) {
@@ -143,25 +166,16 @@ class Persona {
       this.energy = Math.max(0, Math.min(100, this.energy + 0.05))
     }
 
-    // attention 衰减（用户不动 → 越来越无聊）
     const secSinceMove = (now - this.lastMouseMoveAt) / 1000
     if (secSinceMove > 30) {
       this.attention = Math.max(0, this.attention - 0.3)
     }
-
-    // mood 向 50 缓慢回归
     this.mood += (50 - this.mood) * 0.005
 
-    // 2. 决策
     const desired = this.decideNextState({ inDeepNight, inNight, secSinceMove })
     if (desired !== this.state) {
       this.transitionTo(desired)
     }
-
-    // 3. 状态 tick
-    this.tickState()
-
-    // 4. 是否要触发一次自主移动
     this.maybeScheduleMotion(now)
   }
 
