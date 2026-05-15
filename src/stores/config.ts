@@ -25,6 +25,7 @@ export interface ConfigDto {
   motion_min_sec: number
   motion_max_sec: number
   motion_speed: number
+  extra_model_dirs: string[]
 }
 
 export interface ModelInfo {
@@ -32,6 +33,9 @@ export interface ModelInfo {
   model_file: string
   absolute_path: string
   source: 'builtin' | 'user' | string
+  cubism: 'cubism2' | 'cubism4' | string
+  display: string
+  root_id: string
 }
 
 export interface VoiceEntry {
@@ -101,6 +105,28 @@ export const useConfigStore = defineStore('config', () => {
       models.value = await invoke<ModelInfo[]>('models_scan')
     } catch (e) {
       console.warn('[config] models_scan failed', e)
+    }
+  }
+
+  async function addSearchPath(path: string): Promise<string[]> {
+    try {
+      const list = await invoke<string[]>('models_add_search_path', { path })
+      if (config.value) config.value.extra_model_dirs = list
+      return list
+    } catch (e) {
+      console.warn('[config] add_search_path failed', e)
+      return config.value?.extra_model_dirs ?? []
+    }
+  }
+
+  async function removeSearchPath(path: string): Promise<string[]> {
+    try {
+      const list = await invoke<string[]>('models_remove_search_path', { path })
+      if (config.value) config.value.extra_model_dirs = list
+      return list
+    } catch (e) {
+      console.warn('[config] remove_search_path failed', e)
+      return config.value?.extra_model_dirs ?? []
     }
   }
 
@@ -185,6 +211,8 @@ export const useConfigStore = defineStore('config', () => {
     save,
     testLlm,
     scanModels,
+    addSearchPath,
+    removeSearchPath,
     loadSidecarStatus,
     startSidecar,
     stopSidecar,

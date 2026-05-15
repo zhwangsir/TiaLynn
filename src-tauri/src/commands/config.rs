@@ -47,6 +47,8 @@ pub struct ConfigDto {
     pub motion_max_sec: u32,
     #[serde(default = "default_motion_speed")]
     pub motion_speed: f32,
+    #[serde(default)]
+    pub extra_model_dirs: Vec<String>,
 }
 
 fn default_motion_enabled() -> bool {
@@ -111,6 +113,7 @@ impl From<&RuntimeConfig> for ConfigDto {
             motion_min_sec: c.motion_min_sec,
             motion_max_sec: c.motion_max_sec,
             motion_speed: c.motion_speed,
+            extra_model_dirs: c.extra_model_dirs.clone(),
         }
     }
 }
@@ -139,6 +142,7 @@ impl From<ConfigDto> for RuntimeConfig {
             motion_min_sec: d.motion_min_sec,
             motion_max_sec: d.motion_max_sec,
             motion_speed: d.motion_speed,
+            extra_model_dirs: d.extra_model_dirs,
         }
     }
 }

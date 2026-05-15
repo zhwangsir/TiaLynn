@@ -1,97 +1,290 @@
 use crate::error::AppResult;
+use crate::AppState;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::State;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelInfo {
-    /// 模型目录名（相对 model root，作为 URL 一部分使用）
+    /// 唯一 dir id：相对 root 的路径（带斜杠分隔），URL 一部分使用
     pub dir: String,
-    /// model3.json 文件名
+    /// 入口文件名（*.model3.json 或 model.json）
     pub model_file: String,
-    /// 物理绝对路径（仅供 reveal in finder）
+    /// 物理绝对路径
     pub absolute_path: String,
-    /// 来源：内置 / 用户上传
+    /// "builtin" | "user" | "external_<idx>"
     pub source: String,
+    /// "cubism4" | "cubism2"
+    pub cubism: String,
+    /// 友好显示名（路径末段 + 父目录拼接）
+    pub display: String,
+    /// root id：哪个搜索根（前端做分组显示用）
+    pub root_id: String,
 }
 
-/// 扫描两个根目录里的所有 Live2D 模型：
-/// 1. <项目根>/  (内置：如 HuTao-Live2D)
-/// 2. ~/.tialynn/models/ (用户上传)
-///
-/// 每个候选子目录如果含 *.model3.json 就识别为一个模型。
-#[tauri::command]
-pub async fn models_scan() -> AppResult<Vec<ModelInfo>> {
-    let mut out = Vec::new();
+const MAX_RESULTS: usize = 4000;
+const MAX_DEPTH_PROJECT: usize = 2; // 项目根只看一层
+const MAX_DEPTH_EXTERNAL: usize = 5; // 外部库递归 5 层
 
+#[tauri::command]
+pub async fn models_scan(state: State<'_, AppState>) -> AppResult<Vec<ModelInfo>> {
+    let mut out: Vec<ModelInfo> = Vec::new();
+
+    // 1. 项目根（内置）
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
+    scan_recursive(
+        &project_root,
+        "project",
+        "builtin",
+        &mut out,
+        0,
+        MAX_DEPTH_PROJECT,
+        true,
+    );
 
+    // 2. ~/.tialynn/models/
     let user_root = dirs::home_dir()
         .unwrap_or_default()
         .join(".tialynn")
         .join("models");
+    scan_recursive(
+        &user_root,
+        "user",
+        "user",
+        &mut out,
+        0,
+        MAX_DEPTH_EXTERNAL,
+        false,
+    );
 
-    scan_into(&project_root, "builtin", &mut out, true);
-    scan_into(&user_root, "user", &mut out, false);
+    // 3. 自定义额外路径
+    let cfg = state.runtime_config();
+    for (idx, p) in cfg.extra_model_dirs.iter().enumerate() {
+        if out.len() >= MAX_RESULTS {
+            break;
+        }
+        let path = expand_tilde(p);
+        let root_id = format!("extra_{idx}");
+        scan_recursive(
+            &path,
+            &root_id.clone(),
+            &format!("external_{idx}"),
+            &mut out,
+            0,
+            MAX_DEPTH_EXTERNAL,
+            false,
+        );
+    }
+
     Ok(out)
 }
 
-fn scan_into(root: &Path, source: &str, out: &mut Vec<ModelInfo>, only_obvious: bool) {
-    if !root.exists() {
+fn expand_tilde(p: &str) -> PathBuf {
+    if let Some(stripped) = p.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    }
+    PathBuf::from(p)
+}
+
+fn scan_recursive(
+    root: &Path,
+    root_id: &str,
+    source: &str,
+    out: &mut Vec<ModelInfo>,
+    depth: usize,
+    max_depth: usize,
+    only_obvious: bool,
+) {
+    if out.len() >= MAX_RESULTS {
+        return;
+    }
+    if !root.exists() || !root.is_dir() {
         return;
     }
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
+        if out.len() >= MAX_RESULTS {
+            return;
         }
-        let dir_name = dir
+        let path = entry.path();
+        let name = path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
-        // 忽略明显非模型目录（避免扫到 src/、node_modules/ 这种）
-        if only_obvious {
-            let is_likely_model = dir_name.to_lowercase().contains("live2d")
-                || dir_name.ends_with(".model")
-                || has_model3_at_top_level(&dir);
-            if !is_likely_model {
+
+        // 跳过隐藏 / 明显非模型目录
+        if name.is_empty()
+            || name.starts_with('.')
+            || matches!(
+                name.as_str(),
+                "node_modules"
+                    | "src"
+                    | "src-tauri"
+                    | "dist"
+                    | "docs"
+                    | "public"
+                    | "scripts"
+                    | "sidecar"
+                    | "icons"
+                    | "target"
+                    | "example_voice"
+                    | "__pycache__"
+                    | ".venv"
+                    | "venv"
+            )
+        {
+            continue;
+        }
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        // 项目根第一层只看明显是 Live2D 的目录
+        if only_obvious && depth == 0 {
+            let lower = name.to_lowercase();
+            let looks_like = lower.contains("live2d")
+                || lower.ends_with(".model")
+                || lower.ends_with("-model")
+                || has_model_file(&path);
+            if !looks_like {
                 continue;
             }
         }
-        if let Some(model_file) = find_model3_json(&dir) {
+
+        // 先检查本目录是否有 model file
+        if let Some((file, cubism)) = find_model_file(&path) {
+            let rel = path
+                .strip_prefix(root)
+                .map(|r| r.to_string_lossy().to_string())
+                .unwrap_or_else(|_| name.clone());
+            let parent = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            let display = if parent.is_empty() || parent == root_id {
+                name.clone()
+            } else {
+                format!("{} · {}", parent, name)
+            };
             out.push(ModelInfo {
-                dir: dir_name,
-                model_file: model_file
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string(),
-                absolute_path: model_file.to_string_lossy().to_string(),
+                dir: rel,
+                model_file: file,
+                absolute_path: path.to_string_lossy().to_string(),
                 source: source.into(),
+                cubism: cubism.into(),
+                display,
+                root_id: root_id.into(),
             });
+            // 找到了模型就不再深入这个目录（典型 Live2D 模型不会嵌套）
+            continue;
+        }
+
+        // 否则继续递归
+        if depth + 1 <= max_depth {
+            scan_recursive(&path, root_id, source, out, depth + 1, max_depth, false);
         }
     }
 }
 
-fn has_model3_at_top_level(dir: &Path) -> bool {
-    find_model3_json(dir).is_some()
+fn has_model_file(dir: &Path) -> bool {
+    find_model_file(dir).is_some()
 }
 
-fn find_model3_json(dir: &Path) -> Option<PathBuf> {
+/// 返回 (entry_file_name, "cubism4"|"cubism2")。
+/// 优先 model3.json，再 model.json。
+fn find_model_file(dir: &Path) -> Option<(String, &'static str)> {
     let entries = std::fs::read_dir(dir).ok()?;
+    let mut found_model3: Option<String> = None;
+    let mut found_model_json: Option<String> = None;
     for entry in entries.flatten() {
         let p = entry.path();
-        if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-            if name.ends_with(".model3.json") {
-                return Some(p);
-            }
+        if !p.is_file() {
+            continue;
+        }
+        let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if name.ends_with(".model3.json") {
+            found_model3 = Some(name.to_string());
+        } else if name == "model.json" {
+            found_model_json = Some(name.to_string());
         }
     }
+    if let Some(n) = found_model3 {
+        return Some((n, "cubism4"));
+    }
+    if let Some(n) = found_model_json {
+        return Some((n, "cubism2"));
+    }
     None
+}
+
+#[tauri::command]
+pub async fn models_add_search_path(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<Vec<String>> {
+    let mut cfg = state.runtime_config();
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(cfg.extra_model_dirs.clone());
+    }
+    if !cfg.extra_model_dirs.contains(&trimmed) {
+        cfg.extra_model_dirs.push(trimmed);
+    }
+    state.replace_runtime_config(cfg.clone());
+    persist_extra(&cfg.extra_model_dirs)?;
+    Ok(cfg.extra_model_dirs)
+}
+
+#[tauri::command]
+pub async fn models_remove_search_path(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<Vec<String>> {
+    let mut cfg = state.runtime_config();
+    cfg.extra_model_dirs.retain(|p| *p != path);
+    state.replace_runtime_config(cfg.clone());
+    persist_extra(&cfg.extra_model_dirs)?;
+    Ok(cfg.extra_model_dirs)
+}
+
+#[tauri::command]
+pub fn models_list_search_paths(state: State<'_, AppState>) -> Vec<String> {
+    state.runtime_config().extra_model_dirs.clone()
+}
+
+fn persist_extra(dirs: &[String]) -> AppResult<()> {
+    // 把当前 RuntimeConfig 整体写一份到 config.json
+    // 重用 commands::config 的 path/序列化逻辑
+    let path = dirs::config_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("TiaLynn")
+        .join("config.json");
+    let mut value: serde_json::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    value["extra_model_dirs"] = serde_json::json!(dirs);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&value)?)?;
+    Ok(())
 }

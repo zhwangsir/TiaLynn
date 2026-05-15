@@ -6,9 +6,8 @@ declare module '*.vue' {
   export default component
 }
 
-// pixi-live2d-display 的 cubism4 子入口没附带类型，做最小声明。
-// 让 Live2DModel 继承 PIXI.Container，可直接 addChild 到 stage。
-declare module 'pixi-live2d-display/cubism4' {
+// pixi-live2d-display 默认入口（同时支持 Cubism 2 + 4）的最小类型声明。
+declare module 'pixi-live2d-display' {
   import { Container } from 'pixi.js'
   export class Live2DModel extends Container {
     static from(url: string, opts?: { autoInteract?: boolean }): Promise<Live2DModel>

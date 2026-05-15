@@ -5,9 +5,39 @@
 ## [Unreleased]
 
 ### 路线
-- v0.3.1：水墨视觉重塑 + 桌宠细节（zZ / 扬尘 / 边缘吸附茶杯）
+- v0.3.2：水墨视觉重塑 + 桌宠细节（zZ / 扬尘 / 边缘吸附茶杯）
 - v0.4.0：屏幕感知 + Vision LLM
 - v0.5.0：RPA 键鼠操作
+
+---
+
+## [0.3.1] — 2026-05-15 — Mass Model Library
+
+### 大型模型库支持（~3000 个模型）
+
+**Cubism 2 兼容**：
+- HTML 同时引入 `live2d.min.js` + `live2dcubismcore.min.js`
+- renderer 改用 pixi-live2d-display 默认入口，自动按文件后缀选 SDK
+- 扫描器同时识别 `*.model3.json` (Cubism 4) 和 `model.json` (Cubism 2)
+- 模型列表显示 Cubism 2 / Cubism 4 badge
+
+**自定义模型搜索路径**：
+- `RuntimeConfig.extra_model_dirs: Vec<String>` 持久化到 config.json
+- 命令：models_add_search_path / models_remove_search_path / models_list_search_paths
+- 菜单 → 外观/模型 → "+ 添加搜索路径" 按钮调 Tauri dialog 选目录
+- vite middleware 启动时读 config.json 把额外路径加入 serve 根（新增路径需重启生效）
+
+**扫描器优化（避免 3000 模型卡死）**：
+- 项目根：深度 1 + 仅"看起来像 Live2D"的目录
+- 外部库：深度 5 递归 + 找到模型就不再深入子目录
+- 上限 4000 个结果
+- 跳过 node_modules/.venv/.git 等
+
+**模型列表 UI 增强**：
+- 显示「父目录 · 模型名」
+- Cubism 2 棕色 badge，Cubism 4 红色
+- 外部模型蓝色"外部" badge
+- 顶部显示总数
 
 ---
 
@@ -336,7 +366,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.1
 [0.3.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.0
 [0.2.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.3
 [0.2.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.2

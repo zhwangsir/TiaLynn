@@ -43,6 +43,8 @@ pub struct RuntimeConfig {
     pub motion_min_sec: u32,
     pub motion_max_sec: u32,
     pub motion_speed: f32, // 0.5（慢）-2.0（快）
+    // ---- v0.3.1：自定义模型搜索路径 ----
+    pub extra_model_dirs: Vec<String>,
 }
 
 impl Default for RuntimeConfig {
@@ -75,6 +77,7 @@ impl Default for RuntimeConfig {
             motion_min_sec: 90,
             motion_max_sec: 300,
             motion_speed: 1.0,
+            extra_model_dirs: Vec::new(),
         }
     }
 }
@@ -281,6 +284,9 @@ pub fn run() {
             commands::config::config_save,
             commands::config::config_test_llm,
             commands::models::models_scan,
+            commands::models::models_add_search_path,
+            commands::models::models_remove_search_path,
+            commands::models::models_list_search_paths,
             commands::sidecar::sidecar_status,
             commands::sidecar::sidecar_start,
             commands::sidecar::sidecar_stop,

@@ -30,6 +30,7 @@ const form = reactive<ConfigDto>({
   motion_min_sec: 90,
   motion_max_sec: 300,
   motion_speed: 1.0,
+  extra_model_dirs: [],
 })
 
 const dirty = ref(false)
@@ -115,6 +116,28 @@ async function onRevealModels() {
 }
 
 async function onRescanModels() {
+  await config.scanModels()
+}
+
+async function onAddModelSearchPath() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: '选一个包含 Live2D 模型的目录',
+    })
+    if (typeof selected === 'string') {
+      await config.addSearchPath(selected)
+      await config.scanModels()
+    }
+  } catch (e) {
+    console.warn('[settings] add path failed:', e)
+  }
+}
+
+async function onRemoveModelSearchPath(path: string) {
+  await config.removeSearchPath(path)
   await config.scanModels()
 }
 
@@ -248,29 +271,57 @@ function emotionLabel(id: string): string {
 
     <!-- 外观 / 模型 -->
     <section v-show="activeTab === 'model'">
-      <h3>Live2D 模型</h3>
+      <h3>Live2D 模型 <span class="hint-inline">共 {{ config.models.length }} 个</span></h3>
+
       <div class="model-list">
         <div
           v-for="m in config.models"
-          :key="`${m.dir}/${m.model_file}`"
+          :key="`${m.root_id}/${m.dir}/${m.model_file}`"
           class="model-item"
           :class="{ active: isModelSelected(m.dir, m.model_file) }"
           @click="pickModel(m)"
         >
-          <div class="model-name">{{ m.dir }}</div>
+          <div class="model-name">{{ m.display || m.dir }}</div>
           <div class="model-meta">
-            <span class="badge">{{ m.source === 'builtin' ? '内置' : '用户' }}</span>
-            <span>{{ m.model_file }}</span>
+            <span class="badge" :class="{ c2: m.cubism === 'cubism2' }">
+              {{ m.cubism === 'cubism2' ? 'Cubism 2' : 'Cubism 4' }}
+            </span>
+            <span class="badge" :class="{ external: m.source.startsWith('external') }">
+              {{ m.source === 'builtin' ? '内置' : m.source === 'user' ? '用户' : '外部' }}
+            </span>
           </div>
         </div>
         <div v-if="config.models.length === 0" class="empty">
-          未发现可用模型。点击下方"打开模型目录"放入 Live2D Cubism 4 模型。
+          未发现可用模型。可在下方添加"模型搜索路径"。
         </div>
       </div>
 
       <div class="actions">
         <button class="ghost" type="button" @click="onRescanModels">重新扫描</button>
-        <button class="ghost" type="button" @click="onRevealModels">打开模型目录</button>
+        <button class="ghost" type="button" @click="onRevealModels">打开默认模型目录</button>
+        <button class="ghost" type="button" @click="onAddModelSearchPath">+ 添加搜索路径</button>
+      </div>
+
+      <div v-if="(config.config?.extra_model_dirs?.length ?? 0) > 0" style="margin-top: 12px">
+        <h3 style="font-size: 11px">已添加的搜索路径</h3>
+        <div
+          v-for="p in config.config?.extra_model_dirs ?? []"
+          :key="p"
+          class="path-row"
+        >
+          <span class="path-text" :title="p">{{ p }}</span>
+          <button
+            class="path-remove"
+            type="button"
+            title="移除"
+            @click="onRemoveModelSearchPath(p)"
+          >
+            ×
+          </button>
+        </div>
+        <div class="hint" style="margin-top: 6px">
+          注：添加新路径后**需重启 TiaLynn** 让 vite static server 加载新路径
+        </div>
       </div>
 
       <label>缩放 ({{ form.live2d_scale.toFixed(2) }})</label>
@@ -708,6 +759,51 @@ function emotionLabel(id: string): string {
   border-radius: 4px;
   background: rgba(168, 36, 42, 0.12);
   color: #a8242a;
+}
+.badge.c2 {
+  background: rgba(120, 80, 20, 0.15);
+  color: #7a5a18;
+}
+.badge.external {
+  background: rgba(80, 100, 180, 0.15);
+  color: #3b5bdb;
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: rgba(168, 36, 42, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(168, 36, 42, 0.1);
+}
+.path-text {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  color: #2a1c1c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.path-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 36, 42, 0.3);
+  background: transparent;
+  color: #a8242a;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.path-remove:hover {
+  background: rgba(168, 36, 42, 0.1);
 }
 .empty {
   padding: 16px;

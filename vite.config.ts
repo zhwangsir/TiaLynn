@@ -16,10 +16,32 @@ const host = process.env.TAURI_DEV_HOST
 function tialynnLive2DStatic(): PluginOption {
   const projectRoot = process.cwd()
   const home = process.env.HOME ?? ''
+  // 从 config.json 读用户自定义的额外模型目录
+  function loadExtraDirs(): string[] {
+    try {
+      const configPath = path.join(
+        home,
+        'Library',
+        'Application Support',
+        'TiaLynn',
+        'config.json',
+      )
+      if (!fs.existsSync(configPath)) return []
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      const dirs = cfg.extra_model_dirs ?? []
+      return Array.isArray(dirs) ? dirs : []
+    } catch {
+      return []
+    }
+  }
+  const extraDirs = loadExtraDirs().map((p: string) =>
+    p.startsWith('~/') ? path.join(home, p.slice(2)) : p,
+  )
   const modelRoots = [
-    projectRoot, // 含 HuTao-Live2D/、其他自带模型目录
+    projectRoot,
     path.join(home, '.tialynn', 'models'),
     path.join(home, '.tialynn', 'assets'),
+    ...extraDirs,
   ]
 
   function resolveAsset(rawPath: string): string | null {
