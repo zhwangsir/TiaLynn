@@ -26,6 +26,10 @@ const form = reactive<ConfigDto>({
   emotion_voice_map: {},
   embedding_endpoint: '',
   embedding_model: 'text-embedding-3-small',
+  motion_enabled: true,
+  motion_min_sec: 90,
+  motion_max_sec: 300,
+  motion_speed: 1.0,
 })
 
 const dirty = ref(false)
@@ -290,14 +294,50 @@ function emotionLabel(id: string): string {
 
     <!-- 行为 -->
     <section v-show="activeTab === 'behavior'">
-      <h3>自主行为节奏</h3>
+      <h3>自主移动（桌宠）</h3>
 
+      <div class="row">
+        <label style="margin: 0; flex: 1">允许在屏幕上散步</label>
+        <input v-model="form.motion_enabled" type="checkbox" />
+      </div>
+
+      <label>移动间隔下限 ({{ form.motion_min_sec }}s ≈ {{ Math.round(form.motion_min_sec / 60) }}min)</label>
+      <input
+        v-model.number="form.motion_min_sec"
+        type="range"
+        min="30"
+        max="1200"
+        step="15"
+        :disabled="!form.motion_enabled"
+      />
+
+      <label>移动间隔上限 ({{ form.motion_max_sec }}s ≈ {{ Math.round(form.motion_max_sec / 60) }}min)</label>
+      <input
+        v-model.number="form.motion_max_sec"
+        type="range"
+        min="60"
+        max="3600"
+        step="30"
+        :disabled="!form.motion_enabled"
+      />
+
+      <label>移动速度 ({{ form.motion_speed.toFixed(2) }}x)</label>
+      <input
+        v-model.number="form.motion_speed"
+        type="range"
+        min="0.3"
+        max="2.5"
+        step="0.05"
+        :disabled="!form.motion_enabled"
+      />
+
+      <h3 style="margin-top: 14px">Idle 微动作</h3>
       <label>Idle 动作最小间隔 ({{ form.idle_min_sec }}s)</label>
       <input v-model.number="form.idle_min_sec" type="range" min="3" max="60" step="1" />
-
       <label>Idle 动作最大间隔 ({{ form.idle_max_sec }}s)</label>
       <input v-model.number="form.idle_max_sec" type="range" min="5" max="120" step="1" />
 
+      <h3 style="margin-top: 14px">情绪与对话</h3>
       <label>主动开口间隔 ({{ form.autocomment_interval_sec }}s)</label>
       <input
         v-model.number="form.autocomment_interval_sec"
@@ -306,7 +346,6 @@ function emotionLabel(id: string): string {
         max="1800"
         step="30"
       />
-
       <label>情绪衰减率 (/分钟，{{ form.emotion_decay_per_minute.toFixed(3) }})</label>
       <input
         v-model.number="form.emotion_decay_per_minute"
@@ -315,7 +354,6 @@ function emotionLabel(id: string): string {
         max="0.3"
         step="0.005"
       />
-
       <label>反差变量触发概率 ({{ (form.flip_probability * 100).toFixed(0) }}%)</label>
       <input
         v-model.number="form.flip_probability"

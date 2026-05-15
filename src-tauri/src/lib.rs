@@ -5,6 +5,7 @@ mod tray;
 mod window;
 
 use crate::core::memory::{default_db_path, MemoryStore};
+use crate::core::motion::MotionController;
 use crate::core::sidecar::SidecarManager;
 use crate::core::soul::{locate_default_soul, SoulConfig};
 use crate::core::stt::SttRecorder;
@@ -37,6 +38,11 @@ pub struct RuntimeConfig {
     // ---- v0.2.1：embedding（用于长期记忆） ----
     pub embedding_endpoint: String,
     pub embedding_model: String,
+    // ---- v0.3.0：自主移动 ----
+    pub motion_enabled: bool,
+    pub motion_min_sec: u32,
+    pub motion_max_sec: u32,
+    pub motion_speed: f32, // 0.5（慢）-2.0（快）
 }
 
 impl Default for RuntimeConfig {
@@ -65,6 +71,10 @@ impl Default for RuntimeConfig {
                 .unwrap_or_default(),
             embedding_model: std::env::var("TIALYNN_EMBEDDING_MODEL")
                 .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
+            motion_enabled: true,
+            motion_min_sec: 90,
+            motion_max_sec: 300,
+            motion_speed: 1.0,
         }
     }
 }
@@ -90,6 +100,7 @@ pub struct AppState {
     sidecar: Arc<SidecarManager>,
     alpha_mask: SharedMask,
     stt: SttRecorder,
+    motion: Arc<MotionController>,
 }
 
 impl AppState {
@@ -137,6 +148,9 @@ impl AppState {
     pub fn stt(&self) -> SttRecorder {
         self.stt.clone()
     }
+    pub fn motion(&self) -> Arc<MotionController> {
+        self.motion.clone()
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -157,6 +171,8 @@ pub fn run() {
     let sidecar = Arc::new(SidecarManager::new(default_cfg.tts_sidecar_url.clone()));
     let alpha_mask: SharedMask = Arc::new(RwLock::new(AlphaMask::default()));
 
+    let motion = Arc::new(MotionController::new());
+
     let state = AppState {
         soul: RwLock::new(None),
         emotion: RwLock::new("neutral".into()),
@@ -165,6 +181,7 @@ pub fn run() {
         sidecar,
         alpha_mask,
         stt: SttRecorder::new(),
+        motion,
     };
 
     tauri::Builder::default()
@@ -213,6 +230,10 @@ pub fn run() {
             let mask = app.state::<AppState>().alpha_mask();
             window::spawn_mouse_tracker(app.handle().clone(), mask);
 
+            // 窗口自主移动后台 loop
+            let motion = app.state::<AppState>().motion();
+            crate::core::motion::spawn_motion_loop(app.handle().clone(), motion);
+
             // 异步拉起 sidecar（不阻塞启动）
             {
                 let app_handle = app.handle().clone();
@@ -251,6 +272,11 @@ pub fn run() {
             commands::window::window_set_position,
             commands::window::window_get_position,
             commands::window::window_set_alpha_mask,
+            commands::motion::motion_status,
+            commands::motion::motion_set_target,
+            commands::motion::motion_cancel,
+            commands::motion::motion_set_dragging,
+            commands::motion::motion_screen_size,
             commands::config::config_load,
             commands::config::config_save,
             commands::config::config_test_llm,

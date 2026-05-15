@@ -21,6 +21,10 @@ export interface ConfigDto {
   emotion_voice_map: Record<string, string>
   embedding_endpoint: string
   embedding_model: string
+  motion_enabled: boolean
+  motion_min_sec: number
+  motion_max_sec: number
+  motion_speed: number
 }
 
 export interface ModelInfo {

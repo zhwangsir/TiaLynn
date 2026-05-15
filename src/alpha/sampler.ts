@@ -34,7 +34,6 @@ export function startAlphaHitTest(): void {
     if (isOverInteractiveUi(e.target)) return
     if (!hitTestAlpha(e.clientX, e.clientY)) return
 
-    // 启动手动拖动
     try {
       const pos = await invoke<[number, number]>('window_get_position')
       dragStartWinX = pos[0]
@@ -42,6 +41,9 @@ export function startAlphaHitTest(): void {
       dragStartScreenX = e.screenX
       dragStartScreenY = e.screenY
       dragging = true
+      // 通知 motion 暂停 + 取消正在进行的自主移动
+      invoke('motion_set_dragging', { on: true }).catch(() => {})
+      invoke('motion_cancel').catch(() => {})
       window.addEventListener('mousemove', onDragMove)
       window.addEventListener('mouseup', onDragUp, { once: true })
     } catch (err) {
@@ -76,6 +78,8 @@ function onDragMove(e: MouseEvent): void {
 function onDragUp(): void {
   dragging = false
   window.removeEventListener('mousemove', onDragMove)
+  // 释放 motion 锁
+  invoke('motion_set_dragging', { on: false }).catch(() => {})
 }
 
 function hitTestAlpha(clientX: number, clientY: number): boolean {

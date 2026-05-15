@@ -38,6 +38,28 @@ pub struct ConfigDto {
     pub embedding_endpoint: String,
     #[serde(default = "default_embedding_model")]
     pub embedding_model: String,
+    // 自主移动
+    #[serde(default = "default_motion_enabled")]
+    pub motion_enabled: bool,
+    #[serde(default = "default_motion_min")]
+    pub motion_min_sec: u32,
+    #[serde(default = "default_motion_max")]
+    pub motion_max_sec: u32,
+    #[serde(default = "default_motion_speed")]
+    pub motion_speed: f32,
+}
+
+fn default_motion_enabled() -> bool {
+    true
+}
+fn default_motion_min() -> u32 {
+    90
+}
+fn default_motion_max() -> u32 {
+    300
+}
+fn default_motion_speed() -> f32 {
+    1.0
 }
 
 fn default_embedding_model() -> String {
@@ -85,6 +107,10 @@ impl From<&RuntimeConfig> for ConfigDto {
             emotion_voice_map: c.emotion_voice_map.clone(),
             embedding_endpoint: c.embedding_endpoint.clone(),
             embedding_model: c.embedding_model.clone(),
+            motion_enabled: c.motion_enabled,
+            motion_min_sec: c.motion_min_sec,
+            motion_max_sec: c.motion_max_sec,
+            motion_speed: c.motion_speed,
         }
     }
 }
@@ -109,6 +135,10 @@ impl From<ConfigDto> for RuntimeConfig {
             emotion_voice_map: d.emotion_voice_map,
             embedding_endpoint: d.embedding_endpoint,
             embedding_model: d.embedding_model,
+            motion_enabled: d.motion_enabled,
+            motion_min_sec: d.motion_min_sec,
+            motion_max_sec: d.motion_max_sec,
+            motion_speed: d.motion_speed,
         }
     }
 }

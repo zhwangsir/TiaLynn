@@ -6,6 +6,7 @@ import { startMouseFocus } from '@/live2d/focus'
 import { registerCanvas } from '@/alpha/sampler'
 import { registerMaskCanvas, startMaskPush, stopMaskPush } from '@/alpha/mask'
 import { startIdleBehavior } from '@/behavior/idle'
+import { persona } from '@/behavior/persona'
 import { useSoulStore } from '@/stores/soul'
 import { useEmotionStore } from '@/stores/emotion'
 import { useConfigStore } from '@/stores/config'
@@ -89,6 +90,7 @@ async function loadModel(): Promise<void> {
   applyEmotion()
 
   ;(window as any).__tialynn_renderer__ = renderer
+  persona.attach(renderer)
   if (import.meta.env.DEV) {
     console.info('[Live2D] loaded:', modelDir, modelFile, 'params=', renderer.enumerateParams())
   }

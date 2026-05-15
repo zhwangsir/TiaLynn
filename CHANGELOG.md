@@ -5,8 +5,56 @@
 ## [Unreleased]
 
 ### 路线
-- v0.3.0：屏幕感知 + Vision LLM
-- v0.4.0：RPA 键鼠操作
+- v0.3.1：水墨视觉重塑 + 桌宠细节（zZ / 扬尘 / 边缘吸附茶杯）
+- v0.4.0：屏幕感知 + Vision LLM
+- v0.5.0：RPA 键鼠操作
+
+---
+
+## [0.3.0] — 2026-05-15 — Living Companion
+
+### 桌宠化：TiaLynn 真的会在桌面散步了
+
+**核心理念**：从"固定窗口里的 Live2D 立绘"升级为"在桌面上有意图地活动的桌宠"。
+
+**默认窗口尺寸缩小**：320×480（原 480×720），占屏更小
+
+**Rust MotionController（窗口自主移动后台 loop）**：
+- `core/motion.rs` 16ms tick + cubic ease in-out 平滑插值
+- 拖动时暂停 + emit `motion::tick` / `motion::end`
+- 命令：`motion_status / motion_set_target / motion_cancel / motion_set_dragging / motion_screen_size`
+
+**Persona 状态机 + 意图引擎**（`src/behavior/persona.ts`）：
+- 6 状态：stand / walk / run / sit / sleep / peek
+- 心情维度：mood / energy / attention / curiosity（每秒 tick）
+- 时段感知：深夜 energy↓，睡觉 energy↑
+- 鼠标交互：mouse::global 驱动 attention
+- 决策示例：
+  - energy<25 + 夜里 → sleep
+  - 鼠标在窗口里 + attention>60 → peek
+  - 用户 2 分钟没动鼠标 → walk 主动靠近
+  - mood>80 + 移动中 → run
+
+**Live2D 状态动作映射**：
+- walk：身体周期摆 + 头身上下波动
+- run：摆幅×2 + 头前倾
+- sit：身体下沉
+- sleep：闭眼 + 头微低 + 呼吸放大
+- peek：身体微前倾 + 害羞脸红
+
+**拖动改造**：
+- 拖动通知 motion 暂停 + 取消正在进行的自主移动
+- 释放时解锁
+
+**菜单 → 行为 tab 扩展**：
+- 自主移动开关 + 间隔下限/上限 slider（30s ~ 60min）+ 速度 (0.3-2.5x)
+- 默认间隔 90-300s（每 2-5 分钟换位置）
+
+### 新增 Rust 命令
+- `motion_status / motion_set_target / motion_cancel / motion_set_dragging / motion_screen_size`
+
+### 新增前端模块
+- `src/behavior/persona.ts` — FSM + 意图引擎 + 配置热重载
 
 ---
 
@@ -288,7 +336,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.0
 [0.2.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.3
 [0.2.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.2
 [0.2.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.1

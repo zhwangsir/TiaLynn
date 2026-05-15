@@ -3,6 +3,7 @@ pub mod config;
 pub mod distill;
 pub mod memory;
 pub mod models;
+pub mod motion;
 pub mod sidecar;
 pub mod soul;
 pub mod stt;

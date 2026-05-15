@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "TiaLynn",
-        "width": 480,
-        "height": 720,
+        "width": 320,
+        "height": 480,
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import Live2DStage from './components/Live2DStage.vue'
 import DialogBubble from './components/DialogBubble.vue'
 import InputBar from './components/InputBar.vue'
@@ -13,6 +13,7 @@ import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
 import { startEmotionTick } from './behavior/emotionTick'
 import { startAutoComment } from './behavior/autoComment'
 import { startDistillTick } from './behavior/distillTick'
+import { persona } from './behavior/persona'
 
 const soul = useSoulStore()
 const dialog = useDialogStore()
@@ -33,14 +34,37 @@ onMounted(async () => {
   stopEmotionTick = startEmotionTick()
   stopAutoComment = startAutoComment()
   stopDistillTick = startDistillTick()
+  // 启动桌宠人格 + 自主移动
+  applyPersonaConfig()
+  await persona.start()
   ready.value = true
 })
+
+function applyPersonaConfig(): void {
+  persona.setConfig({
+    enabled: config.config?.motion_enabled ?? true,
+    minSec: config.config?.motion_min_sec ?? 90,
+    maxSec: config.config?.motion_max_sec ?? 300,
+    speed: config.config?.motion_speed ?? 1.0,
+  })
+}
+
+watch(
+  () => [
+    config.config?.motion_enabled,
+    config.config?.motion_min_sec,
+    config.config?.motion_max_sec,
+    config.config?.motion_speed,
+  ],
+  () => applyPersonaConfig(),
+)
 
 onBeforeUnmount(() => {
   stopAlphaHitTest()
   stopEmotionTick?.()
   stopAutoComment?.()
   stopDistillTick?.()
+  persona.stop()
 })
 
 // 抑制 TS 未使用变量警告
