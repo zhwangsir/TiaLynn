@@ -5,6 +5,7 @@ pub mod memory;
 pub mod models;
 pub mod sidecar;
 pub mod soul;
+pub mod stt;
 pub mod system;
 pub mod tts;
 pub mod window;

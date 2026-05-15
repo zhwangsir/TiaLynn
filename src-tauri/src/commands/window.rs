@@ -1,5 +1,6 @@
 use crate::error::AppResult;
-use tauri::Manager;
+use crate::AppState;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub fn window_set_ignore_cursor(app: tauri::AppHandle, ignore: bool) -> AppResult<()> {
@@ -31,5 +32,20 @@ pub fn window_start_drag(app: tauri::AppHandle) -> AppResult<()> {
     if let Some(w) = app.get_webview_window("main") {
         w.start_dragging()?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn window_set_alpha_mask(
+    state: State<'_, AppState>,
+    width: u32,
+    height: u32,
+    data: Vec<u8>,
+) -> AppResult<()> {
+    let mask = state.alpha_mask();
+    let mut m = mask.write().map_err(|_| crate::error::AppError::Other("mask lock poisoned".into()))?;
+    m.width = width;
+    m.height = height;
+    m.data = data;
     Ok(())
 }

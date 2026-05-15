@@ -4,6 +4,7 @@ import { TiaLynnRenderer } from '@/live2d/renderer'
 import { startEyeBlink } from '@/live2d/eyeBlink'
 import { startMouseFocus } from '@/live2d/focus'
 import { registerCanvas } from '@/alpha/sampler'
+import { registerMaskCanvas, startMaskPush, stopMaskPush } from '@/alpha/mask'
 import { startIdleBehavior } from '@/behavior/idle'
 import { useSoulStore } from '@/stores/soul'
 import { useEmotionStore } from '@/stores/emotion'
@@ -36,7 +37,9 @@ onMounted(async () => {
   }
 
   registerCanvas(canvasEl.value)
+  registerMaskCanvas(canvasEl.value)
   await loadModel()
+  startMaskPush()
 })
 
 async function loadModel(): Promise<void> {
@@ -135,6 +138,7 @@ function applyEmotion(): void {
 }
 
 onBeforeUnmount(() => {
+  stopMaskPush()
   stopBlink?.()
   stopFocus?.()
   stopIdle?.()

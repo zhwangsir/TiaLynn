@@ -7,6 +7,8 @@ mod window;
 use crate::core::memory::{default_db_path, MemoryStore};
 use crate::core::sidecar::SidecarManager;
 use crate::core::soul::{locate_default_soul, SoulConfig};
+use crate::core::stt::SttRecorder;
+use crate::window::{AlphaMask, SharedMask};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
@@ -86,6 +88,8 @@ pub struct AppState {
     memory: Arc<MemoryStore>,
     config: Mutex<RuntimeConfig>,
     sidecar: Arc<SidecarManager>,
+    alpha_mask: SharedMask,
+    stt: SttRecorder,
 }
 
 impl AppState {
@@ -127,6 +131,12 @@ impl AppState {
     pub fn sidecar(&self) -> Arc<SidecarManager> {
         self.sidecar.clone()
     }
+    pub fn alpha_mask(&self) -> SharedMask {
+        self.alpha_mask.clone()
+    }
+    pub fn stt(&self) -> SttRecorder {
+        self.stt.clone()
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -145,6 +155,7 @@ pub fn run() {
 
     let default_cfg = RuntimeConfig::default();
     let sidecar = Arc::new(SidecarManager::new(default_cfg.tts_sidecar_url.clone()));
+    let alpha_mask: SharedMask = Arc::new(RwLock::new(AlphaMask::default()));
 
     let state = AppState {
         soul: RwLock::new(None),
@@ -152,12 +163,15 @@ pub fn run() {
         memory,
         config: Mutex::new(default_cfg),
         sidecar,
+        alpha_mask,
+        stt: SttRecorder::new(),
     };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state)
         .setup(|app| {
             // 启动时尝试加载磁盘上的运行时配置
@@ -195,8 +209,9 @@ pub fn run() {
             // 主窗口微调（置顶、跨 space）
             window::configure_main_window(app.handle());
 
-            // 全局鼠标轮询 → 窗口外穿透、窗口内可交互
-            window::spawn_mouse_tracker(app.handle().clone());
+            // 全局鼠标轮询 → 窗口外穿透、窗口内可交互（用 alpha mask）
+            let mask = app.state::<AppState>().alpha_mask();
+            window::spawn_mouse_tracker(app.handle().clone(), mask);
 
             // 异步拉起 sidecar（不阻塞启动）
             {
@@ -214,6 +229,9 @@ pub fn run() {
                 });
             }
 
+            // 全局快捷键：F8 push-to-talk
+            register_stt_shortcut(app.handle())?;
+
             // 系统托盘
             tray::build_tray(app.handle())?;
 
@@ -230,6 +248,7 @@ pub fn run() {
             commands::window::window_set_ignore_cursor,
             commands::window::window_toggle_visible,
             commands::window::window_start_drag,
+            commands::window::window_set_alpha_mask,
             commands::config::config_load,
             commands::config::config_save,
             commands::config::config_test_llm,
@@ -240,7 +259,11 @@ pub fn run() {
             commands::sidecar::tts_list_voices,
             commands::sidecar::tts_register_voices_dir,
             commands::sidecar::tts_example_voice_dir,
+            commands::sidecar::sidecar_install_status,
+            commands::sidecar::sidecar_install_run,
             commands::distill::memory_distill,
+            commands::stt::stt_status,
+            commands::stt::stt_toggle,
             commands::system::system_clear_history,
             commands::system::system_reveal_data_dir,
             commands::system::system_reveal_models_dir,
@@ -248,6 +271,65 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn register_stt_shortcut(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+    let f8 = Shortcut::new(Some(Modifiers::empty()), Code::F8);
+    let app_for_cb = app.clone();
+    let gs = app.global_shortcut();
+    let _ = gs.on_shortcut(f8, move |_app, _sc, event| {
+        if event.state() != ShortcutState::Pressed {
+            return;
+        }
+        let app = app_for_cb.clone();
+        tauri::async_runtime::spawn(async move {
+            let state = app.state::<AppState>();
+            // 调用与 invoke 同步的 stt_toggle 逻辑：用 emit 把结果发给前端
+            use crate::core::stt::SttStatus;
+            let stt = state.stt();
+            match stt.status() {
+                SttStatus::Idle => {
+                    if let Err(e) = stt.start_recording() {
+                        let _ = app.emit("stt::error", e.to_string());
+                        return;
+                    }
+                    let _ = app.emit("stt::started", ());
+                }
+                SttStatus::Recording => {
+                    let wav = match stt.stop_and_save() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            let _ = app.emit("stt::error", e.to_string());
+                            return;
+                        }
+                    };
+                    let _ = app.emit("stt::transcribing", ());
+                    let cfg = state.runtime_config();
+                    let sidecar_url = cfg.tts_sidecar_url.clone();
+                    let stt_clone = stt.clone();
+                    let app2 = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match crate::commands::stt::__transcribe(&sidecar_url, &wav).await {
+                            Ok(text) => {
+                                stt_clone.set_result(Ok(text.clone()));
+                                let _ = app2.emit("stt::result", text);
+                            }
+                            Err(e) => {
+                                stt_clone.set_result(Err(e.to_string()));
+                                let _ = app2.emit("stt::error", e.to_string());
+                            }
+                        }
+                        let _ = std::fs::remove_file(&wav);
+                    });
+                }
+                SttStatus::Transcribing => {}
+            }
+        });
+    });
+    let _ = gs.register(f8);
+    Ok(())
 }
 
 fn spawn_soul_watcher(app: tauri::AppHandle) {

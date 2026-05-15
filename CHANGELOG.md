@@ -5,10 +5,54 @@
 ## [Unreleased]
 
 ### 路线
-- v0.2.2：本地 voice clone 实装（GPT-SoVITS / CosyVoice / Qwen3-TTS）
-- v0.2.3：alpha buffer 跨进程像素穿透回归 + sqlite-vec
 - v0.3.0：屏幕感知 + Vision LLM
 - v0.4.0：RPA 键鼠操作
+
+---
+
+## [0.2.2] — 2026-05-15
+
+### 一次连击：Voice Clone + 像素穿透 + STT（A+A 路线）
+
+**CosyVoice 2 voice clone（情感增强 TTS）**
+- `sidecar/qwen-tts-server/backends/cosyvoice.py` 完整实装
+- 用 `inference_instruct2`：emotion → 中文指令 token 控制语气（happy/shy/angry/sad/...）
+- 注册的 sample 类型 voice 自动走 cosyvoice 推理
+- **一个基础样本可派生所有情绪**（不需要每个情绪都单独录）
+
+**一键安装脚本**
+- `sidecar/install.sh`：venv + pip + clone CosyVoice + 下载 1.1GB 模型
+- 国内镜像 fallback（huggingface 失败 → modelscope）
+- `[STEP]/[OK]/[FAIL]` 进度行可被前端解析
+- `sidecar_install_status` / `sidecar_install_run` Rust 命令
+- `--minimal` 模式跳过 CosyVoice
+
+**像素级穿透回归**
+- 前端 `src/alpha/mask.ts`：Live2D canvas 每 200ms readPixels → 128×96 1-bit mask（1.5KB）→ invoke 推 Rust
+- `window::AlphaMask::hit_test_unit(u,v)` + `SharedMask` Arc/RwLock
+- Mouse tracker 用 rect + mask 双重判断
+- 哈希变化才推（立绘静止时 IPC 接近零）
+
+**STT：cpal 录音 + whisper + F8**
+- `core/stt.rs`：cpal 跨平台录音 → hound 写 WAV
+- Sidecar `/v1/audio/transcribe`：faster-whisper 默认 small
+- 全局快捷键 **F8** toggle（按一次开始 / 再按一次停止+转写）
+- 转写后 emit → 前端 dialog.send 自动触发对话
+- 输入栏麦克风按钮：红色脉冲=录音中，黄色=识别中
+
+### 新增依赖
+- Rust：`cpal@0.15` `hound@3` `tauri-plugin-global-shortcut@2`；`reqwest` 加 `multipart`
+- Python：`faster-whisper>=1.0`；CosyVoice 由 install.sh 处理
+
+### 新增命令
+- `sidecar_install_status` / `sidecar_install_run`
+- `window_set_alpha_mask`
+- `stt_status` / `stt_toggle`
+
+### 新增前端模块
+- `src/alpha/mask.ts` — alpha buffer 推送
+- `src/stores/stt.ts` — STT 事件订阅 + 自动 dispatch
+- `src/components/InputBar.vue` 增麦克风按钮
 
 ---
 
@@ -222,7 +266,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.2
 [0.2.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.1
 [0.2.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.0
 [0.1.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.3

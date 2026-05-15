@@ -8,6 +8,7 @@ import { useSoulStore } from './stores/soul'
 import { useDialogStore } from './stores/dialog'
 import { useEmotionStore } from './stores/emotion'
 import { useConfigStore } from './stores/config'
+import { useSttStore } from './stores/stt'
 import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
 import { startEmotionTick } from './behavior/emotionTick'
 import { startAutoComment } from './behavior/autoComment'
@@ -17,7 +18,9 @@ const soul = useSoulStore()
 const dialog = useDialogStore()
 const emotion = useEmotionStore()
 const config = useConfigStore()
+const stt = useSttStore()
 const ready = ref(false)
+void stt // 触发 store 初始化（事件监听）
 
 let stopEmotionTick: (() => void) | null = null
 let stopAutoComment: (() => void) | null = null

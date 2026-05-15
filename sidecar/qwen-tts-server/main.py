@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import os
+import sys
 import wave
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -153,9 +154,44 @@ class OpenAiCompatBackend(Backend):
             return r.content
 
 
+class CosyVoiceWrapper(Backend):
+    """CosyVoice 2 voice clone + 情感控制。"""
+
+    name = "cosyvoice"
+
+    def __init__(self) -> None:
+        self._impl = None
+
+    async def synthesize(self, text: str, voice: VoiceEntry, emotion: str = "neutral") -> bytes:
+        if voice.kind != "sample" or not voice.sample_path:
+            raise RuntimeError("cosyvoice 需要 sample 类型的音色（含参考音频路径）")
+
+        # 延迟加载
+        if self._impl is None:
+            try:
+                from backends.cosyvoice import CosyVoiceBackend  # type: ignore
+
+                self._impl = CosyVoiceBackend()
+            except Exception as e:
+                raise RuntimeError(f"CosyVoice backend 不可用: {e}")
+
+        ref_text = (voice.note or "").strip() or "请用这段声音作为参考"
+        # 在事件循环中跑同步推理（CosyVoice 是同步的）
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._impl.synthesize,
+            text,
+            voice.sample_path,
+            ref_text,
+            emotion,
+        )
+
+
 BACKENDS: Dict[str, Backend] = {
     "edge_tts": EdgeTtsBackend(),
     "openai_compat": OpenAiCompatBackend(),
+    "cosyvoice": CosyVoiceWrapper(),
 }
 
 
@@ -163,6 +199,9 @@ def _pick_backend(name: Optional[str], voice: VoiceEntry) -> Backend:
     # voice.kind=edge 强制走 edge_tts
     if voice.kind == "edge":
         return BACKENDS["edge_tts"]
+    # voice.kind=sample 默认走 cosyvoice（zero-shot voice clone）
+    if voice.kind == "sample":
+        return BACKENDS["cosyvoice"]
     if name and name in BACKENDS:
         return BACKENDS[name]
     return BACKENDS[DEFAULT_BACKEND]
@@ -208,7 +247,11 @@ async def speak(req: SpeakRequest) -> Response:
 
     backend = _pick_backend(req.backend, voice)
     try:
-        audio = await backend.synthesize(req.text, voice)
+        # CosyVoice 接受 emotion 第三参；其他 backend 忽略
+        if backend.name == "cosyvoice":
+            audio = await backend.synthesize(req.text, voice, req.emotion)  # type: ignore[call-arg]
+        else:
+            audio = await backend.synthesize(req.text, voice)
         media_type = "audio/mpeg" if backend.name in ("edge_tts", "openai_compat") else "audio/wav"
         return Response(content=audio, media_type=media_type)
     except Exception as e:
@@ -233,6 +276,73 @@ async def clone_voice(
     )
     _save_registry(REGISTRY)
     return REGISTRY[name].model_dump()
+
+
+# ---------- STT (whisper) ----------
+
+_whisper_model = None
+_whisper_size = os.environ.get("TIALYNN_WHISPER_MODEL", "small")
+
+
+def _get_whisper():
+    global _whisper_model
+    if _whisper_model is not None:
+        return _whisper_model
+    try:
+        from faster_whisper import WhisperModel  # type: ignore
+
+        _whisper_model = (
+            "faster_whisper",
+            WhisperModel(_whisper_size, device="cpu", compute_type="int8"),
+        )
+        return _whisper_model
+    except ImportError:
+        pass
+    try:
+        import whisper  # type: ignore
+
+        _whisper_model = ("openai_whisper", whisper.load_model(_whisper_size))
+        return _whisper_model
+    except ImportError:
+        return None
+
+
+@app.post("/v1/audio/transcribe")
+async def transcribe(file: UploadFile) -> dict:
+    """接受 WAV 文件，返回 {text: ...}。"""
+    if file is None:
+        raise HTTPException(status_code=400, detail="file required")
+    data = await file.read()
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(data)
+        path = f.name
+
+    handle = _get_whisper()
+    if handle is None:
+        raise HTTPException(
+            status_code=500,
+            detail="whisper 未安装。运行：bash sidecar/install.sh 或 pip install faster-whisper",
+        )
+    kind, model = handle
+    try:
+        if kind == "faster_whisper":
+            segments, _ = model.transcribe(path, language="zh", beam_size=1)
+            text = "".join(s.text for s in segments).strip()
+        else:
+            result = model.transcribe(path, language="zh")
+            text = (result.get("text") or "").strip()
+    except Exception as e:
+        log.error(f"whisper failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+
+    return {"text": text}
 
 
 class RegisterBatchRequest(BaseModel):

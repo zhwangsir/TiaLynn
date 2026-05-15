@@ -1,5 +1,36 @@
 use serde::Serialize;
+use std::sync::{Arc, RwLock};
 use tauri::{Emitter, Manager, Runtime, WebviewWindow};
+
+#[derive(Debug, Default, Clone)]
+pub struct AlphaMask {
+    pub width: u32,
+    pub height: u32,
+    /// 行优先；每 byte 8 个像素，bit 0 = leftmost
+    pub data: Vec<u8>,
+}
+
+impl AlphaMask {
+    pub fn hit_test_unit(&self, u: f32, v: f32) -> bool {
+        if self.width == 0 || self.height == 0 || self.data.is_empty() {
+            return false;
+        }
+        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+            return false;
+        }
+        let mx = (u * self.width as f32) as u32;
+        let my = (v * self.height as f32) as u32;
+        let idx = (my * self.width + mx) as usize;
+        let byte = idx >> 3;
+        let bit = idx & 7;
+        if byte >= self.data.len() {
+            return false;
+        }
+        (self.data[byte] >> bit) & 1 == 1
+    }
+}
+
+pub type SharedMask = Arc<RwLock<AlphaMask>>;
 
 #[derive(Clone, Serialize)]
 pub struct GlobalMouseEvent {
@@ -47,7 +78,7 @@ fn macos_polish<R: Runtime>(_win: &WebviewWindow<R>) {}
 ///   - mouse 在窗口矩形内 → ignore=false（webview 接收事件，UI/拖动/输入全部可用）
 ///
 /// 像素级穿透留到 v0.2：那时需要把 alpha 缓存从前端通过 event 同步到 Rust。
-pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
+pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>, mask: SharedMask) {
     use device_query::{DeviceQuery, DeviceState};
     use std::time::Duration;
 
@@ -76,23 +107,37 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
             let top = pos.y;
             let right = left + size.width as i32;
             let bottom = top + size.height as i32;
+            let in_rect = mx >= left && mx < right && my >= top && my < bottom;
 
-            let inside = mx >= left && mx < right && my >= top && my < bottom;
+            // 进一步用 alpha mask 判断"是否在立绘上"
+            let inside = if in_rect {
+                let u = (mx - left) as f32 / size.width as f32;
+                let v = (my - top) as f32 / size.height as f32;
+                let mask_g = mask.read().ok();
+                let on_pixel = mask_g.as_ref().map(|m| m.hit_test_unit(u, v)).unwrap_or(false);
+                let has_mask = mask_g.as_ref().map(|m| !m.data.is_empty()).unwrap_or(false);
+                // mask 尚未推送过 → 退化到矩形（让 UI 可用）
+                if has_mask {
+                    on_pixel
+                } else {
+                    true
+                }
+            } else {
+                false
+            };
             let want_ignore = !inside;
 
-            // 1. 切换穿透状态（仅在状态变化时）
             if last_ignore != Some(want_ignore) {
                 if let Err(e) = window.set_ignore_cursor_events(want_ignore) {
                     tracing::warn!("set_ignore_cursor_events failed: {e}");
                 }
                 tracing::debug!(
-                    "mouse=({},{}) window=({},{},{},{}) inside={} → ignore={}",
-                    mx, my, left, top, right, bottom, inside, want_ignore
+                    "mouse=({},{}) rect={} → ignore={}",
+                    mx, my, in_rect, want_ignore
                 );
                 last_ignore = Some(want_ignore);
             }
 
-            // 2. emit 全局鼠标事件给前端（每 80ms 一次，降低 IPC 开销）
             emit_counter = emit_counter.wrapping_add(1);
             if emit_counter % 2 == 0 {
                 let payload = GlobalMouseEvent {
@@ -103,7 +148,7 @@ pub fn spawn_mouse_tracker<R: Runtime + 'static>(app: tauri::AppHandle<R>) {
                     win_phys_w: size.width,
                     win_phys_h: size.height,
                     scale_factor: sf,
-                    inside,
+                    inside: in_rect,
                 };
                 let _ = window.emit("mouse::global", payload);
             }
