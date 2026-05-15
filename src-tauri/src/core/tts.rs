@@ -49,8 +49,8 @@ impl TtsProvider for MacOsSayProvider {
     }
 }
 
-/// Sidecar HTTP TTS（v0.2 启用：Qwen3-TTS Python sidecar）。
-/// v0.1 占位实现：当 sidecar 不可达时直接报错，由上层切换 fallback。
+/// Sidecar HTTP TTS（v0.2 启用：Python sidecar，多 backend）。
+/// 当 sidecar 不可达时返回 AppError，由上层降级到 macos_say。
 pub struct SidecarHttpProvider {
     pub base_url: String,
 }
@@ -58,7 +58,10 @@ pub struct SidecarHttpProvider {
 #[async_trait]
 impl TtsProvider for SidecarHttpProvider {
     async fn speak(&self, text: &str, emotion: &str, voice_id: &str) -> AppResult<PathBuf> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_millis(800))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
         let url = format!("{}/v1/audio/speech", self.base_url.trim_end_matches('/'));
         let resp = client
             .post(&url)
@@ -70,10 +73,20 @@ impl TtsProvider for SidecarHttpProvider {
             .send()
             .await?
             .error_for_status()?;
+        // 根据响应 mime 自动选扩展名
+        let ext = match resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+        {
+            Some(m) if m.contains("mpeg") => "mp3",
+            Some(m) if m.contains("ogg") => "ogg",
+            _ => "wav",
+        };
         let bytes = resp.bytes().await?;
         let cache = tts_cache_dir();
         std::fs::create_dir_all(&cache)?;
-        let out = cache.join(format!("sidecar_{}.wav", uuid::Uuid::new_v4()));
+        let out = cache.join(format!("tts_{}.{ext}", uuid::Uuid::new_v4()));
         std::fs::write(&out, &bytes)?;
         Ok(out)
     }

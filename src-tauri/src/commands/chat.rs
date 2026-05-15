@@ -1,3 +1,4 @@
+use crate::core::embed;
 use crate::core::llm::{ChatMessage, ChatOptions, LlmProvider, OpenAiCompatProvider};
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -162,8 +163,47 @@ pub async fn chat_send(
         .ok_or_else(|| AppError::Other("soul not loaded".into()))?;
     let emotion = state.emotion();
     let cfg = state.runtime_config();
-    let system_prompt =
-        soul.build_system_prompt(&emotion, None, Some(cfg.flip_probability));
+
+    // 长期记忆召回（若配置了 embedding endpoint）
+    let recalled_summary = if !cfg.embedding_endpoint.is_empty() {
+        match embed::embed(
+            &cfg.embedding_endpoint,
+            &cfg.embedding_model,
+            if cfg.llm_api_key.is_empty() {
+                None
+            } else {
+                Some(&cfg.llm_api_key)
+            },
+            &message,
+        )
+        .await
+        {
+            Ok(q_emb) => {
+                let top = state.memory().recall_similar(&q_emb, 3).unwrap_or_default();
+                if top.is_empty() {
+                    None
+                } else {
+                    let lines: Vec<String> = top
+                        .iter()
+                        .map(|m| format!("- [{}] {}: {}", m.kind, m.title, m.content))
+                        .collect();
+                    Some(lines.join("\n"))
+                }
+            }
+            Err(e) => {
+                tracing::debug!("embedding recall skipped: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let system_prompt = soul.build_system_prompt(
+        &emotion,
+        recalled_summary.as_deref(),
+        Some(cfg.flip_probability),
+    );
 
     let history = state.memory().recent_messages(20)?;
     let mut messages = vec![ChatMessage {

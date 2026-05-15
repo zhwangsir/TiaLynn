@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::{AppState, RuntimeConfig};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{Emitter, State};
 
@@ -29,8 +30,19 @@ pub struct ConfigDto {
     pub emotion_decay_per_minute: f32,
     #[serde(default = "default_flip")]
     pub flip_probability: f32,
+    // 情绪 → voice id
+    #[serde(default)]
+    pub emotion_voice_map: HashMap<String, String>,
+    // embedding
+    #[serde(default)]
+    pub embedding_endpoint: String,
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
 }
 
+fn default_embedding_model() -> String {
+    "text-embedding-3-small".to_string()
+}
 fn default_scale() -> f32 {
     0.35
 }
@@ -70,6 +82,9 @@ impl From<&RuntimeConfig> for ConfigDto {
             autocomment_interval_sec: c.autocomment_interval_sec,
             emotion_decay_per_minute: c.emotion_decay_per_minute,
             flip_probability: c.flip_probability,
+            emotion_voice_map: c.emotion_voice_map.clone(),
+            embedding_endpoint: c.embedding_endpoint.clone(),
+            embedding_model: c.embedding_model.clone(),
         }
     }
 }
@@ -91,6 +106,9 @@ impl From<ConfigDto> for RuntimeConfig {
             autocomment_interval_sec: d.autocomment_interval_sec,
             emotion_decay_per_minute: d.emotion_decay_per_minute,
             flip_probability: d.flip_probability,
+            emotion_voice_map: d.emotion_voice_map,
+            embedding_endpoint: d.embedding_endpoint,
+            embedding_model: d.embedding_model,
         }
     }
 }

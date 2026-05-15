@@ -1,7 +1,9 @@
 pub mod chat;
 pub mod config;
+pub mod distill;
 pub mod memory;
 pub mod models;
+pub mod sidecar;
 pub mod soul;
 pub mod system;
 pub mod tts;

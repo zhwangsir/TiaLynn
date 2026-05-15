@@ -5,7 +5,9 @@ mod tray;
 mod window;
 
 use crate::core::memory::{default_db_path, MemoryStore};
+use crate::core::sidecar::SidecarManager;
 use crate::core::soul::{locate_default_soul, SoulConfig};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
 
@@ -28,6 +30,11 @@ pub struct RuntimeConfig {
     pub autocomment_interval_sec: u32,
     pub emotion_decay_per_minute: f32,
     pub flip_probability: f32,
+    // ---- v0.2.1：情绪 → voice id 映射（覆盖 soul yaml） ----
+    pub emotion_voice_map: HashMap<String, String>,
+    // ---- v0.2.1：embedding（用于长期记忆） ----
+    pub embedding_endpoint: String,
+    pub embedding_model: String,
 }
 
 impl Default for RuntimeConfig {
@@ -51,8 +58,25 @@ impl Default for RuntimeConfig {
             autocomment_interval_sec: 300,
             emotion_decay_per_minute: 0.05,
             flip_probability: 0.15,
+            emotion_voice_map: default_emotion_voice_map(),
+            embedding_endpoint: std::env::var("TIALYNN_EMBEDDING_ENDPOINT")
+                .unwrap_or_default(),
+            embedding_model: std::env::var("TIALYNN_EMBEDDING_MODEL")
+                .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
         }
     }
+}
+
+fn default_emotion_voice_map() -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    m.insert("neutral".into(), "edge_xiaoxiao".into());
+    m.insert("happy".into(), "edge_xiaoyi".into());
+    m.insert("shy".into(), "edge_xiaomeng".into());
+    m.insert("angry".into(), "edge_xiaoxiao".into());
+    m.insert("sad".into(), "edge_xiaomeng".into());
+    m.insert("sleepy".into(), "edge_xiaomeng".into());
+    m.insert("possessive".into(), "edge_xiaoxiao".into());
+    m
 }
 
 /// 全局应用状态。Tauri manage 之后通过 State 注入到 command。
@@ -61,6 +85,7 @@ pub struct AppState {
     emotion: RwLock<String>,
     memory: Arc<MemoryStore>,
     config: Mutex<RuntimeConfig>,
+    sidecar: Arc<SidecarManager>,
 }
 
 impl AppState {
@@ -94,8 +119,13 @@ impl AppState {
     }
     pub fn replace_runtime_config(&self, cfg: RuntimeConfig) {
         if let Ok(mut g) = self.config.lock() {
-            *g = cfg;
+            *g = cfg.clone();
         }
+        // sidecar url 同步更新
+        self.sidecar.set_url(cfg.tts_sidecar_url);
+    }
+    pub fn sidecar(&self) -> Arc<SidecarManager> {
+        self.sidecar.clone()
     }
 }
 
@@ -113,11 +143,15 @@ pub fn run() {
             .expect("open memory db"),
     );
 
+    let default_cfg = RuntimeConfig::default();
+    let sidecar = Arc::new(SidecarManager::new(default_cfg.tts_sidecar_url.clone()));
+
     let state = AppState {
         soul: RwLock::new(None),
         emotion: RwLock::new("neutral".into()),
         memory,
-        config: Mutex::new(RuntimeConfig::default()),
+        config: Mutex::new(default_cfg),
+        sidecar,
     };
 
     tauri::Builder::default()
@@ -164,6 +198,22 @@ pub fn run() {
             // 全局鼠标轮询 → 窗口外穿透、窗口内可交互
             window::spawn_mouse_tracker(app.handle().clone());
 
+            // 异步拉起 sidecar（不阻塞启动）
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let s = app_handle.state::<AppState>();
+                    let _ = s.sidecar().ensure_running().await;
+                    let st = s.sidecar().state();
+                    tracing::info!(
+                        "sidecar status={:?} url={} err={:?}",
+                        st.status,
+                        st.url,
+                        st.last_error
+                    );
+                });
+            }
+
             // 系统托盘
             tray::build_tray(app.handle())?;
 
@@ -184,6 +234,13 @@ pub fn run() {
             commands::config::config_save,
             commands::config::config_test_llm,
             commands::models::models_scan,
+            commands::sidecar::sidecar_status,
+            commands::sidecar::sidecar_start,
+            commands::sidecar::sidecar_stop,
+            commands::sidecar::tts_list_voices,
+            commands::sidecar::tts_register_voices_dir,
+            commands::sidecar::tts_example_voice_dir,
+            commands::distill::memory_distill,
             commands::system::system_clear_history,
             commands::system::system_reveal_data_dir,
             commands::system::system_reveal_models_dir,

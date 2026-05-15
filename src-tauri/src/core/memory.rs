@@ -1,3 +1,4 @@
+use crate::core::embed::{blob_to_vec, cosine, vec_to_blob};
 use crate::error::AppResult;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,21 @@ pub struct StoredMessage {
     pub emotion: Option<String>,
     pub ts: i64,
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LongTermMemory {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub content: String,
+    pub importance: f32,
+    pub created_at: i64,
+    pub last_recall: Option<i64>,
+    pub recall_count: i64,
+    /// 不发到前端的全量 embedding；用 #[serde(skip)]
+    #[serde(skip)]
+    pub embedding: Vec<f32>,
 }
 
 pub struct MemoryStore {
@@ -123,6 +139,70 @@ impl MemoryStore {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute("DELETE FROM messages", [])?;
         Ok(n)
+    }
+
+    pub fn insert_long_term_memory(
+        &self,
+        kind: &str,
+        title: &str,
+        content: &str,
+        importance: f32,
+        embedding: Option<&[f32]>,
+    ) -> AppResult<i64> {
+        let ts = chrono::Utc::now().timestamp_millis();
+        let blob = embedding.map(vec_to_blob);
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO memories (kind, title, content, importance, embedding, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![kind, title, content, importance, blob, ts],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// 取相似度 top-K 长期记忆（cosine 全表扫描，量小够用）。
+    pub fn recall_similar(&self, query_emb: &[f32], k: usize) -> AppResult<Vec<LongTermMemory>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, kind, title, content, importance, embedding,
+                    created_at, last_recall, recall_count
+               FROM memories
+              WHERE embedding IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let blob: Vec<u8> = row.get(5).unwrap_or_default();
+            Ok(LongTermMemory {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                importance: row.get::<_, f64>(4)? as f32,
+                embedding: blob_to_vec(&blob),
+                created_at: row.get(6)?,
+                last_recall: row.get(7)?,
+                recall_count: row.get(8)?,
+            })
+        })?;
+        let mut all: Vec<(f32, LongTermMemory)> = Vec::new();
+        for r in rows {
+            let m = r?;
+            if m.embedding.is_empty() {
+                continue;
+            }
+            let sim = cosine(&m.embedding, query_emb);
+            all.push((sim, m));
+        }
+        all.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let top: Vec<LongTermMemory> = all.into_iter().take(k).map(|(_, m)| m).collect();
+        // 更新 recall_count + last_recall
+        let now = chrono::Utc::now().timestamp_millis();
+        for m in &top {
+            let _ = conn.execute(
+                "UPDATE memories SET last_recall = ?1, recall_count = recall_count + 1 WHERE id = ?2",
+                params![now, m.id],
+            );
+        }
+        Ok(top)
     }
 
     pub fn append_observation(

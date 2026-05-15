@@ -6,11 +6,13 @@ const open = ref(false)
 const activeTab = ref<'llm' | 'model' | 'behavior' | 'tts' | 'system'>('llm')
 const config = useConfigStore()
 
+const EMOTIONS = ['neutral', 'happy', 'shy', 'angry', 'sad', 'sleepy', 'possessive'] as const
+
 const form = reactive<ConfigDto>({
   llm_endpoint: '',
   llm_model: '',
   llm_api_key: '',
-  tts_provider: 'macos_say',
+  tts_provider: 'sidecar',
   tts_sidecar_url: 'http://127.0.0.1:5050',
   live2d_model_dir: 'HuTao-Live2D',
   live2d_model_file: 'Hu Tao.model3.json',
@@ -21,16 +23,51 @@ const form = reactive<ConfigDto>({
   autocomment_interval_sec: 300,
   emotion_decay_per_minute: 0.05,
   flip_probability: 0.15,
+  emotion_voice_map: {},
+  embedding_endpoint: '',
+  embedding_model: 'text-embedding-3-small',
 })
 
 const dirty = ref(false)
 const clearedHint = ref<string | null>(null)
 
+const distillResult = ref<string | null>(null)
+
 onMounted(async () => {
   await config.load()
-  await config.scanModels()
+  await Promise.all([
+    config.scanModels(),
+    config.loadSidecarStatus(),
+    config.loadVoices(),
+  ])
   if (config.config) Object.assign(form, config.config)
+  // 确保所有情绪都在 emotion_voice_map 里有 key
+  if (!form.emotion_voice_map) form.emotion_voice_map = {}
+  for (const e of EMOTIONS) {
+    if (!form.emotion_voice_map[e]) form.emotion_voice_map[e] = 'edge_xiaoxiao'
+  }
 })
+
+async function onStartSidecar() {
+  await config.startSidecar()
+  await config.loadVoices()
+}
+async function onStopSidecar() {
+  await config.stopSidecar()
+}
+async function onRefreshSidecar() {
+  await config.loadSidecarStatus()
+  await config.loadVoices()
+}
+async function onRegisterExampleVoices() {
+  await config.registerExampleVoices()
+}
+async function onDistill() {
+  distillResult.value = '凝练中…'
+  const n = await config.distill()
+  distillResult.value = n > 0 ? `已写入 ${n} 条长期记忆` : '没有值得记忆的新内容'
+  setTimeout(() => (distillResult.value = null), 4000)
+}
 
 watch(
   () => config.config,
@@ -106,6 +143,43 @@ const tabs = computed(() => [
   { id: 'tts' as const, label: '语音' },
   { id: 'system' as const, label: '系统' },
 ])
+
+const sidecarLabel = computed(() => {
+  const st = config.sidecar?.status
+  switch (st) {
+    case 'External':
+      return 'Sidecar：外部进程（已连通）'
+    case 'Spawned':
+      return 'Sidecar：已由 TiaLynn 启动'
+    case 'Probing':
+      return 'Sidecar：探测中…'
+    case 'Failed':
+      return 'Sidecar：失败'
+    default:
+      return 'Sidecar：未启动'
+  }
+})
+
+const sidecarBadgeClass = computed(() => {
+  const st = config.sidecar?.status
+  if (st === 'Spawned' || st === 'External') return 'ok'
+  if (st === 'Failed') return 'err'
+  return 'warn'
+})
+
+function emotionLabel(id: string): string {
+  return (
+    {
+      neutral: '😐 平静',
+      happy: '😄 开心',
+      shy: '😳 害羞',
+      angry: '😠 生气',
+      sad: '😢 伤心',
+      sleepy: '😴 困倦',
+      possessive: '🩸 占有',
+    } as Record<string, string>
+  )[id] ?? id
+}
 </script>
 
 <template>
@@ -156,6 +230,16 @@ const tabs = computed(() => [
         </button>
       </div>
       <div v-if="config.testResult" class="hint">{{ config.testResult }}</div>
+
+      <h3 style="margin-top: 14px">Embedding（长期记忆，可选）</h3>
+      <label>Embedding Endpoint</label>
+      <input
+        v-model="form.embedding_endpoint"
+        placeholder="http://192.168.x.x:1234/v1（留空则不启用记忆召回）"
+      />
+
+      <label>Embedding Model</label>
+      <input v-model="form.embedding_model" placeholder="text-embedding-3-small / bge-m3 等" />
     </section>
 
     <!-- 外观 / 模型 -->
@@ -245,17 +329,49 @@ const tabs = computed(() => [
     <!-- 语音 -->
     <section v-show="activeTab === 'tts'">
       <h3>语音 (TTS)</h3>
+
       <label>提供方</label>
       <select v-model="form.tts_provider">
+        <option value="sidecar">Sidecar（edge-tts / Qwen3-TTS / 自定义）</option>
         <option value="macos_say">macOS 内置 say（中文女声）</option>
-        <option value="sidecar">Sidecar（Qwen3-TTS / 自定义）</option>
       </select>
 
       <label>Sidecar URL</label>
       <input v-model="form.tts_sidecar_url" placeholder="http://127.0.0.1:5050" />
 
-      <div class="hint" style="margin-top: 8px">
-        Qwen3-TTS voice clone（情绪→音色路由）将在 v0.2.x 完整支持。
+      <div class="row" style="margin-top: 6px">
+        <span class="badge" :class="sidecarBadgeClass">
+          {{ sidecarLabel }}
+        </span>
+        <button class="ghost" type="button" style="margin-left: auto" @click="onRefreshSidecar">
+          刷新
+        </button>
+        <button class="ghost" type="button" @click="onStartSidecar">启动</button>
+        <button class="ghost" type="button" @click="onStopSidecar">停止</button>
+      </div>
+      <div v-if="config.sidecar?.last_error" class="hint">
+        {{ config.sidecar.last_error }}
+      </div>
+
+      <h3 style="margin-top: 14px">情绪 → 音色路由</h3>
+      <div class="row">
+        <button class="ghost" type="button" @click="onRegisterExampleVoices">
+          从 example_voice/ 一键注册
+        </button>
+        <span class="hint-inline">扫描子目录注册为 clone_xxx</span>
+      </div>
+      <div class="emotion-map">
+        <div v-for="e in EMOTIONS" :key="e" class="emotion-row">
+          <span class="emotion-label">{{ emotionLabel(e) }}</span>
+          <select v-model="form.emotion_voice_map[e]">
+            <option v-for="v in config.voices" :key="v.id" :value="v.id">
+              {{ v.id }} {{ v.note ? `(${v.note})` : '' }}
+            </option>
+            <option v-if="config.voices.length === 0" value="edge_xiaoxiao">
+              edge_xiaoxiao (启动 sidecar 后会有更多)
+            </option>
+          </select>
+        </div>
       </div>
     </section>
 
@@ -271,6 +387,11 @@ const tabs = computed(() => [
       <div class="row">
         <button class="ghost" type="button" @click="onRevealModels">打开模型目录</button>
         <span class="hint-inline">~/.tialynn/models/</span>
+      </div>
+
+      <div class="row">
+        <button class="ghost" type="button" @click="onDistill">凝练为长期记忆</button>
+        <span v-if="distillResult" class="hint-inline ok">{{ distillResult }}</span>
       </div>
 
       <div class="row">
@@ -557,5 +678,39 @@ const tabs = computed(() => [
   color: rgba(42, 28, 28, 0.5);
   border: 1px dashed rgba(168, 36, 42, 0.25);
   border-radius: 8px;
+}
+
+.badge.ok {
+  background: rgba(22, 101, 52, 0.12);
+  color: #166534;
+}
+.badge.warn {
+  background: rgba(180, 83, 9, 0.12);
+  color: #b45309;
+}
+.badge.err {
+  background: rgba(185, 28, 28, 0.12);
+  color: #b91c1c;
+}
+
+.emotion-map {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.emotion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emotion-label {
+  width: 70px;
+  font-size: 12px;
+  color: rgba(42, 28, 28, 0.7);
+  flex-shrink: 0;
+}
+.emotion-row select {
+  flex: 1;
 }
 </style>

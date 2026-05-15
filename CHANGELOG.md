@@ -5,10 +5,64 @@
 ## [Unreleased]
 
 ### 路线
-- Qwen3-TTS sidecar 实装 + voice clone
-- sqlite-vec 长期向量记忆 + alpha buffer 跨进程像素穿透回归
-- 屏幕感知 + Vision LLM
-- RPA 键鼠操作
+- v0.2.2：本地 voice clone 实装（GPT-SoVITS / CosyVoice / Qwen3-TTS）
+- v0.2.3：alpha buffer 跨进程像素穿透回归 + sqlite-vec
+- v0.3.0：屏幕感知 + Vision LLM
+- v0.4.0：RPA 键鼠操作
+
+---
+
+## [0.2.1] — 2026-05-15
+
+### 新增：TTS Sidecar 完整实装 + 多 backend
+
+**Python sidecar（之前是 stub）**：
+- 真实 FastAPI 服务，支持 4 个 backend：
+  - `edge_tts`（默认）：微软 Edge TTS，中文 4 种女声（晓晓/晓伊/云夏/晓萌），质量稳定无需下载
+  - `openai_compat`：转发到任意 OpenAI 兼容 `/v1/audio/speech` 端点
+  - `qwen3_tts` / `cosyvoice` / `gpt_sovits`：预留槽位（v0.2.2 启用真实 voice clone）
+- voice 注册表持久化到 `~/.tialynn/voice_clones/registry.json`
+- `/v1/audio/clone` 单样本注册 + `/v1/audio/register-batch` 批量扫描子目录
+
+**Rust 端 sidecar 自启动管理**：
+- `core/sidecar.rs::SidecarManager` — spawn / kill / health probe
+- 启动时探测端口；外部已有进程 → External 复用；否则 spawn Python 子进程
+- spawn 失败 / probe 不通 → 降级 macos_say
+- 退出时自动清理 child process
+- 命令：`sidecar_status` / `sidecar_start` / `sidecar_stop` / `tts_list_voices` / `tts_register_voices_dir` / `tts_example_voice_dir`
+
+**TTS provider 失败降级**：
+- sidecar 失败 → 自动 fallback macos_say，不打断对话
+
+**菜单 TTS tab 增强**：
+- Sidecar 状态 badge（External / Spawned / Failed）+ 启停按钮
+- 一键从 `example_voice/` 注册 4 个情绪音色
+- 情绪 → voice 路由表（7 种情绪 × 下拉选择已注册音色）
+
+### 新增：长期向量记忆基础
+
+- `core/embed.rs`：OpenAI-compat `/v1/embeddings` 客户端 + cosine 相似度 + blob 编解码
+- `memory.recall_similar(query_emb, k)`：全表扫描 cosine，返回 top-K（量小够用）
+- `chat_send` 流程：发起前若配置了 embedding endpoint，embed 当前 user message → 召回 top-3 → 注入 system prompt 的「过往记忆摘要」
+- 记忆被召回时更新 `last_recall` + `recall_count`
+
+### 新增：记忆凝练
+
+- `commands/distill.rs::memory_distill(look_back?)`
+- 调 LLM 让它输出 JSON 数组的事实/事件/偏好/观察
+- 每条 fact 调 embedding 后写入 `memories` 表
+- **自动 tick**：`behavior/distillTick.ts` 每 30 分钟一次（首次延迟 5 分钟）
+- **手动按钮**：设置 → 系统 → "凝练为长期记忆"
+
+### 菜单：LLM tab 加 Embedding 子区
+
+- Embedding Endpoint 字段（留空则不启用记忆召回）
+- Embedding Model 字段（默认 text-embedding-3-small，可改 bge-m3 等）
+
+### RuntimeConfig 扩展
+
+- `emotion_voice_map: HashMap<String, String>` — 持久化情绪→voice 路由
+- `embedding_endpoint` / `embedding_model`
 
 ---
 
@@ -168,7 +222,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.1
 [0.2.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.0
 [0.1.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.3
 [0.1.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.2

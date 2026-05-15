@@ -11,6 +11,7 @@ import { useConfigStore } from './stores/config'
 import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
 import { startEmotionTick } from './behavior/emotionTick'
 import { startAutoComment } from './behavior/autoComment'
+import { startDistillTick } from './behavior/distillTick'
 
 const soul = useSoulStore()
 const dialog = useDialogStore()
@@ -20,6 +21,7 @@ const ready = ref(false)
 
 let stopEmotionTick: (() => void) | null = null
 let stopAutoComment: (() => void) | null = null
+let stopDistillTick: (() => void) | null = null
 
 onMounted(async () => {
   await Promise.all([soul.load(), config.load()])
@@ -27,6 +29,7 @@ onMounted(async () => {
   startAlphaHitTest()
   stopEmotionTick = startEmotionTick()
   stopAutoComment = startAutoComment()
+  stopDistillTick = startDistillTick()
   ready.value = true
 })
 
@@ -34,6 +37,7 @@ onBeforeUnmount(() => {
   stopAlphaHitTest()
   stopEmotionTick?.()
   stopAutoComment?.()
+  stopDistillTick?.()
 })
 
 // 抑制 TS 未使用变量警告
