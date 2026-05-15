@@ -1,14 +1,8 @@
 /**
- * 拖动 + 像素采样辅助。
+ * 立绘拖动 + UI 命中检测。
  *
- * 注意：v0.1.2 把"窗口外穿透"的核心责任移交 Rust 端 `spawn_mouse_tracker`。
- * 原因：当 ignore=true 时整个 webview 收不到事件，前端无法把 ignore 切回 false，
- *      会永久卡死所有 UI（用户实测复现）。
- *
- * 本模块现在只负责：
- *   - mousedown：在 Live2D 立绘（alpha 命中）上按下时，触发 native 拖窗
- *   - UI 元素白名单：[data-uichrome="1"] / input/button 上的按下不触发拖窗
- *   - 像素采样工具（保留，供未来需要时使用）
+ * 不再用 start_dragging（macOS 透明窗口跨 IPC 时 NSEvent 已过期，不工作）。
+ * 改为：mousedown 时记起点 → mousemove 跟随屏幕坐标增量 → invoke window_set_position。
  */
 import { invoke } from '@tauri-apps/api/core'
 
@@ -17,6 +11,13 @@ const ALPHA_THRESHOLD = 16
 let canvasRef: HTMLCanvasElement | null = null
 let glRef: WebGLRenderingContext | WebGL2RenderingContext | null = null
 let onDown: ((e: MouseEvent) => void) | null = null
+
+// 拖动状态
+let dragging = false
+let dragStartScreenX = 0
+let dragStartScreenY = 0
+let dragStartWinX = 0
+let dragStartWinY = 0
 
 export function registerCanvas(canvas: HTMLCanvasElement): void {
   canvasRef = canvas
@@ -28,13 +29,24 @@ export function registerCanvas(canvas: HTMLCanvasElement): void {
 }
 
 export function startAlphaHitTest(): void {
-  onDown = (e: MouseEvent) => {
+  onDown = async (e: MouseEvent) => {
     if (e.button !== 0) return
     if (isOverInteractiveUi(e.target)) return
     if (!hitTestAlpha(e.clientX, e.clientY)) return
-    invoke('window_start_drag').catch((err) => {
-      console.warn('[alpha] start_drag failed', err)
-    })
+
+    // 启动手动拖动
+    try {
+      const pos = await invoke<[number, number]>('window_get_position')
+      dragStartWinX = pos[0]
+      dragStartWinY = pos[1]
+      dragStartScreenX = e.screenX
+      dragStartScreenY = e.screenY
+      dragging = true
+      window.addEventListener('mousemove', onDragMove)
+      window.addEventListener('mouseup', onDragUp, { once: true })
+    } catch (err) {
+      console.warn('[drag] get_position failed:', err)
+    }
   }
   window.addEventListener('mousedown', onDown)
 }
@@ -42,6 +54,28 @@ export function startAlphaHitTest(): void {
 export function stopAlphaHitTest(): void {
   if (onDown) window.removeEventListener('mousedown', onDown)
   onDown = null
+  if (dragging) {
+    window.removeEventListener('mousemove', onDragMove)
+    dragging = false
+  }
+}
+
+function onDragMove(e: MouseEvent): void {
+  if (!dragging) return
+  // 用 screen 坐标差量，避开 webview viewport 切换问题
+  const dpr = window.devicePixelRatio || 1
+  const dx = (e.screenX - dragStartScreenX) * dpr
+  const dy = (e.screenY - dragStartScreenY) * dpr
+  const newX = Math.round(dragStartWinX + dx)
+  const newY = Math.round(dragStartWinY + dy)
+  invoke('window_set_position', { x: newX, y: newY }).catch((err) => {
+    console.debug('[drag] set_position failed:', err)
+  })
+}
+
+function onDragUp(): void {
+  dragging = false
+  window.removeEventListener('mousemove', onDragMove)
 }
 
 function hitTestAlpha(clientX: number, clientY: number): boolean {

@@ -10,6 +10,28 @@
 
 ---
 
+## [0.2.3] — 2026-05-15
+
+### 修复（v0.2.2 测试发现的两个交互 bug）
+
+**1. 立绘无法拖动**
+- 根因：Tauri 2 `start_dragging` 通过 IPC 调用时，原始 NSEvent 已经过期 → macOS NSWindow.performDrag 失效
+- 修复：放弃 `start_dragging`，改为前端 mousedown 时记录 screen 起点 → mousemove 持续 invoke `window_set_position`
+- 新增 Rust 命令 `window_set_position(x, y)` 和 `window_get_position()`
+- 新增 capability `core:window:allow-set-position` / `core:window:allow-outer-position`
+
+**2. 点击设置按钮无反应**
+- 根因：alpha mask 推送后，UI chrome（齿轮按钮、设置面板、输入框）在 mask 里 alpha=0 → mask 误判为穿透区 → 点击事件被 ignore
+- 修复：mask 推送前，从 DOM 收集 `[data-uichrome="1"]` / `input` / `textarea` / `button` / `select` 元素的 bbox，叠加到 mask 上标记为 on-pixel
+- 这样 mouse tracker 同时认 立绘 alpha 区 + UI 元素 区 为不穿透
+
+### 实测验证
+- mouse tracker 切换日志显示 rect / mask 判定正常
+- HTTP 端点 `/live2d/HuTao-Live2D/*.*` 全部 200
+- 进程稳定运行无 panic/ERROR
+
+---
+
 ## [0.2.2] — 2026-05-15
 
 ### 一次连击：Voice Clone + 像素穿透 + STT（A+A 路线）
@@ -266,7 +288,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.3
 [0.2.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.2
 [0.2.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.1
 [0.2.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.0

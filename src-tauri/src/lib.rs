@@ -248,6 +248,8 @@ pub fn run() {
             commands::window::window_set_ignore_cursor,
             commands::window::window_toggle_visible,
             commands::window::window_start_drag,
+            commands::window::window_set_position,
+            commands::window::window_get_position,
             commands::window::window_set_alpha_mask,
             commands::config::config_load,
             commands::config::config_save,
