@@ -1,13 +1,13 @@
 /**
- * 程序化自动眨眼：定时把 ParamEyeLOpen / ParamEyeROpen 由 1 -> 0 -> 1。
- * 不依赖 model3.json 的 EyeBlink 组（胡桃模型的 Ids 是空的）。
+ * 自动眨眼：定时把 ParamEyeLOpen/ParamEyeROpen 由 1 → 0 → 1。
+ * 用 renderer.overrideParam，避免被合成层覆盖。
  */
 import type { TiaLynnRenderer } from './renderer'
 
 export interface EyeBlinkOptions {
-  minIntervalMs?: number // 最短间隔
-  maxIntervalMs?: number // 最长间隔
-  blinkDurationMs?: number // 单次眨眼时长
+  minIntervalMs?: number
+  maxIntervalMs?: number
+  blinkDurationMs?: number
 }
 
 export function startEyeBlink(renderer: TiaLynnRenderer, opts: EyeBlinkOptions = {}): () => void {
@@ -18,25 +18,26 @@ export function startEyeBlink(renderer: TiaLynnRenderer, opts: EyeBlinkOptions =
   let stopped = false
   let timer: number | null = null
 
-  const blinkOnce = () => {
+  function blinkOnce(): void {
     const start = performance.now()
-    const step = () => {
+    function step(): void {
       if (stopped) return
       const t = (performance.now() - start) / dur
       if (t >= 1) {
-        setLid(renderer, 1)
+        // 完结：让 override 自然过期
         scheduleNext()
         return
       }
-      // 简化 V 形：前半段闭眼，后半段睁眼
       const lid = t < 0.5 ? 1 - t * 2 : (t - 0.5) * 2
-      setLid(renderer, lid)
+      // 25ms 窗口确保下一帧合成时仍生效
+      renderer.overrideParam('ParamEyeLOpen', lid, 25)
+      renderer.overrideParam('ParamEyeROpen', lid, 25)
       requestAnimationFrame(step)
     }
     requestAnimationFrame(step)
   }
 
-  const scheduleNext = () => {
+  function scheduleNext(): void {
     const wait = min + Math.random() * (max - min)
     timer = window.setTimeout(blinkOnce, wait)
   }
@@ -46,19 +47,5 @@ export function startEyeBlink(renderer: TiaLynnRenderer, opts: EyeBlinkOptions =
   return () => {
     stopped = true
     if (timer !== null) clearTimeout(timer)
-  }
-}
-
-function setLid(renderer: TiaLynnRenderer, lid: number) {
-  const r = renderer as unknown as {
-    model: { internalModel: { coreModel: any } } | null
-  }
-  const core = r.model?.internalModel?.coreModel
-  if (!core) return
-  try {
-    core.setParameterValueById('ParamEyeLOpen', lid)
-    core.setParameterValueById('ParamEyeROpen', lid)
-  } catch {
-    /* ignore */
   }
 }

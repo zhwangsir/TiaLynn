@@ -12,6 +12,49 @@
 
 ---
 
+## [0.2.0] — 2026-05-15
+
+### 重大重构：Renderer 参数合成（修复"动作不流畅"根因）
+
+**根因**：focus / emotion / idle / blink 各自直接 `setParameterValueById`，互相覆盖。
+**修复**：`TiaLynnRenderer` 统一管理 4 个参数源，每帧合成一次：
+```
+final = (override 在窗口内 ? value : focus + emotion + idle)
+```
+- focus 60fps 指数缓动到 target（约 200ms 时间常数）
+- emotion live2d 表用 4/秒缓动到目标
+- idle action 写 `setIdleOffset` 偏移，结束自动清掉
+- 眨眼 / 嘴型同步用 `overrideParam` 短窗强制覆盖
+- `wroteKeys` 跟踪上一帧写过的 key，本帧无源时主动回 0 避免残留漂移
+
+### 菜单完整重构（5 Tab）
+- **LLM**：endpoint / model / api key + 测试连通
+- **外观 / 模型**：列出本机所有 Live2D 模型（项目根 + ~/.tialynn/models/），点击切换；缩放 / 偏移 slider 实时联动
+- **行为**：5 个 slider 调 idle / autoComment 间隔、情绪衰减、反差概率
+- **语音**：TTS provider + sidecar URL
+- **系统**：打开数据 / 模型目录、清空对话、版本号
+
+### 多模型支持（不再固定胡桃）
+- Rust `models_scan` 扫描项目根 + `~/.tialynn/models/`
+- vite middleware 改为 `/live2d/<model_dir>/<file>` 路由
+- 生产 build 自动复制所有模型到 `dist/live2d/`
+- 配置变化 → Live2DStage watch → 自动 reload renderer
+
+### LLM JSON 协议
+- system prompt 要求 LLM 输出 `{"text":..., "emotion":..., "intensity":...}`
+- Rust `parse_reply` 容错（markdown fence、首尾 `{}` 定位、降级）
+- 前端流式时用 `extractStreamingText` 从 raw 提取 text（打字机效果保留）
+- 情绪不再依赖前端关键词 FSM
+
+### 行为参数热重载
+- idle 间隔 / autoComment 间隔 / 情绪衰减 / scale / offset 改了立刻生效
+- behavior 模块 `watch` config 字段变化重启 scheduler
+
+### 新增 Rust 命令
+- `models_scan` / `system_clear_history` / `system_reveal_data_dir` / `system_reveal_models_dir` / `system_version`
+
+---
+
 ## [0.1.3] — 2026-05-15
 
 ### 修复（实测发现的两个交互降级）
@@ -125,7 +168,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.2.0
 [0.1.3]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.3
 [0.1.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.2
 [0.1.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.1.1

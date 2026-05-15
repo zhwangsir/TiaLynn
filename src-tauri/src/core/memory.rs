@@ -118,6 +118,13 @@ impl MemoryStore {
         Ok(msgs)
     }
 
+    /// 清空全部对话历史（不动 memories / observations / soul_evolution）。
+    pub fn clear_messages(&self) -> AppResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM messages", [])?;
+        Ok(n)
+    }
+
     pub fn append_observation(
         &self,
         source: &str,

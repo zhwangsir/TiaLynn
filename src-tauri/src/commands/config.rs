@@ -11,6 +11,46 @@ pub struct ConfigDto {
     pub llm_api_key: String,
     pub tts_provider: String,
     pub tts_sidecar_url: String,
+    // 模型
+    pub live2d_model_dir: String,
+    pub live2d_model_file: String,
+    #[serde(default = "default_scale")]
+    pub live2d_scale: f32,
+    #[serde(default = "default_offset_y")]
+    pub live2d_offset_y: f32,
+    // 行为
+    #[serde(default = "default_idle_min")]
+    pub idle_min_sec: u32,
+    #[serde(default = "default_idle_max")]
+    pub idle_max_sec: u32,
+    #[serde(default = "default_autocomment")]
+    pub autocomment_interval_sec: u32,
+    #[serde(default = "default_decay")]
+    pub emotion_decay_per_minute: f32,
+    #[serde(default = "default_flip")]
+    pub flip_probability: f32,
+}
+
+fn default_scale() -> f32 {
+    0.35
+}
+fn default_offset_y() -> f32 {
+    50.0
+}
+fn default_idle_min() -> u32 {
+    8
+}
+fn default_idle_max() -> u32 {
+    15
+}
+fn default_autocomment() -> u32 {
+    300
+}
+fn default_decay() -> f32 {
+    0.05
+}
+fn default_flip() -> f32 {
+    0.15
 }
 
 impl From<&RuntimeConfig> for ConfigDto {
@@ -21,6 +61,15 @@ impl From<&RuntimeConfig> for ConfigDto {
             llm_api_key: c.llm_api_key.clone(),
             tts_provider: c.tts_provider.clone(),
             tts_sidecar_url: c.tts_sidecar_url.clone(),
+            live2d_model_dir: c.live2d_model_dir.clone(),
+            live2d_model_file: c.live2d_model_file.clone(),
+            live2d_scale: c.live2d_scale,
+            live2d_offset_y: c.live2d_offset_y,
+            idle_min_sec: c.idle_min_sec,
+            idle_max_sec: c.idle_max_sec,
+            autocomment_interval_sec: c.autocomment_interval_sec,
+            emotion_decay_per_minute: c.emotion_decay_per_minute,
+            flip_probability: c.flip_probability,
         }
     }
 }
@@ -33,6 +82,15 @@ impl From<ConfigDto> for RuntimeConfig {
             llm_api_key: d.llm_api_key,
             tts_provider: d.tts_provider,
             tts_sidecar_url: d.tts_sidecar_url,
+            live2d_model_dir: d.live2d_model_dir,
+            live2d_model_file: d.live2d_model_file,
+            live2d_scale: d.live2d_scale,
+            live2d_offset_y: d.live2d_offset_y,
+            idle_min_sec: d.idle_min_sec,
+            idle_max_sec: d.idle_max_sec,
+            autocomment_interval_sec: d.autocomment_interval_sec,
+            emotion_decay_per_minute: d.emotion_decay_per_minute,
+            flip_probability: d.flip_probability,
         }
     }
 }

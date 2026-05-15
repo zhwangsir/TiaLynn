@@ -1,16 +1,10 @@
 /**
- * 自主评论：按灵魂 yaml 的 behavior.auto_comment_interval_sec 周期触发，
- * 让 TiaLynn 主动说一句话（早安 / 想你 / 你在干嘛之类）。
- *
- * 实现路径：
- *  1. 计时到点 → 选一个 "context prompt" → invoke chat_send（特殊 marker）
- *  2. 后端按正常对话流程处理，LLM 看到 marker 会生成主动一句话
- *
- * 为了简化，v0.1 直接前端模拟 user 角度发一个隐式 prompt：
- *  "[系统：主动开口] 请你按当前时段（早/中/晚/深夜）和心情，主动跟我说一句话。"
+ * 自主评论：按 RuntimeConfig.autocomment_interval_sec 周期触发。
+ * 当 config 变化时自动重启 schedule。
  */
+import { watch } from 'vue'
 import { useDialogStore } from '@/stores/dialog'
-import { useSoulStore } from '@/stores/soul'
+import { useConfigStore } from '@/stores/config'
 
 let timer: number | null = null
 let stopped = false
@@ -39,14 +33,23 @@ function tickOnce(): void {
 }
 
 export function startAutoComment(): () => void {
-  const soul = useSoulStore()
-  const intervalSec = soul.config?.behavior?.auto_comment_interval_sec ?? 300
-  // 加随机抖动 ±25%，避免每次时间精确一致
-  const baseMs = intervalSec * 1000
-  const jitter = baseMs * 0.25
+  const config = useConfigStore()
+
+  function clearTimer(): void {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+
+  function intervalSec(): number {
+    return config.config?.autocomment_interval_sec ?? 300
+  }
 
   function schedule(): void {
     if (stopped) return
+    const baseMs = intervalSec() * 1000
+    const jitter = baseMs * 0.25
     const wait = baseMs - jitter + Math.random() * jitter * 2
     timer = window.setTimeout(() => {
       tickOnce()
@@ -57,10 +60,20 @@ export function startAutoComment(): () => void {
   // 启动后等一段时间再首次触发（不要 app 一开就主动说话）
   timer = window.setTimeout(() => {
     schedule()
-  }, Math.max(60_000, baseMs / 2))
+  }, Math.max(60_000, (intervalSec() * 1000) / 2))
+
+  // 配置变化时重排
+  const stopWatch = watch(
+    () => config.config?.autocomment_interval_sec,
+    () => {
+      clearTimer()
+      schedule()
+    },
+  )
 
   return () => {
     stopped = true
-    if (timer !== null) clearTimeout(timer)
+    clearTimer()
+    stopWatch()
   }
 }

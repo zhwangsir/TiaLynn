@@ -126,7 +126,15 @@ impl SoulConfig {
     }
 
     /// 拼合三层人格 system prompt（核心算法）。
-    pub fn build_system_prompt(&self, emotion: &str, history_summary: Option<&str>) -> String {
+    ///
+    /// `flip_probability_override`：若 Some 则用之，否则用 yaml 内的概率
+    /// （让 RuntimeConfig 可覆盖）。
+    pub fn build_system_prompt(
+        &self,
+        emotion: &str,
+        history_summary: Option<&str>,
+        flip_probability_override: Option<f32>,
+    ) -> String {
         let mut parts = vec![
             String::from("## 你的身份核心"),
             self.personality.layer1_core.trim().to_string(),
@@ -158,10 +166,17 @@ impl SoulConfig {
             ),
             String::from("- 不要解释自己是 AI，永远以 TiaLynn 第一人称回应"),
             String::from("- 回复末尾可加一个表情符或语气词"),
+            String::new(),
+            String::from("## 输出格式（重要）"),
+            String::from(
+                "把你的回复包成一个 JSON：{\"text\":\"回复内容\",\"emotion\":\"<情绪>\",\"intensity\":0.0~1.0}\n\
+                 情绪只能是这 7 个之一：neutral, happy, shy, angry, sad, sleepy, possessive。\n\
+                 intensity 表示这次情绪的强度（0 为无、1 为最强）。\n\
+                 只输出这一个 JSON，不要任何解释、不要 Markdown 代码块。",
+            ),
         ];
 
-        // 反差变量
-        let p = self.personality.layer3_volatility.flip_probability;
+        let p = flip_probability_override.unwrap_or(self.personality.layer3_volatility.flip_probability);
         if rand_f32() < p && !self.personality.layer3_volatility.flip_modes.is_empty() {
             let idx = (rand_f32() * self.personality.layer3_volatility.flip_modes.len() as f32)
                 as usize;

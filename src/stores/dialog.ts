@@ -15,11 +15,29 @@ interface ChatEndPayload {
   stream_id: string
   full_text: string
   emotion?: EmotionId
+  intensity?: number
+}
+
+/**
+ * 从 LLM 输出（可能是 JSON 协议）中尽力提取 `text` 字段，用于流式显示。
+ * 容错：未到达 JSON 结构时，返回 raw 本身（先让用户看见字）。
+ */
+function extractStreamingText(raw: string): string {
+  const trimmed = raw.trimStart()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) {
+    return raw // 不是 JSON 协议，直接显示
+  }
+  // 找 "text":"..."
+  const m = raw.match(/"text"\s*:\s*"((?:\\"|[^"])*)/)
+  if (!m) return ''
+  // 把转义还原
+  return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
 }
 
 export const useDialogStore = defineStore('dialog', () => {
   const history = ref<ChatMessage[]>([])
   const currentText = ref('')
+  const rawBuffer = ref('')
   const streaming = ref(false)
   const activeStreamId = ref<string | null>(null)
 
@@ -33,7 +51,8 @@ export const useDialogStore = defineStore('dialog', () => {
   function listenTokens(): Promise<UnlistenFn> {
     return listen<ChatTokenPayload>('chat::token', (e) => {
       if (e.payload.stream_id !== activeStreamId.value) return
-      currentText.value += e.payload.delta
+      rawBuffer.value += e.payload.delta
+      currentText.value = extractStreamingText(rawBuffer.value) || rawBuffer.value
     })
   }
 
@@ -42,7 +61,12 @@ export const useDialogStore = defineStore('dialog', () => {
       if (e.payload.stream_id !== activeStreamId.value) return
       const emotion = useEmotionStore()
       const emoId: EmotionId = e.payload.emotion ?? emotion.current
-      if (e.payload.emotion) emotion.set(e.payload.emotion)
+      if (e.payload.emotion) {
+        emotion.set(e.payload.emotion, e.payload.intensity ?? 0.8)
+      }
+
+      // 用后端解析过的 full_text 覆盖（去掉 JSON 包装）
+      currentText.value = e.payload.full_text
 
       history.value.push({
         role: 'assistant',
@@ -52,13 +76,12 @@ export const useDialogStore = defineStore('dialog', () => {
       })
       streaming.value = false
       activeStreamId.value = null
+      rawBuffer.value = ''
 
-      // TTS + 嘴型同步（错误占位不发声）
       if (e.payload.full_text && !e.payload.full_text.startsWith('(出错了')) {
         void speakWithLipSync(e.payload.full_text, emoId)
       }
 
-      // 5 秒后自动收起气泡（除非新对话进来）
       setTimeout(() => {
         if (!streaming.value) currentText.value = ''
       }, 5000)
@@ -69,6 +92,7 @@ export const useDialogStore = defineStore('dialog', () => {
     if (streaming.value) return
     await bindReady
     currentText.value = ''
+    rawBuffer.value = ''
     streaming.value = true
     try {
       const id = await invoke<string>('chat_send_proactive', { hint })
@@ -83,11 +107,9 @@ export const useDialogStore = defineStore('dialog', () => {
     if (streaming.value) return
     await bindReady
 
-    const emotion = useEmotionStore()
-    emotion.infer(message)
-
     history.value.push({ role: 'user', content: message, ts: Date.now() })
     currentText.value = ''
+    rawBuffer.value = ''
     streaming.value = true
 
     try {

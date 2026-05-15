@@ -2,23 +2,46 @@ import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import type { EmotionStateConfig } from '@/types/soul'
 
-// 让 Live2DModel 内部能拿到 PIXI.Ticker
 ;(window as any).PIXI = PIXI
 
 export interface RendererOptions {
   canvas: HTMLCanvasElement
   modelUrl: string
   scale: number
+  offsetY?: number
 }
 
+interface Override {
+  value: number
+  expireAt: number
+}
+
+/**
+ * 渲染器：统一管理所有参数源（focus / emotion / idle / override），
+ * 每帧做一次合成，避免多源 set 互相覆盖导致的抖动。
+ *
+ * 合成公式（针对每个参数 id）：
+ *   final = (override 在窗口内则强制)
+ *         | focus_contribution + emotion_contribution + idle_offset
+ */
 export class TiaLynnRenderer {
   private app: PIXI.Application
   private model: Live2DModel | null = null
-  private params: Map<string, { base: number; target: number; current: number }> = new Map()
   private breathPhase = 0
   private destroyed = false
+  private offsetY: number
+
+  // 参数源
+  private focusTarget = { x: 0, y: 0 }
+  private focusCurrent = { x: 0, y: 0 }
+  private emotionTargets = new Map<string, number>()
+  private emotionCurrent = new Map<string, number>()
+  private idleOffset = new Map<string, number>()
+  private overrides = new Map<string, Override>()
+  private wroteKeys = new Set<string>()
 
   constructor(private opts: RendererOptions) {
+    this.offsetY = opts.offsetY ?? 50
     this.app = new PIXI.Application({
       view: opts.canvas,
       width: window.innerWidth,
@@ -28,85 +51,70 @@ export class TiaLynnRenderer {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     })
-
+    this.focusCurrent = {
+      x: this.app.screen.width / 2,
+      y: this.app.screen.height / 2,
+    }
+    this.focusTarget = { ...this.focusCurrent }
     window.addEventListener('resize', this.onResize)
   }
 
   async load(): Promise<void> {
     const model = await Live2DModel.from(this.opts.modelUrl, { autoInteract: false })
     this.model = model
-
     model.scale.set(this.opts.scale)
-    // pixi-live2d-display 的 Live2DModel 提供 anchor 属性（运行时），声明里不强求
     ;(model as any).anchor?.set?.(0.5, 0.5)
     model.x = this.app.screen.width / 2
-    model.y = this.app.screen.height / 2 + 50
-
+    model.y = this.app.screen.height / 2 + this.offsetY
     this.app.stage.addChild(model)
-
-    // 启动自定义 tick：眨眼、呼吸、参数缓动
     this.app.ticker.add(this.tick)
   }
 
-  /**
-   * 设置情绪：把目标参数表 lerp 到这些值上，cubic-ease。
-   * 缺失参数视为「回归 base」。
-   */
-  applyEmotion(cfg: EmotionStateConfig | undefined): void {
-    if (!this.model || !cfg?.live2d) return
-    for (const [paramId, targetValue] of Object.entries(cfg.live2d)) {
-      const entry = this.params.get(paramId) ?? { base: 0, target: 0, current: 0 }
-      entry.target = targetValue
-      this.params.set(paramId, entry)
-    }
-  }
-
-  /**
-   * 嘴型同步：直接覆盖 ParamMouthOpenY（不走缓动表，由音频流驱动）。
-   */
-  setMouthOpen(value01: number): void {
-    if (!this.model) return
-    const core = (this.model.internalModel as any).coreModel
-    if (!core || typeof core.setParameterValueById !== 'function') return
-    try {
-      core.setParameterValueById('ParamMouthOpenY', Math.max(0, Math.min(1, value01)))
-    } catch {
-      /* 参数不存在则忽略 */
-    }
-  }
-
-  /**
-   * 视线跟随：把鼠标位置（webview CSS 像素，可超出 viewport）映射到
-   * ParamAngleX/Y + ParamEyeBallX/Y。
-   *
-   * 坐标可以是负值或大于 viewport 尺寸——意味着鼠标在窗口外，但视线仍能指向。
-   */
   setFocus(screenX: number, screenY: number): void {
-    if (!this.model) return
-    const w = this.app.screen.width
-    const h = this.app.screen.height
-    // 用大于半边的"饱和距离"防止鼠标稍微出窗口就立刻撞到上限
-    const halfW = Math.max(w / 2, 320)
-    const halfH = Math.max(h / 2, 360)
-    const nx = clamp((screenX - w / 2) / halfW, -1, 1) // -1..1
-    const ny = clamp((screenY - h / 2) / halfH, -1, 1) // -1..1
-    const core = (this.model.internalModel as any).coreModel
-    if (!core) return
-    try {
-      core.setParameterValueById('ParamAngleX', nx * 30)
-      core.setParameterValueById('ParamAngleY', -ny * 20)
-      core.setParameterValueById('ParamAngleZ', nx * 8) // 轻微歪头跟随
-      core.setParameterValueById('ParamBodyAngleX', nx * 10)
-      core.setParameterValueById('ParamEyeBallX', nx)
-      core.setParameterValueById('ParamEyeBallY', -ny)
-    } catch {
-      /* 参数不存在则忽略 */
+    this.focusTarget = { x: screenX, y: screenY }
+  }
+
+  applyEmotion(cfg: EmotionStateConfig | undefined): void {
+    this.emotionTargets.clear()
+    if (cfg?.live2d) {
+      for (const [k, v] of Object.entries(cfg.live2d)) {
+        this.emotionTargets.set(k, Number(v))
+      }
     }
   }
 
+  setIdleOffset(paramId: string, value: number): void {
+    if (Math.abs(value) < 0.001) this.idleOffset.delete(paramId)
+    else this.idleOffset.set(paramId, value)
+  }
+
+  clearIdleOffsets(): void {
+    this.idleOffset.clear()
+  }
+
   /**
-   * 列出模型实际参数 id（调试用，配合参数嗅探）。
+   * 短时强制覆盖某参数。眨眼、嘴型同步、其他绝对值动作用。
+   * 过期后参数自动回到合成结果。
    */
+  overrideParam(paramId: string, value: number, durationMs: number): void {
+    this.overrides.set(paramId, {
+      value,
+      expireAt: performance.now() + durationMs,
+    })
+  }
+
+  /** 嘴型同步：每次音频帧调用，override 80ms。 */
+  setMouthOpen(value01: number): void {
+    this.overrideParam('ParamMouthOpenY', clamp(value01, 0, 1), 80)
+  }
+
+  setScaleAndOffset(scale: number, offsetY: number): void {
+    if (!this.model) return
+    this.model.scale.set(scale)
+    this.offsetY = offsetY
+    this.model.y = this.app.screen.height / 2 + offsetY
+  }
+
   enumerateParams(): string[] {
     if (!this.model) return []
     const core = (this.model.internalModel as any).coreModel
@@ -129,36 +137,75 @@ export class TiaLynnRenderer {
     this.app.destroy(true, { children: true, texture: true })
   }
 
-  // --- 内部 tick ---
-
   private tick = (deltaFrames: number) => {
     if (!this.model) return
-    const dtSec = deltaFrames / 60
-
-    // 呼吸（程序化叠加，覆盖默认 BreathMotion 也可）
-    this.breathPhase += dtSec
-    const breath = (Math.sin(this.breathPhase * 1.2) + 1) / 2 // 0..1
+    const dtSec = Math.min(deltaFrames / 60, 0.1)
     const core = (this.model.internalModel as any).coreModel
-    if (core) {
-      try {
-        core.setParameterValueById('ParamBreath', breath, 0.6)
-      } catch {
-        /* ignore */
+    if (!core) return
+
+    // 呼吸
+    this.breathPhase += dtSec
+    const breath = (Math.sin(this.breathPhase * 1.2) + 1) / 2
+    safeSet(core, 'ParamBreath', breath)
+
+    // focus 缓动
+    const focusEase = 1 - Math.exp(-dtSec * 5)
+    this.focusCurrent.x += (this.focusTarget.x - this.focusCurrent.x) * focusEase
+    this.focusCurrent.y += (this.focusTarget.y - this.focusCurrent.y) * focusEase
+
+    // emotion 缓动
+    const emotionEase = 1 - Math.exp(-dtSec * 4)
+    for (const k of [...this.emotionCurrent.keys()]) {
+      if (!this.emotionTargets.has(k)) {
+        const cur = this.emotionCurrent.get(k) ?? 0
+        const next = cur + (0 - cur) * emotionEase
+        if (Math.abs(next) < 0.005) this.emotionCurrent.delete(k)
+        else this.emotionCurrent.set(k, next)
       }
+    }
+    for (const [k, target] of this.emotionTargets) {
+      const cur = this.emotionCurrent.get(k) ?? 0
+      this.emotionCurrent.set(k, cur + (target - cur) * emotionEase)
     }
 
-    // 缓动参数到 target
-    if (core && this.params.size > 0) {
-      const easing = 1 - Math.exp(-dtSec * 6) // 一阶低通，约 167ms 收敛
-      for (const [paramId, entry] of this.params) {
-        entry.current += (entry.target - entry.current) * easing
-        try {
-          core.setParameterValueById(paramId, entry.current, 1.0)
-        } catch {
-          /* 参数不存在则忽略 */
-        }
-      }
+    const w = this.app.screen.width
+    const h = this.app.screen.height
+    const halfW = Math.max(w / 2, 320)
+    const halfH = Math.max(h / 2, 360)
+    const nx = clamp((this.focusCurrent.x - w / 2) / halfW, -1, 1)
+    const ny = clamp((this.focusCurrent.y - h / 2) / halfH, -1, 1)
+    const focusParams: Record<string, number> = {
+      ParamAngleX: nx * 28,
+      ParamAngleY: -ny * 18,
+      ParamAngleZ: nx * 6,
+      ParamBodyAngleX: nx * 8,
+      ParamEyeBallX: nx,
+      ParamEyeBallY: -ny,
     }
+
+    const allKeys = new Set<string>()
+    for (const k of Object.keys(focusParams)) allKeys.add(k)
+    for (const k of this.emotionCurrent.keys()) allKeys.add(k)
+    for (const k of this.idleOffset.keys()) allKeys.add(k)
+    for (const k of this.overrides.keys()) allKeys.add(k)
+    for (const k of this.wroteKeys) allKeys.add(k)
+
+    const now = performance.now()
+    const newWrote = new Set<string>()
+
+    for (const k of allKeys) {
+      const ov = this.overrides.get(k)
+      let value: number
+      if (ov && now <= ov.expireAt) {
+        value = ov.value
+      } else {
+        if (ov) this.overrides.delete(k)
+        value = composeBase(k, focusParams, this.emotionCurrent, this.idleOffset)
+      }
+      safeSet(core, k, value)
+      newWrote.add(k)
+    }
+    this.wroteKeys = newWrote
   }
 
   private onResize = () => {
@@ -166,8 +213,28 @@ export class TiaLynnRenderer {
     this.app.renderer.resize(window.innerWidth, window.innerHeight)
     if (this.model) {
       this.model.x = this.app.screen.width / 2
-      this.model.y = this.app.screen.height / 2 + 50
+      this.model.y = this.app.screen.height / 2 + this.offsetY
     }
+  }
+}
+
+function composeBase(
+  k: string,
+  focusParams: Record<string, number>,
+  emotionCurrent: Map<string, number>,
+  idleOffset: Map<string, number>,
+): number {
+  const f = focusParams[k] ?? 0
+  const e = emotionCurrent.get(k) ?? 0
+  const i = idleOffset.get(k) ?? 0
+  return f + e + i
+}
+
+function safeSet(core: any, id: string, value: number): void {
+  try {
+    core.setParameterValueById(id, value)
+  } catch {
+    /* 参数不存在则忽略 */
   }
 }
 

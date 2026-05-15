@@ -9,7 +9,7 @@ use crate::core::soul::{locate_default_soul, SoulConfig};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
 
-/// 应用运行时配置（一份内存副本，对应 ~/.tialynn/config.toml）。
+/// 应用运行时配置（内存副本，对应 ~/Library/Application Support/TiaLynn/config.json）。
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub llm_endpoint: String,
@@ -17,6 +17,17 @@ pub struct RuntimeConfig {
     pub llm_api_key: String,
     pub tts_provider: String,
     pub tts_sidecar_url: String,
+    // ---- v0.2 新增：模型 ----
+    pub live2d_model_dir: String,
+    pub live2d_model_file: String,
+    pub live2d_scale: f32,
+    pub live2d_offset_y: f32,
+    // ---- v0.2 新增：行为参数 ----
+    pub idle_min_sec: u32,
+    pub idle_max_sec: u32,
+    pub autocomment_interval_sec: u32,
+    pub emotion_decay_per_minute: f32,
+    pub flip_probability: f32,
 }
 
 impl Default for RuntimeConfig {
@@ -31,6 +42,15 @@ impl Default for RuntimeConfig {
                 .unwrap_or_else(|_| "macos_say".to_string()),
             tts_sidecar_url: std::env::var("TIALYNN_TTS_SIDECAR_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:5050".to_string()),
+            live2d_model_dir: "HuTao-Live2D".to_string(),
+            live2d_model_file: "Hu Tao.model3.json".to_string(),
+            live2d_scale: 0.35,
+            live2d_offset_y: 50.0,
+            idle_min_sec: 8,
+            idle_max_sec: 15,
+            autocomment_interval_sec: 300,
+            emotion_decay_per_minute: 0.05,
+            flip_probability: 0.15,
         }
     }
 }
@@ -163,6 +183,11 @@ pub fn run() {
             commands::config::config_load,
             commands::config::config_save,
             commands::config::config_test_llm,
+            commands::models::models_scan,
+            commands::system::system_clear_history,
+            commands::system::system_reveal_data_dir,
+            commands::system::system_reveal_models_dir,
+            commands::system::system_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

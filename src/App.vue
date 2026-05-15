@@ -7,6 +7,7 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import { useSoulStore } from './stores/soul'
 import { useDialogStore } from './stores/dialog'
 import { useEmotionStore } from './stores/emotion'
+import { useConfigStore } from './stores/config'
 import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
 import { startEmotionTick } from './behavior/emotionTick'
 import { startAutoComment } from './behavior/autoComment'
@@ -14,16 +15,16 @@ import { startAutoComment } from './behavior/autoComment'
 const soul = useSoulStore()
 const dialog = useDialogStore()
 const emotion = useEmotionStore()
+const config = useConfigStore()
 const ready = ref(false)
 
 let stopEmotionTick: (() => void) | null = null
 let stopAutoComment: (() => void) | null = null
 
 onMounted(async () => {
-  await soul.load()
+  await Promise.all([soul.load(), config.load()])
   emotion.init(soul.config?.emotions?.initial ?? 'neutral')
   startAlphaHitTest()
-  // 行为调度（需要 soul 先加载完）
   stopEmotionTick = startEmotionTick()
   stopAutoComment = startAutoComment()
   ready.value = true

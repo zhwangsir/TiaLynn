@@ -6,17 +6,75 @@ import fs from 'node:fs'
 const host = process.env.TAURI_DEV_HOST
 
 /**
- * 把项目根的 HuTao-Live2D/ 映射到 /live2d/* —— 同时供 dev server 与生产 build 使用。
- * 解决：Tauri asset 协议解析含空格的相对路径会失败的问题。
+ * Live2D 多模型静态托管：
+ *   URL：/live2d/<model_dir>/<file>
+ *   解析顺序：项目根 → ~/.tialynn/models/ → ~/.tialynn/assets/
+ *
+ * 同时兼容旧版 URL（/live2d/<file>，无 model_dir 前缀），自动回退到项目根的
+ * HuTao-Live2D（v0.1 默认）。
  */
 function tialynnLive2DStatic(): PluginOption {
   const projectRoot = process.cwd()
-  // 候选目录：先项目根，再用户 ~/.tialynn/assets/HuTao-Live2D
-  const candidates = [
-    path.join(projectRoot, 'HuTao-Live2D'),
-    path.join(process.env.HOME ?? '', '.tialynn', 'assets', 'HuTao-Live2D'),
+  const home = process.env.HOME ?? ''
+  const modelRoots = [
+    projectRoot, // 含 HuTao-Live2D/、其他自带模型目录
+    path.join(home, '.tialynn', 'models'),
+    path.join(home, '.tialynn', 'assets'),
   ]
-  const liveDir = candidates.find((p) => fs.existsSync(p)) ?? candidates[0]
+
+  function resolveAsset(rawPath: string): string | null {
+    // raw 形如 "/MyModel/foo.png" 或 "/Hu Tao.model3.json"
+    const decoded = decodeURIComponent(rawPath.split('?')[0]).replace(/\.\.+/g, '')
+    const parts = decoded.split('/').filter(Boolean)
+    if (parts.length === 0) return null
+
+    // 1. 优先按 /<model_dir>/<file> 解析
+    if (parts.length >= 2) {
+      const [modelDir, ...rest] = parts
+      const file = rest.join('/')
+      for (const root of modelRoots) {
+        const candidate = path.join(root, modelDir, file)
+        if (
+          candidate.startsWith(path.resolve(root)) &&
+          fs.existsSync(candidate) &&
+          fs.statSync(candidate).isFile()
+        ) {
+          return candidate
+        }
+      }
+    }
+
+    // 2. fallback：单段路径，按旧版默认模型查（HuTao-Live2D）
+    if (parts.length === 1) {
+      const file = parts[0]
+      for (const root of modelRoots) {
+        const candidate = path.join(root, 'HuTao-Live2D', file)
+        if (
+          candidate.startsWith(path.resolve(root)) &&
+          fs.existsSync(candidate) &&
+          fs.statSync(candidate).isFile()
+        ) {
+          return candidate
+        }
+      }
+    }
+    return null
+  }
+
+  function mimeFor(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase()
+    return (
+      ({
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.moc3': 'application/octet-stream',
+        '.moc': 'application/octet-stream',
+        '.motion3': 'application/json',
+      } as Record<string, string>)[ext] ?? 'application/octet-stream'
+    )
+  }
 
   return {
     name: 'tialynn-live2d-static',
@@ -24,25 +82,12 @@ function tialynnLive2DStatic(): PluginOption {
       server.middlewares.use('/live2d', (req, res, next) => {
         try {
           if (!req.url) return next()
-          const decoded = decodeURIComponent(req.url.split('?')[0])
-          // 防止 ../ 越权
-          const safe = decoded.replace(/\.\.+/g, '')
-          const filePath = path.join(liveDir, safe)
-          if (!filePath.startsWith(liveDir) || !fs.existsSync(filePath)) {
+          const filePath = resolveAsset(req.url)
+          if (!filePath) {
             res.statusCode = 404
-            return res.end(`Live2D asset not found: ${safe}`)
+            return res.end(`Live2D asset not found: ${req.url}`)
           }
-          const ext = path.extname(filePath).toLowerCase()
-          const mime: Record<string, string> = {
-            '.json': 'application/json',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.moc3': 'application/octet-stream',
-            '.moc': 'application/octet-stream',
-            '.motion3': 'application/json',
-          }
-          res.setHeader('Content-Type', mime[ext] ?? 'application/octet-stream')
+          res.setHeader('Content-Type', mimeFor(filePath))
           res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
           res.setHeader('Cache-Control', 'no-cache')
           fs.createReadStream(filePath).pipe(res)
@@ -52,14 +97,53 @@ function tialynnLive2DStatic(): PluginOption {
         }
       })
     },
-    // 生产构建后把 HuTao-Live2D 复制到 dist/live2d
+    // 生产 build：把项目根下所有看起来是 Live2D 的目录都拷到 dist/live2d/<dir>/
     closeBundle() {
-      if (!fs.existsSync(liveDir)) return
-      const target = path.join(projectRoot, 'dist', 'live2d')
-      fs.mkdirSync(target, { recursive: true })
-      copyRecursive(liveDir, target)
+      const distLive2d = path.join(projectRoot, 'dist', 'live2d')
+      fs.mkdirSync(distLive2d, { recursive: true })
+      for (const root of modelRoots) {
+        if (!fs.existsSync(root)) continue
+        for (const entry of fs.readdirSync(root)) {
+          const src = path.join(root, entry)
+          if (!fs.statSync(src).isDirectory()) continue
+          // 跳过常见非模型目录
+          if (
+            [
+              'node_modules',
+              'src',
+              'src-tauri',
+              'dist',
+              'docs',
+              'public',
+              'scripts',
+              'sidecar',
+              '.git',
+              '.idea',
+              '.vscode',
+              'example_voice',
+              'icons',
+            ].includes(entry)
+          )
+            continue
+          if (!fs.existsSync(path.join(src, ...findFirstModel3(src)))) continue
+          const dst = path.join(distLive2d, entry)
+          fs.mkdirSync(dst, { recursive: true })
+          copyRecursive(src, dst)
+        }
+      }
     },
   }
+}
+
+function findFirstModel3(dir: string): string[] {
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith('.model3.json')) return [f]
+    }
+  } catch {
+    /* ignore */
+  }
+  return ['__MISSING__']
 }
 
 function copyRecursive(src: string, dst: string): void {

@@ -1,111 +1,106 @@
 /**
- * 自主 idle 行为：每 8-15s 随机触发一个小动作（轻歪头、看远方、撇嘴、深呼吸）。
- * 这些动作是叠加在视线跟随之上的"扰动"，提升活泼度。
+ * 自主 idle 行为：每 N 秒触发一个动作。
+ * 不再直接 set Live2D 参数，而是把"偏移"写入 renderer.setIdleOffset，
+ * 由 renderer 在每帧合成中加到 focus + emotion 之上。
  */
 import type { TiaLynnRenderer } from '@/live2d/renderer'
 
 type IdleAction = {
   name: string
   durationMs: number
-  apply: (renderer: TiaLynnRenderer, t01: number) => void
+  /** 影响的 param id 列表（结束时这些 offset 会被清空） */
+  params: string[]
+  /** 计算 t∈[0,1] 时刻每个 param 的偏移 */
+  compute: (t: number) => Record<string, number>
+}
+
+function waveOnce(t: number): number {
+  return Math.sin(t * Math.PI)
 }
 
 const ACTIONS: IdleAction[] = [
   {
     name: 'tilt-left',
     durationMs: 1400,
-    apply: (r, t) => {
+    params: ['ParamAngleZ', 'ParamBodyAngleZ'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamAngleZ', -8 * w, 0.8)
-      driveParam(r, 'ParamBodyAngleZ', -4 * w, 0.8)
+      return { ParamAngleZ: -8 * w, ParamBodyAngleZ: -4 * w }
     },
   },
   {
     name: 'tilt-right',
     durationMs: 1400,
-    apply: (r, t) => {
+    params: ['ParamAngleZ', 'ParamBodyAngleZ'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamAngleZ', 8 * w, 0.8)
-      driveParam(r, 'ParamBodyAngleZ', 4 * w, 0.8)
+      return { ParamAngleZ: 8 * w, ParamBodyAngleZ: 4 * w }
     },
   },
   {
     name: 'look-up',
     durationMs: 1600,
-    apply: (r, t) => {
+    params: ['ParamAngleY', 'ParamEyeBallY'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamAngleY', 18 * w, 0.8)
-      driveParam(r, 'ParamEyeBallY', w, 0.6)
+      return { ParamAngleY: 12 * w, ParamEyeBallY: 0.8 * w }
     },
   },
   {
     name: 'look-down',
     durationMs: 1300,
-    apply: (r, t) => {
+    params: ['ParamAngleY', 'ParamEyeBallY'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamAngleY', -12 * w, 0.8)
-      driveParam(r, 'ParamEyeBallY', -w, 0.6)
+      return { ParamAngleY: -10 * w, ParamEyeBallY: -0.8 * w }
     },
   },
   {
     name: 'pout',
     durationMs: 900,
-    apply: (r, t) => {
+    params: ['ParamMouthForm', 'ParamMouthOpenY'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamMouthForm', -1 * w, 0.7)
-      driveParam(r, 'ParamMouthOpenY', 0.2 * w, 0.5)
+      return { ParamMouthForm: -0.8 * w, ParamMouthOpenY: 0.15 * w }
     },
   },
   {
     name: 'smile',
     durationMs: 1100,
-    apply: (r, t) => {
+    params: ['ParamMouthForm', 'ParamCheek'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamMouthForm', 1 * w, 0.8)
-      driveParam(r, 'ParamCheek', 0.4 * w, 0.5)
+      return { ParamMouthForm: 0.8 * w, ParamCheek: 0.35 * w }
     },
   },
   {
     name: 'blush',
     durationMs: 1800,
-    apply: (r, t) => {
+    params: ['ParamCheek', 'ParamAngleZ'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamCheek', 1 * w, 0.6)
-      driveParam(r, 'ParamAngleZ', -3 * w, 0.4)
+      return { ParamCheek: 0.8 * w, ParamAngleZ: -3 * w }
     },
   },
   {
     name: 'deep-breath',
     durationMs: 2400,
-    apply: (r, t) => {
+    params: ['ParamBodyAngleY'],
+    compute: (t) => {
       const w = waveOnce(t)
-      driveParam(r, 'ParamBreath', 0.5 + 0.5 * w, 1)
-      driveParam(r, 'ParamBodyAngleY', 4 * w, 0.5)
+      return { ParamBodyAngleY: 5 * w }
     },
   },
 ]
-
-function waveOnce(t: number): number {
-  // sin 半周期：0 → 1 → 0，t∈[0,1]
-  return Math.sin(t * Math.PI)
-}
-
-function driveParam(renderer: TiaLynnRenderer, id: string, value: number, weight: number): void {
-  const core = (renderer as any).model?.internalModel?.coreModel
-  if (!core) return
-  try {
-    core.addParameterValueById(id, value, weight)
-  } catch {
-    /* ignore */
-  }
-}
 
 export function startIdleBehavior(
   renderer: TiaLynnRenderer,
   opts?: { minIntervalMs?: number; maxIntervalMs?: number },
 ): () => void {
-  const min = opts?.minIntervalMs ?? 8000
-  const max = opts?.maxIntervalMs ?? 15000
+  let min = opts?.minIntervalMs ?? 8000
+  let max = opts?.maxIntervalMs ?? 15000
+  if (max < min) max = min + 1000
+
   let stopped = false
   let timer: number | null = null
   let activeRaf: number | null = null
@@ -113,7 +108,6 @@ export function startIdleBehavior(
 
   function pick(): IdleAction {
     let pickFn = ACTIONS[Math.floor(Math.random() * ACTIONS.length)]
-    // 避免连续两次相同动作
     if (pickFn === lastAction && ACTIONS.length > 1) {
       pickFn = ACTIONS[(ACTIONS.indexOf(pickFn) + 1) % ACTIONS.length]
     }
@@ -130,11 +124,16 @@ export function startIdleBehavior(
       if (stopped) return
       const t = (performance.now() - start) / action.durationMs
       if (t >= 1) {
+        // 收尾：清掉此动作影响的 offset
+        for (const p of action.params) renderer.setIdleOffset(p, 0)
         activeRaf = null
         scheduleNext()
         return
       }
-      action.apply(renderer, t)
+      const contributions = action.compute(t)
+      for (const [param, value] of Object.entries(contributions)) {
+        renderer.setIdleOffset(param, value)
+      }
       activeRaf = requestAnimationFrame(step)
     }
     activeRaf = requestAnimationFrame(step)
@@ -152,5 +151,6 @@ export function startIdleBehavior(
     stopped = true
     if (timer !== null) clearTimeout(timer)
     if (activeRaf !== null) cancelAnimationFrame(activeRaf)
+    renderer.clearIdleOffsets()
   }
 }

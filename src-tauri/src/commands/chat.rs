@@ -16,12 +16,45 @@ pub struct ChatEndPayload {
     pub stream_id: String,
     pub full_text: String,
     pub emotion: Option<String>,
+    pub intensity: Option<f32>,
 }
 
-/// 用于 autoComment：让 TiaLynn 主动开口。
-/// 与 chat_send 区别：
-///   - hint 作为额外 system 消息插入，不当作 user 消息落库；
-///   - assistant 输出仍正常落库 + emit 事件，前端按普通流程显示。
+/// 解析 LLM 返回的 JSON 协议 `{"text":..., "emotion":..., "intensity":...}`。
+/// 容错：JSON 解析失败时把 raw 当作 text，emotion=None。
+fn parse_reply(raw: &str) -> (String, Option<String>, Option<f32>) {
+    let trimmed = raw.trim();
+    let cleaned = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .unwrap_or(trimmed)
+        .trim_end_matches("```")
+        .trim();
+    let start = cleaned.find('{');
+    let end = cleaned.rfind('}');
+    let candidate = match (start, end) {
+        (Some(s), Some(e)) if e > s => &cleaned[s..=e],
+        _ => return (raw.to_string(), None, None),
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(candidate) else {
+        return (raw.to_string(), None, None);
+    };
+    let text = v
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    let emotion = v
+        .get("emotion")
+        .and_then(|e| e.as_str())
+        .map(|s| s.to_string());
+    let intensity = v.get("intensity").and_then(|i| i.as_f64()).map(|x| x as f32);
+    if text.is_empty() {
+        (raw.to_string(), emotion, intensity)
+    } else {
+        (text, emotion, intensity)
+    }
+}
+
 #[tauri::command]
 pub async fn chat_send_proactive(
     app: tauri::AppHandle,
@@ -35,7 +68,9 @@ pub async fn chat_send_proactive(
         .soul()
         .ok_or_else(|| AppError::Other("soul not loaded".into()))?;
     let emotion = state.emotion();
-    let mut system_prompt = soul.build_system_prompt(&emotion, None);
+    let cfg = state.runtime_config();
+    let mut system_prompt =
+        soul.build_system_prompt(&emotion, None, Some(cfg.flip_probability));
     system_prompt.push_str("\n\n## 本轮特殊指令\n");
     system_prompt.push_str(&hint);
 
@@ -51,7 +86,6 @@ pub async fn chat_send_proactive(
         });
     }
 
-    let cfg = state.runtime_config();
     if cfg.llm_endpoint.is_empty() {
         return Err(AppError::LlmNotConfigured);
     }
@@ -66,19 +100,19 @@ pub async fn chat_send_proactive(
     let opts = ChatOptions {
         model: cfg.llm_model.clone(),
         temperature: 0.95,
-        max_tokens: Some(160),
+        max_tokens: Some(220),
     };
 
     let memory = state.memory_arc();
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut full_text = String::new();
+        let mut raw = String::new();
         match provider.chat_stream(messages, opts).await {
             Ok(mut stream) => {
                 while let Some(t) = stream.next().await {
                     match t {
                         Ok(piece) => {
-                            full_text.push_str(&piece);
+                            raw.push_str(&piece);
                             let _ = app_handle.emit(
                                 "chat::token",
                                 ChatTokenPayload {
@@ -96,15 +130,17 @@ pub async fn chat_send_proactive(
             }
         }
 
-        if !full_text.is_empty() {
-            let _ = memory.append_message("assistant", &full_text, None);
+        let (text, emotion, intensity) = parse_reply(&raw);
+        if !text.is_empty() {
+            let _ = memory.append_message("assistant", &text, emotion.as_deref());
         }
         let _ = app_handle.emit(
             "chat::end",
             ChatEndPayload {
                 stream_id: stream_id_clone,
-                full_text,
-                emotion: None,
+                full_text: text,
+                emotion,
+                intensity,
             },
         );
     });
@@ -121,14 +157,14 @@ pub async fn chat_send(
     let stream_id = uuid::Uuid::new_v4().to_string();
     let stream_id_clone = stream_id.clone();
 
-    // 1. 准备 prompt
     let soul = state
         .soul()
         .ok_or_else(|| AppError::Other("soul not loaded".into()))?;
     let emotion = state.emotion();
-    let system_prompt = soul.build_system_prompt(&emotion, None);
+    let cfg = state.runtime_config();
+    let system_prompt =
+        soul.build_system_prompt(&emotion, None, Some(cfg.flip_probability));
 
-    // 2. 取短期上下文（最近 20 条）
     let history = state.memory().recent_messages(20)?;
     let mut messages = vec![ChatMessage {
         role: "system".into(),
@@ -145,13 +181,10 @@ pub async fn chat_send(
         content: message.clone(),
     });
 
-    // 3. 落库用户消息
     state
         .memory()
         .append_message("user", &message, Some(&emotion))?;
 
-    // 4. 构建 provider
-    let cfg = state.runtime_config();
     if cfg.llm_endpoint.is_empty() {
         return Err(AppError::LlmNotConfigured);
     }
@@ -169,18 +202,17 @@ pub async fn chat_send(
         max_tokens: Some(512),
     };
 
-    // 5. 开流并异步推送（不阻塞 invoke）
     let memory = state.memory_arc();
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut full_text = String::new();
+        let mut raw = String::new();
         let r = provider.chat_stream(messages, opts).await;
         match r {
             Ok(mut stream) => {
                 while let Some(token_r) = stream.next().await {
                     match token_r {
                         Ok(t) => {
-                            full_text.push_str(&t);
+                            raw.push_str(&t);
                             let _ = app_handle.emit(
                                 "chat::token",
                                 ChatTokenPayload {
@@ -198,32 +230,31 @@ pub async fn chat_send(
             }
             Err(e) => {
                 tracing::error!("chat_stream open failed: {e}");
-                full_text = format!("(连接 LLM 失败：{})", e);
+                raw = format!("(连接 LLM 失败：{})", e);
                 let _ = app_handle.emit(
                     "chat::token",
                     ChatTokenPayload {
                         stream_id: stream_id_clone.clone(),
-                        delta: full_text.clone(),
+                        delta: raw.clone(),
                     },
                 );
             }
         }
 
-        // 落库 assistant
-        if !full_text.is_empty() {
-            let _ = memory.append_message("assistant", &full_text, None);
+        let (text, emotion, intensity) = parse_reply(&raw);
+        if !text.is_empty() {
+            let _ = memory.append_message("assistant", &text, emotion.as_deref());
         }
-
         let _ = app_handle.emit(
             "chat::end",
             ChatEndPayload {
                 stream_id: stream_id_clone,
-                full_text,
-                emotion: None,
+                full_text: text,
+                emotion,
+                intensity,
             },
         );
 
-        // 让窗口出现在前台（如果被隐藏）
         if let Some(w) = app_handle.get_webview_window("main") {
             let _ = w.show();
         }
