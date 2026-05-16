@@ -177,6 +177,8 @@ const api: TialynnApi = {
       ipcRenderer.on('perception:event', handler)
       return () => ipcRenderer.off('perception:event', handler)
     },
+    triggerSnapshot: (reason) =>
+      invoke('perception:trigger-snapshot', reason) as Promise<void>,
   },
   trigger: {
     decide: (payload) =>

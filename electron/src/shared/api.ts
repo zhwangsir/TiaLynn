@@ -131,6 +131,9 @@ export interface TialynnApi {
     updateConfig(patch: Partial<PerceptionConfig>): Promise<PerceptionConfig>
     recent(payload: { limit?: number; types?: PerceptionEventType[] }): Promise<PerceptionEvent[]>
     onEvent(cb: (e: PerceptionEvent) => void): () => void
+    triggerSnapshot(
+      reason?: 'mouse_focus' | 'app_changed' | 'user_request' | 'idle_concern',
+    ): Promise<void>
   }
   trigger: {
     decide(payload: {
