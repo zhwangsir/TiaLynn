@@ -69,20 +69,54 @@ async function pickAndLoad(): Promise<void> {
   status.value = 'loading'
   try {
     if (cfg.models.length === 0) await cfg.rescanModels()
+
     const wanted = cfg.soul?.avatar.model_dir
     const wantedFile = cfg.soul?.avatar.model_file
-    const found =
+
+    const exact =
       cfg.models.find(
         (m) => m.dir === wanted && (!wantedFile || m.model_file === wantedFile),
-      ) ??
-      cfg.models.find((m) => m.dir === wanted) ??
-      cfg.models[0]
+      ) ?? cfg.models.find((m) => m.dir === wanted)
+
+    // v0.6.8: cubism4 only（我们用的是 pixi-live2d-display/cubism4 子入口）
+    const cubism4Only = cfg.models.filter((m) => m.cubism === 'cubism4')
+    let found = exact
+
+    if (found && found.cubism !== 'cubism4') {
+      // 用户选了 cubism2 模型 → 自动回退到第一个 cubism4 + 写回 yaml + toast
+      const fallback = cubism4Only[0]
+      if (fallback) {
+        bus.emit('ui:toast', {
+          kind: 'warn',
+          message: `「${found.dir}」是 Cubism 2 格式，当前不支持。已自动切到「${fallback.dir}」`,
+          ttl_ms: 6000,
+        })
+        await cfg.saveAvatar({ model_dir: fallback.dir, model_file: fallback.model_file })
+        found = fallback
+      } else {
+        status.value = 'error'
+        errorMsg.value = `「${found.dir}」是 Cubism 2 格式，当前版本不支持；也没有任何 Cubism 4 (*.model3.json) 模型可用`
+        bus.emit('ui:toast', { kind: 'error', message: errorMsg.value, ttl_ms: 8000 })
+        return
+      }
+    }
+
+    if (!found) found = cubism4Only[0] ?? cfg.models[0]
+
     if (!found) {
       status.value = 'error'
       errorMsg.value = '未找到任何 Live2D 模型。请把模型放到 ~/.tialynn/models 或项目根目录。'
       console.warn('[live2d] no model found at all')
       return
     }
+
+    if (found.cubism !== 'cubism4') {
+      status.value = 'error'
+      errorMsg.value = '只找到 Cubism 2 模型，当前版本仅支持 Cubism 4 (*.model3.json)'
+      bus.emit('ui:toast', { kind: 'error', message: errorMsg.value, ttl_ms: 8000 })
+      return
+    }
+
     await renderer.loadModel(found.file_url, {
       scale: cfg.soul?.avatar.scale ?? 0.35,
       offsetY: cfg.soul?.avatar.offset_y ?? 50,
@@ -96,6 +130,7 @@ async function pickAndLoad(): Promise<void> {
     console.error('[live2d] load failed', e)
     status.value = 'error'
     errorMsg.value = String(e)
+    bus.emit('ui:toast', { kind: 'error', message: `立绘加载失败：${String(e)}`, ttl_ms: 8000 })
     bus.emit('avatar:model-error', { reason: String(e) })
   }
 }

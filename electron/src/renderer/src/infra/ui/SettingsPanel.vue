@@ -171,7 +171,20 @@ const providerOptions = [
 ] as const
 
 const modelOptions = computed(() =>
-  cfg.models.map((m) => ({ value: m.dir, label: `${m.display} (${m.cubism})` })),
+  // cubism4 在前 + 标注；cubism2 灰掉（当前版本未接 cubism2 runtime）
+  [...cfg.models]
+    .sort((a, b) => {
+      if (a.cubism === b.cubism) return a.display.localeCompare(b.display)
+      return a.cubism === 'cubism4' ? -1 : 1
+    })
+    .map((m) => ({
+      value: m.dir,
+      label:
+        m.cubism === 'cubism4'
+          ? `${m.display}`
+          : `${m.display}（Cubism 2，暂不支持）`,
+      disabled: m.cubism !== 'cubism4',
+    })),
 )
 </script>
 
@@ -218,7 +231,12 @@ const modelOptions = computed(() =>
         <label>
           <span>模型</span>
           <select v-model="selectedModel" @change="markDirty">
-            <option v-for="o in modelOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <option
+              v-for="o in modelOptions"
+              :key="o.value"
+              :value="o.value"
+              :disabled="o.disabled"
+            >{{ o.label }}</option>
           </select>
         </label>
         <div class="row">
