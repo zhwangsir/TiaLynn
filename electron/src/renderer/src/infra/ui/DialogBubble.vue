@@ -1,14 +1,50 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
 
+const HIDE_AFTER_MS = 8000
+
 const dialog = useDialogStore()
+
 const latest = computed(() => {
   const list = dialog.turns
   for (let i = list.length - 1; i >= 0; i--) {
     if (list[i].role === 'assistant') return list[i]
   }
   return null
+})
+
+const visible = ref(true)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleHide(): void {
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    visible.value = false
+  }, HIDE_AFTER_MS)
+}
+
+// 新消息到来或流式中 → 显示并重置计时
+watch(
+  () => [latest.value?.id, latest.value?.text],
+  () => {
+    if (!latest.value) return
+    visible.value = true
+    if (!latest.value.streaming) scheduleHide()
+  },
+  { immediate: true },
+)
+
+// 鼠标悬停时取消自动消失
+function onMouseEnter(): void {
+  if (hideTimer) clearTimeout(hideTimer)
+}
+function onMouseLeave(): void {
+  if (latest.value && !latest.value.streaming) scheduleHide()
+}
+
+onBeforeUnmount(() => {
+  if (hideTimer) clearTimeout(hideTimer)
 })
 
 const emotionTint: Record<string, string> = {
@@ -26,9 +62,11 @@ const emotionTint: Record<string, string> = {
 <template>
   <transition name="bubble">
     <div
-      v-if="latest && latest.text"
+      v-if="latest && latest.text && visible"
       class="bubble"
       :style="{ background: emotionTint[latest.emotion ?? 'neutral'] }"
+      @mouseenter="onMouseEnter"
+      @mouseleave="onMouseLeave"
     >
       <span v-if="latest.streaming" class="streaming-dot" />
       <span class="text">{{ latest.text }}</span>
@@ -62,7 +100,6 @@ const emotionTint: Record<string, string> = {
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 .bubble::after {
-  /* 小尾巴 */
   content: '';
   position: absolute;
   bottom: -8px;

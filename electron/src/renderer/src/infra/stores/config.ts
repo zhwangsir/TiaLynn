@@ -64,6 +64,12 @@ export const useConfigStore = defineStore('config', () => {
     bus.emit('infra:soul-reloaded')
   }
 
+  async function saveAvatar(avatar: Partial<NonNullable<typeof soul.value>['avatar']>): Promise<boolean> {
+    const result = await window.api.soul.saveAvatar(avatar)
+    if (result.ok) await reloadSoul()
+    return result.ok
+  }
+
   async function testLlm(dto: RuntimeConfig): Promise<void> {
     testing.value = true
     testResult.value = null
@@ -92,6 +98,7 @@ export const useConfigStore = defineStore('config', () => {
     save,
     rescanModels,
     reloadSoul,
+    saveAvatar,
     testLlm,
   }
 })

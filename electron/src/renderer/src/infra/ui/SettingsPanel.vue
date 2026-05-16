@@ -64,8 +64,15 @@ async function testLlm(): Promise<void> {
 
 async function switchModel(): Promise<void> {
   if (!selectedModel.value || !cfg.soul) return
-  // 这里只更新前端 soul.avatar.model_dir；写回 yaml 需要额外 IPC（M2）
-  cfg.soul.avatar.model_dir = selectedModel.value
+  const target = cfg.models.find((m) => m.dir === selectedModel.value)
+  const ok = await cfg.saveAvatar({
+    model_dir: selectedModel.value,
+    model_file: target?.model_file ?? cfg.soul.avatar.model_file,
+  })
+  if (!ok) {
+    // 至少前端 mutate，让 watch 触发重新加载
+    cfg.soul.avatar.model_dir = selectedModel.value
+  }
 }
 
 async function rescan(): Promise<void> {

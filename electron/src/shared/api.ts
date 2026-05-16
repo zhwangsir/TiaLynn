@@ -56,6 +56,8 @@ export interface TialynnApi {
     load(): Promise<{ config: SoulConfig; sources: string[] }>
     systemPrompt(): Promise<string>
     pickDirectory(): Promise<string | null>
+    saveAvatar(avatar: Partial<SoulConfig['avatar']>): Promise<{ ok: boolean; path: string; reason?: string }>
+    onChanged(cb: () => void): () => void
   }
   llm: {
     chatStream(payload: {

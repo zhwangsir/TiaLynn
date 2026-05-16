@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
+
+const emit = defineEmits<{ (e: 'close'): void }>()
 
 const dialog = useDialogStore()
 const text = ref('')
@@ -16,37 +18,53 @@ async function submit(): Promise<void> {
 }
 
 function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('close')
+    return
+  }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
     submit()
   }
 }
+
+onMounted(async () => {
+  await nextTick()
+  inputRef.value?.focus()
+})
+
+onBeforeUnmount(() => {
+  // 中止流式对话（如有）
+  if (dialog.replying) dialog.abort()
+})
 </script>
 
 <template>
-  <div class="input-bar">
-    <textarea
-      ref="inputRef"
-      v-model="text"
-      :placeholder="dialog.replying ? '主人正在等回应……' : '想说点什么？'"
-      :disabled="dialog.replying"
-      rows="1"
-      class="input"
-      @keydown="onKey"
-    />
-    <button
-      v-if="!dialog.replying"
-      class="send"
-      :disabled="!text.trim()"
-      title="Enter 发送 / Shift+Enter 换行"
-      @click="submit"
-    >
-      <span>发送</span>
-    </button>
-    <button v-else class="abort" title="中止当前回复" @click="dialog.abort">
-      <span>停</span>
-    </button>
-  </div>
+  <transition name="bar">
+    <div class="input-bar">
+      <textarea
+        ref="inputRef"
+        v-model="text"
+        :placeholder="dialog.replying ? '主人正在等回应……' : '想说点什么？  Esc 关闭'"
+        :disabled="dialog.replying"
+        rows="1"
+        class="input"
+        @keydown="onKey"
+      />
+      <button
+        v-if="!dialog.replying"
+        class="send"
+        :disabled="!text.trim()"
+        title="Enter 发送 / Shift+Enter 换行"
+        @click="submit"
+      >
+        发送
+      </button>
+      <button v-else class="abort" title="中止当前回复" @click="dialog.abort">停</button>
+      <button class="close" title="关闭 (Esc)" @click="emit('close')">×</button>
+    </div>
+  </transition>
 </template>
 
 <style scoped>
@@ -109,5 +127,35 @@ function onKey(e: KeyboardEvent): void {
 }
 .abort {
   background: var(--color-danger);
+}
+.close {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+.close:hover {
+  background: oklch(95% 0.012 25 / 0.7);
+  color: var(--color-bubble-text);
+}
+
+.bar-enter-active,
+.bar-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-out-expo),
+    transform var(--duration-normal) var(--ease-out-expo);
+}
+.bar-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.bar-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 </style>

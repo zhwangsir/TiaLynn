@@ -12,6 +12,8 @@ export type BusEventMap = {
   'avatar:model-error': { reason: string }
   'avatar:mouse-inside': { inside: boolean; x: number; y: number }
   'avatar:lipsync': { value: number } // 0~1，AudioWorklet 实时输出
+  /** 用户在立绘上右键 → 打开主菜单 */
+  'avatar:contextmenu': { x: number; y: number }
   /* 大脑 */
   'brain:chat-input': { text: string }
   'brain:reply-token': { stream_id: string; delta: string }

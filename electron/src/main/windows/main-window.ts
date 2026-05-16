@@ -37,12 +37,15 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
     type: platform.isMacOS ? 'panel' : undefined,
     alwaysOnTop: true,
     show: false,
+    // 关键：让 NSPanel 在非 active 状态下也立即响应第一次 mouse click（不只激活窗口）。
+    // 默认 false 时桌宠点了"一下"只是激活窗口，第二下才触发 button。
+    acceptFirstMouse: true,
     webPreferences: {
       preload: opts.preloadPath,
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // 允许 file:// 读取 Live2D 资源（更严格的 CSP 之后再加）
+      webSecurity: false,
       backgroundThrottling: false,
     },
     ...transparentWindowConfig(),

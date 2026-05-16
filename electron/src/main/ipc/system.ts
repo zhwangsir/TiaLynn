@@ -4,9 +4,10 @@
 import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { scanModels, toFileUrl } from '../services/model-scanner'
 import { loadSoul } from '../services/soul-loader'
+import { saveAvatar } from '../services/soul-saver'
 import { loadConfig, saveConfig } from '../services/config-store'
 import { getPaths } from '../services/paths'
-import type { RuntimeConfig } from '@shared/types'
+import type { RuntimeConfig, SoulConfig } from '@shared/types'
 
 export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('system:version', () => app.getVersion())
@@ -48,6 +49,17 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('soul:system-prompt', () => {
     return loadSoul().systemPrompt
+  })
+
+  ipcMain.handle('soul:save-avatar', (_evt, avatar: Partial<SoulConfig['avatar']>) => {
+    const result = saveAvatar(avatar)
+    if (result.ok) {
+      const win = getWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('soul:changed')
+      }
+    }
+    return result
   })
 
   ipcMain.handle('soul:pick-directory', async () => {

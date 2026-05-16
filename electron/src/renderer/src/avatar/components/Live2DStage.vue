@@ -69,7 +69,6 @@ async function pickAndLoad(): Promise<void> {
   status.value = 'loading'
   try {
     if (cfg.models.length === 0) await cfg.rescanModels()
-    console.log('[live2d] models found:', cfg.models.length)
     const wanted = cfg.soul?.avatar.model_dir
     const wantedFile = cfg.soul?.avatar.model_file
     const found =
@@ -84,14 +83,11 @@ async function pickAndLoad(): Promise<void> {
       console.warn('[live2d] no model found at all')
       return
     }
-    console.log('[live2d] loading:', found.absolute_path)
-    console.log('[live2d] file_url:', found.file_url)
     await renderer.loadModel(found.file_url, {
       scale: cfg.soul?.avatar.scale ?? 0.35,
       offsetY: cfg.soul?.avatar.offset_y ?? 50,
     })
     status.value = 'ready'
-    console.log('[live2d] model loaded OK')
     bus.emit('avatar:model-loaded', {
       model_path: found.absolute_path,
       cubism: found.cubism,

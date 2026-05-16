@@ -47,6 +47,9 @@ export class Live2DRenderer {
       autoStart: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
+      // 关键：让 alpha sampler 能 drawImage canvas 拿到真实像素
+      // 默认 false 时 swap buffer 后 readPixels 全是透明，导致鼠标命中判定永远失败
+      preserveDrawingBuffer: true,
     })
     // 让我们的参数覆盖（嘴型）在 model.update 之后跑：用 LOW 优先级
     this.app.ticker.add(this.tick, this, PIXI.UPDATE_PRIORITY.LOW)

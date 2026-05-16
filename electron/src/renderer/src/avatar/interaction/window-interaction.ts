@@ -1,18 +1,11 @@
 /**
- * 窗口交互编排：拖动 + 穿透状态机 + 视线跟随。
+ * 窗口交互编排：拖动 + 穿透状态机 + 视线跟随 + 右键菜单。
  *
- * v0.6.1 关键修正：解决「UI 按钮点不到」根本原因。
- *
- * 旧设计（错）：默认 setIgnoreMouseEvents(true, forward) + 依赖 webview mousemove 切回。
- *   问题：forward 只转 mousemove，不转 click。如果鼠标静止悬停在 UI 上不动，
- *         状态卡在 ignore=true，永远点不到。
- *
- * 新设计：
+ * 设计：
  *   - 默认 ignore=false（响应一切，UI 永远可点）
- *   - 主进程 cursor poll（每 50ms，独立于 webview mousemove）→ renderer 决定
- *     如果鼠标在透明区且没有任何 UI/立绘命中 → ignore=true (forward=true)
- *     如果鼠标在 UI 或立绘 alpha 上 → ignore=false
- *   - poll 即使在鼠标静止时也持续运行 → 不会再卡死状态
+ *   - 主进程 cursor poll（每 50ms）独立于 webview mousemove，鼠标静止时也能切换
+ *   - 鼠标在 UI / 立绘 alpha 命中 → ignore=false；落在透明区 → ignore=true (forward=true)
+ *   - 左键长按立绘 → native 拖动；右键立绘 → emit 'avatar:contextmenu' 让 App 弹菜单
  */
 import type { AlphaSampler } from './alpha-hit'
 import type { Live2DRenderer } from '../render/live2d-renderer'
@@ -27,7 +20,7 @@ export interface InteractionOpts {
 }
 
 export class WindowInteraction {
-  private currentIgnore = false // 默认响应一切
+  private currentIgnore = false
   private dragging = false
   private destroyed = false
   private softDragOrigin: { mx: number; my: number; bx: number; by: number } | null = null
@@ -37,34 +30,30 @@ export class WindowInteraction {
   constructor(private opts: InteractionOpts) {
     this.passthroughEnabled = opts.passthroughEnabled ?? (() => true)
 
-    // 视线跟随：从 webview mousemove 拿（这种事件 forward 模式下也有）
     opts.container.addEventListener('mousemove', this.onMouseMove)
     opts.container.addEventListener('mousedown', this.onMouseDown)
+    opts.container.addEventListener('contextmenu', this.onContextMenu)
     window.addEventListener('mouseup', this.onMouseUp)
     window.addEventListener('mousemove', this.onWindowMouseMove)
 
-    // 默认 ignore=false（响应一切）—— Electron 默认状态，不需要主动调
-    // 但显式调一次确保状态正确
     void window.api.window.setIgnoreMouse(false)
-
-    // 启动主进程 cursor polling（即使鼠标静止也能切换）
     void window.api.cursor.pollStart()
     this.unsubCursor = window.api.cursor.onTick((pt) => this.onCursorTick(pt))
   }
 
-  /** 强制响应（设置面板打开时调 forceInteractive(true)） */
+  /** 强制响应（设置面板 / 右键菜单打开时） */
   forceInteractive(on: boolean): void {
     if (on) {
       this.currentIgnore = false
       void window.api.window.setIgnoreMouse(false)
     }
-    // off 状态由 cursor poll 自动接管
   }
 
   destroy(): void {
     this.destroyed = true
     this.opts.container.removeEventListener('mousemove', this.onMouseMove)
     this.opts.container.removeEventListener('mousedown', this.onMouseDown)
+    this.opts.container.removeEventListener('contextmenu', this.onContextMenu)
     window.removeEventListener('mouseup', this.onMouseUp)
     window.removeEventListener('mousemove', this.onWindowMouseMove)
     this.unsubCursor?.()
@@ -76,14 +65,10 @@ export class WindowInteraction {
   private onCursorTick(pt: { x: number; y: number; inside: boolean }): void {
     if (this.destroyed) return
     if (!this.passthroughEnabled()) {
-      // 模态打开：强制响应
       if (this.currentIgnore) this.applyIgnore(false)
       return
     }
-    if (!pt.inside) {
-      // 鼠标在窗口外，不切（让 OS 决定）
-      return
-    }
+    if (!pt.inside) return
     const rect = this.opts.container.getBoundingClientRect()
     const overUi = this.isOverUiElement(pt.x, pt.y)
     const overAlpha = this.opts.sampler.hits(pt.x, pt.y, rect.width, rect.height)
@@ -102,7 +87,6 @@ export class WindowInteraction {
     }
   }
 
-  /** webview mousemove：仅用于驱动视线 + drag fallback */
   private onMouseMove = (e: MouseEvent): void => {
     if (this.destroyed) return
     const rect = this.opts.container.getBoundingClientRect()
@@ -111,7 +95,10 @@ export class WindowInteraction {
     this.opts.renderer.setGaze(x, y)
   }
 
-  /** 判断屏幕坐标是否落在 UI 元素上（非 canvas、非 body）。 */
+  /**
+   * 判断屏幕坐标是否落在 UI 元素上（非 canvas、非 body）。
+   * 透明区点击会落到 body 或 canvas 上（这两者算「非 UI」，应当穿透）。
+   */
   private isOverUiElement(clientX: number, clientY: number): boolean {
     const el = document.elementFromPoint(clientX, clientY)
     if (!el) return false
@@ -122,7 +109,7 @@ export class WindowInteraction {
     return true
   }
 
-  private onWindowMouseMove = async (e: MouseEvent): Promise<void> => {
+  private onWindowMouseMove = (e: MouseEvent): void => {
     if (!this.dragging || !this.softDragOrigin) return
     const dx = e.screenX - this.softDragOrigin.mx
     const dy = e.screenY - this.softDragOrigin.my
@@ -136,7 +123,6 @@ export class WindowInteraction {
     const rect = this.opts.container.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
-    // 只有 alpha 命中（立绘）才触发拖动 —— UI 元素不拖
     if (this.isOverUiElement(e.clientX, e.clientY)) return
     if (!this.opts.sampler.hits(x, y, rect.width, rect.height)) return
 
@@ -146,6 +132,7 @@ export class WindowInteraction {
       return
     }
 
+    // fallback: 软件拖动
     const bounds = await window.api.window.getBounds()
     if (!bounds) return
     this.softDragOrigin = {
@@ -155,6 +142,19 @@ export class WindowInteraction {
       by: bounds.y,
     }
     this.dragging = true
+  }
+
+  /** 右键立绘 → 弹主菜单。在 UI 元素 / 透明区上右键不响应（让 OS / Vue 子组件自己处理） */
+  private onContextMenu = (e: MouseEvent): void => {
+    if (this.destroyed) return
+    if (!this.passthroughEnabled()) return
+    if (this.isOverUiElement(e.clientX, e.clientY)) return
+    const rect = this.opts.container.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    if (!this.opts.sampler.hits(x, y, rect.width, rect.height)) return
+    e.preventDefault()
+    bus.emit('avatar:contextmenu', { x: e.clientX, y: e.clientY })
   }
 
   private onMouseUp = (): void => {

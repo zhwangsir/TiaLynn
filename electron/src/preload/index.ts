@@ -65,6 +65,12 @@ const api: TialynnApi = {
     load: () => ipcRenderer.invoke('soul:load'),
     systemPrompt: () => ipcRenderer.invoke('soul:system-prompt'),
     pickDirectory: () => ipcRenderer.invoke('soul:pick-directory'),
+    saveAvatar: (avatar) => ipcRenderer.invoke('soul:save-avatar', avatar),
+    onChanged: (cb): (() => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('soul:changed', handler)
+      return () => ipcRenderer.off('soul:changed', handler)
+    },
   },
   llm: {
     chatStream: (payload: {
