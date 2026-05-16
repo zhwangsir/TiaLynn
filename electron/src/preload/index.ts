@@ -134,6 +134,10 @@ const api: TialynnApi = {
   motion: {
     summarize: (modelDir: string) =>
       invoke('motion:summarize', modelDir) as ReturnType<TialynnApi['motion']['summarize']>,
+    introspect: (modelDir: string) =>
+      invoke('motion:introspect', modelDir) as ReturnType<TialynnApi['motion']['introspect']>,
+    introspectDebug: (modelDir: string) =>
+      invoke('motion:introspect-debug', modelDir) as Promise<string>,
     generate: (payload) =>
       invoke('motion:generate', payload) as ReturnType<TialynnApi['motion']['generate']>,
     write: (payload) =>

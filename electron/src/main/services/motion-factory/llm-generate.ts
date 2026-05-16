@@ -12,6 +12,7 @@ import type { ChatMessage } from '@shared/types'
 import type { MotionDraft, ModelMotionSummary } from '@shared/motion'
 import { buildProvider } from '../llm'
 import { loadConfig } from '../config-store'
+import { introspect } from './parameter-introspector'
 
 const SYSTEM_PROMPT = `你是 Live2D 动作设计师。给定模型的可用参数和示例动作，生成一个新动作。
 严格输出 JSON，无其它文字：
@@ -65,11 +66,21 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
 
   const provider = buildProvider(cfg.llm_provider, cfg.llm_endpoint, cfg.llm_api_key)
 
+  // v0.7.2: 拿到参数语义图，让 LLM 知道每个 param 是什么部位
+  const semantics = introspect(p.summary.model_dir)
+  const semByParamId = new Map<string, string>()
+  for (const ps of semantics.params) {
+    if (ps.semantic !== 'unknown' && ps.confidence > 0.5) {
+      semByParamId.set(ps.param_id, ps.semantic)
+    }
+  }
+
   // 选 top-N 高频参数 (~30 个足够)，避免上下文爆
   const topParams = p.summary.params.slice(0, 30).map((x) => ({
     id: x.id,
     range: `${round(x.min)}~${round(x.max)}`,
     used: x.usage_count,
+    sem: semByParamId.get(x.id) ?? '?',
   }))
 
   // few-shot：给 LLM 看 2 个已有 motion 的精简摘要（不展开 segments，太多）
@@ -79,8 +90,10 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
     .join('\n')
 
   const userPrompt = [
-    `# 可用参数（id : 值范围 : 在已有动作中出现次数）`,
-    topParams.map((p) => `- ${p.id} : ${p.range} : ${p.used} 次`).join('\n'),
+    `# 可用参数 (id [语义] : 值范围 : 使用次数)`,
+    `语义说明：head_yaw/pitch/roll=头部三轴 / eye_*_open=眼开闭 / mouth_open/form=嘴部 / body_*=身体 / breath=呼吸 / cheek=脸颊（害羞）/ ? = 未识别（谨慎使用）`,
+    ``,
+    topParams.map((p) => `- ${p.id} [${p.sem}] : ${p.range} : ${p.used} 次`).join('\n'),
     ``,
     `# 模型已有的示例动作`,
     fewShot || '（无）',
@@ -89,6 +102,7 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
     `描述：${p.description}`,
     p.style ? `风格：${p.style}` : '',
     ``,
+    `提示：优先用语义已识别的参数（避免用 [?] 的 unknown 参数）。`,
     `严格只输出 JSON，无 markdown 围栏，无解释。`,
   ]
     .filter(Boolean)

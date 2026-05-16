@@ -16,6 +16,8 @@ const generating = ref(false)
 const draft = ref<MotionDraft | null>(null)
 const draftRaw = ref('')
 const writing = ref(false)
+const introspecting = ref(false)
+const semanticsReport = ref<string>('')
 
 // 只列「可用 cubism4」
 const modelOptions = computed(() =>
@@ -35,6 +37,7 @@ watch(
   async (dir) => {
     if (!dir) {
       summary.value = null
+      semanticsReport.value = ''
       return
     }
     const opt = modelOptions.value.find((o) => o.value === dir)
@@ -47,6 +50,21 @@ watch(
     }
   },
 )
+
+async function runIntrospect(): Promise<void> {
+  if (!selectedDir.value) return
+  const opt = modelOptions.value.find((o) => o.value === selectedDir.value)
+  if (!opt) return
+  const modelDirAbs = opt.absolute.replace(/\/[^/]+\.model3\.json$/i, '')
+  introspecting.value = true
+  try {
+    semanticsReport.value = await window.api.motion.introspectDebug(modelDirAbs)
+  } catch (e) {
+    bus.emit('ui:toast', { kind: 'error', message: `语义分析失败：${String(e)}`, ttl_ms: 6000 })
+  } finally {
+    introspecting.value = false
+  }
+}
 
 const examples = [
   '温柔点头',
@@ -152,6 +170,12 @@ onMounted(() => {
             ⚠ 该模型无任何示例动作，生成可能不准；先用 Editor 做 1-2 个示例</span
           >
         </p>
+        <div class="row">
+          <button class="ghost" :disabled="introspecting || !selectedDir" @click="runIntrospect">
+            {{ introspecting ? '分析中…' : '🔬 语义分析（看 LLM 看到啥）' }}
+          </button>
+        </div>
+        <pre v-if="semanticsReport" class="json-edit small">{{ semanticsReport }}</pre>
       </section>
 
       <section>
@@ -320,6 +344,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--color-accent); }
   font-family: ui-monospace, Menlo, monospace;
   font-size: 11px;
   line-height: 1.5;
+}
+pre.json-edit {
+  background: oklch(94% 0.012 25 / 0.6);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 30vh;
+  overflow-y: auto;
+  margin: 0;
+}
+.small {
+  font-size: 10px;
 }
 .row {
   display: flex;

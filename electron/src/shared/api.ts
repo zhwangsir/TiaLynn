@@ -20,6 +20,7 @@ import type {
   ToolResult,
 } from './tools'
 import type { ModelMotionSummary, MotionDraft } from './motion'
+import type { SemanticsMap } from './motion-semantics'
 
 export interface SystemPaths {
   projectRoot: string
@@ -88,6 +89,10 @@ export interface TialynnApi {
   }
   motion: {
     summarize(modelDir: string): Promise<ModelMotionSummary>
+    /** 推断参数语义（cdi3 / 命名规则 / 协同分析） */
+    introspect(modelDir: string): Promise<SemanticsMap>
+    /** Markdown 格式的人类可读 introspection 报告 */
+    introspectDebug(modelDir: string): Promise<string>
     generate(payload: {
       model_dir: string
       description: string
