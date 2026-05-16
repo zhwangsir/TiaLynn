@@ -40,6 +40,25 @@ export interface ModelInfo {
   cubism: 'cubism2' | 'cubism4'
   display: string
   root_id: string
+  /** 解析 .model3.json 后得到的元数据；用于过滤"完整可用"模型 */
+  meta?: {
+    /** moc3 文件存在 + 至少一张 texture */
+    has_core: boolean
+    /** 至少有 1 个动作 (motion3.json) */
+    has_motions: boolean
+    /** 有 expressions 表情 */
+    has_expressions: boolean
+    /** 有 physics 物理 */
+    has_physics: boolean
+    /** 动作总数 */
+    motion_count: number
+    /** 表情总数 */
+    expression_count: number
+    /** 综合判定："完整可用"= has_core && has_motions */
+    complete: boolean
+    /** 不完整时给出原因（多个用 ; 连接） */
+    reason?: string
+  }
 }
 
 export interface SoulConfig {

@@ -78,13 +78,16 @@ async function pickAndLoad(): Promise<void> {
         (m) => m.dir === wanted && (!wantedFile || m.model_file === wantedFile),
       ) ?? cfg.models.find((m) => m.dir === wanted)
 
-    // v0.6.8: cubism4 only（我们用的是 pixi-live2d-display/cubism4 子入口）
-    const cubism4Only = cfg.models.filter((m) => m.cubism === 'cubism4')
+    // v0.6.9: 优先级 = 完整 cubism4 > 任意 cubism4 > （报错）
+    const completeC4 = cfg.models.filter(
+      (m) => m.cubism === 'cubism4' && m.meta?.complete,
+    )
+    const anyC4 = cfg.models.filter((m) => m.cubism === 'cubism4')
     let found = exact
 
+    // 选了 cubism2 → fallback
     if (found && found.cubism !== 'cubism4') {
-      // 用户选了 cubism2 模型 → 自动回退到第一个 cubism4 + 写回 yaml + toast
-      const fallback = cubism4Only[0]
+      const fallback = completeC4[0] ?? anyC4[0]
       if (fallback) {
         bus.emit('ui:toast', {
           kind: 'warn',
@@ -101,7 +104,21 @@ async function pickAndLoad(): Promise<void> {
       }
     }
 
-    if (!found) found = cubism4Only[0] ?? cfg.models[0]
+    // 选了 cubism4 但缺关键资源（moc/texture）→ fallback
+    if (found && found.cubism === 'cubism4' && found.meta && !found.meta.has_core) {
+      const fallback = completeC4[0]
+      if (fallback) {
+        bus.emit('ui:toast', {
+          kind: 'warn',
+          message: `「${found.dir}」缺失关键文件（${found.meta.reason ?? '未知'}）。已自动切到「${fallback.dir}」`,
+          ttl_ms: 6000,
+        })
+        await cfg.saveAvatar({ model_dir: fallback.dir, model_file: fallback.model_file })
+        found = fallback
+      }
+    }
+
+    if (!found) found = completeC4[0] ?? anyC4[0] ?? cfg.models[0]
 
     if (!found) {
       status.value = 'error'

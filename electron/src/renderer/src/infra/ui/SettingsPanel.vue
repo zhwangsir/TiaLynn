@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import type { RuntimeConfig } from '@shared/types'
@@ -41,6 +41,11 @@ function loadFromStore(): void {
 
 // 初始化：拷一份 store 当前值
 loadFromStore()
+
+// 打开面板时自动 rescan，确保 model meta 是最新的（v0.6.9 加了 meta 字段）
+onMounted(() => {
+  void cfg.rescanModels()
+})
 
 // 用户没动过表单时，store 变化可以镜像回 form（避免显示陈旧值）
 watch(
@@ -170,21 +175,56 @@ const providerOptions = [
   { v: 'ollama', label: 'Ollama 本地' },
 ] as const
 
-const modelOptions = computed(() =>
-  // cubism4 在前 + 标注；cubism2 灰掉（当前版本未接 cubism2 runtime）
-  [...cfg.models]
-    .sort((a, b) => {
-      if (a.cubism === b.cubism) return a.display.localeCompare(b.display)
-      return a.cubism === 'cubism4' ? -1 : 1
+const showIncomplete = ref(false)
+
+const modelOptions = computed(() => {
+  const list = [...cfg.models]
+  list.sort((a, b) => {
+    // 完整 cubism4 优先 → 不完整 cubism4 → cubism2
+    const score = (m: typeof a): number => {
+      if (m.cubism !== 'cubism4') return 2
+      return m.meta?.complete ? 0 : 1
+    }
+    const sa = score(a)
+    const sb = score(b)
+    if (sa !== sb) return sa - sb
+    return a.display.localeCompare(b.display)
+  })
+
+  return list
+    .filter((m) => {
+      if (showIncomplete.value) return true
+      // 默认只显示「完整 cubism4」
+      return m.cubism === 'cubism4' && m.meta?.complete
     })
-    .map((m) => ({
-      value: m.dir,
-      label:
-        m.cubism === 'cubism4'
-          ? `${m.display}`
-          : `${m.display}（Cubism 2，暂不支持）`,
-      disabled: m.cubism !== 'cubism4',
-    })),
+    .map((m) => {
+      const isCubism2 = m.cubism !== 'cubism4'
+      const incomplete = !m.meta?.complete
+      let suffix = ''
+      let disabled = false
+      if (isCubism2) {
+        suffix = '（Cubism 2，暂不支持）'
+        disabled = true
+      } else if (incomplete) {
+        suffix = `（${m.meta?.reason ?? '不完整'}）`
+        // 仅 moc/texture 缺失才禁用；"无动作" 仍可加载（只是没动）
+        disabled = !m.meta?.has_core
+      } else {
+        const parts: string[] = []
+        if (m.meta) {
+          if (m.meta.motion_count > 0) parts.push(`${m.meta.motion_count} 动作`)
+          if (m.meta.expression_count > 0) parts.push(`${m.meta.expression_count} 表情`)
+          if (m.meta.has_physics) parts.push('物理')
+        }
+        if (parts.length > 0) suffix = ` · ${parts.join(' · ')}`
+      }
+      return { value: m.dir, label: `${m.display}${suffix}`, disabled }
+    })
+})
+
+const totalCount = computed(() => cfg.models.length)
+const usableCount = computed(
+  () => cfg.models.filter((m) => m.cubism === 'cubism4' && m.meta?.complete).length,
 )
 </script>
 
@@ -242,8 +282,15 @@ const modelOptions = computed(() =>
         <div class="row">
           <button class="ghost" @click="rescan">重扫</button>
           <button class="ghost" @click="openModelsDir">打开模型目录</button>
+          <label class="inline-toggle" :title="`总共扫到 ${totalCount}，可用 ${usableCount}`">
+            <input type="checkbox" v-model="showIncomplete" />
+            显示不完整模型
+          </label>
         </div>
-        <p class="hint">把任意 *.model3.json / *.model.json 的模型目录放到 ~/.tialynn/models / 项目根 / ~/Documents/Live2d-model-master 任一处即可。改完点底部「保存」即生效。</p>
+        <p class="hint">
+          已显示 {{ modelOptions.length }} / 总 {{ totalCount }} · 可用（cubism4 + 含动作）{{ usableCount }}
+          。把任意 *.model3.json 的模型目录放到 ~/.tialynn/models / 项目根 / ~/Documents/Live2d-model-master 任一处。
+        </p>
       </section>
 
       <section>
@@ -452,6 +499,22 @@ footer {
 }
 .spacer {
   flex: 1;
+}
+.inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  grid-template-columns: none;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.inline-toggle input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .save-status {
   font-size: var(--text-xs);
