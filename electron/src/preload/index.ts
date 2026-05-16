@@ -131,6 +131,22 @@ const api: TialynnApi = {
     append: (turn) => invoke('history:append', turn) as Promise<{ ok: boolean }>,
     clear: () => invoke('history:clear') as Promise<{ deleted: number }>,
   },
+  motion: {
+    summarize: (modelDir: string) =>
+      invoke('motion:summarize', modelDir) as ReturnType<TialynnApi['motion']['summarize']>,
+    generate: (payload) =>
+      invoke('motion:generate', payload) as ReturnType<TialynnApi['motion']['generate']>,
+    write: (payload) =>
+      invoke('motion:write', payload) as ReturnType<TialynnApi['motion']['write']>,
+    onWritten: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        ev: { model_json_path: string; motion_relative?: string },
+      ): void => cb(ev)
+      ipcRenderer.on('motion:written', handler)
+      return () => ipcRenderer.off('motion:written', handler)
+    },
+  },
   market: {
     installZip: (zipPath: string) =>
       invoke('market:install-zip', zipPath) as ReturnType<TialynnApi['market']['installZip']>,

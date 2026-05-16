@@ -19,6 +19,7 @@ import type {
   ToolPolicy,
   ToolResult,
 } from './tools'
+import type { ModelMotionSummary, MotionDraft } from './motion'
 
 export interface SystemPaths {
   projectRoot: string
@@ -84,6 +85,23 @@ export interface TialynnApi {
       model: string
     }): Promise<{ ok: boolean; message: string }>
     onChunk(cb: (chunk: IpcStreamChunk) => void): () => void
+  }
+  motion: {
+    summarize(modelDir: string): Promise<ModelMotionSummary>
+    generate(payload: {
+      model_dir: string
+      description: string
+      style?: string
+      examples?: number
+    }): Promise<{ ok: boolean; draft?: MotionDraft; reason?: string }>
+    write(payload: {
+      model_json_path: string
+      draft: MotionDraft
+      group?: string
+    }): Promise<{ ok: boolean; motion_path?: string; reason?: string }>
+    onWritten(
+      cb: (e: { model_json_path: string; motion_relative?: string }) => void,
+    ): () => void
   }
   market: {
     installZip(zipPath: string): Promise<{

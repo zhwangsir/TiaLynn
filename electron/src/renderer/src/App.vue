@@ -8,6 +8,7 @@ import SettingsPanel from './infra/ui/SettingsPanel.vue'
 import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
 import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
+import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
@@ -22,6 +23,7 @@ const approval = useApprovalStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
+const motionFactoryOpen = ref(false)
 const inputOpen = ref(false)
 const pinned = ref(true)
 const menuOpen = ref(false)
@@ -29,10 +31,13 @@ const menuX = ref(0)
 const menuY = ref(0)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
-const passthroughEnabled = computed(() => !settingsOpen.value && !menuOpen.value)
+const passthroughEnabled = computed(
+  () => !settingsOpen.value && !motionFactoryOpen.value && !menuOpen.value,
+)
 
 const menuItems = computed<MenuItem[]>(() => [
   { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '打开对话', icon: iconChat, shortcut: '↵' },
+  { id: 'motion-factory', label: '🎬 动作工坊', icon: iconChat },
   { id: 'settings', label: '设置', icon: iconGear },
   { id: 'reload', label: '重载模型 / 灵魂', icon: iconReload },
   { id: 'sep1', label: '', separator: true },
@@ -58,6 +63,9 @@ async function onMenuSelect(id: string): Promise<void> {
       break
     case 'settings':
       settingsOpen.value = true
+      break
+    case 'motion-factory':
+      motionFactoryOpen.value = true
       break
     case 'reload':
       await cfg.rescanModels()
@@ -191,6 +199,7 @@ onBeforeUnmount(() => {
         @close="closeMenu"
       />
       <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+      <MotionFactoryPanel v-if="motionFactoryOpen" @close="motionFactoryOpen = false" />
       <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>

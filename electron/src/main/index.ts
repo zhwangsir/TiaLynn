@@ -16,6 +16,7 @@ import { registerLlmIpc } from './ipc/llm'
 import { registerSystemIpc } from './ipc/system'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
+import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { getPaths } from './services/paths'
 import { close as closeHistoryDb } from './services/history-store'
 
@@ -50,6 +51,7 @@ app.whenReady().then(() => {
   registerSystemIpc(getMainWindow)
   registerToolIpc(getMainWindow)
   registerMarketIpc(getMainWindow)
+  registerMotionFactoryIpc(getMainWindow)
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })

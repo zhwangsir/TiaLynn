@@ -1,0 +1,231 @@
+/**
+ * motion3.json 与高层 KeyframeTrack 互转。
+ *
+ * Cubism 4 motion3.json Curves[i].Segments 编码：
+ *   起始点: [time0, value0]
+ *   然后每段第 1 个数是 segment_type:
+ *     0 = Linear:        [t, v]
+ *     1 = Bezier:        [cp1_t, cp1_v, cp2_t, cp2_v, end_t, end_v]
+ *     2 = Stepped:       [t, v]
+ *     3 = InverseStepped:[t, v]
+ *
+ * 我们生成的 motion3.json 全部用 type=0 (Linear)，
+ * 这样 LLM 只需输出 keyframes 即可。
+ */
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import type { MotionDraft, KeyframeTrack, ParamInfo, ModelMotionSummary } from '@shared/motion'
+
+interface RawMotion3 {
+  Version: number
+  Meta: {
+    Duration: number
+    Fps: number
+    Loop: boolean
+    CurveCount?: number
+  }
+  Curves: Array<{
+    Target: 'Parameter' | 'PartOpacity' | 'Model'
+    Id: string
+    Segments: number[]
+  }>
+  UserData?: Array<{ Time: number; Value: string }>
+}
+
+interface RawModel3 {
+  Version: number
+  FileReferences: {
+    Moc: string
+    Motions?: Record<string, Array<{ File: string; Name?: string }>>
+  }
+}
+
+/** 把 LLM 输出的 MotionDraft 编码成 motion3.json 字符串 */
+export function draftToMotion3Json(draft: MotionDraft): string {
+  const fps = draft.fps ?? 30
+  let totalSegmentCount = 0
+  let totalPointCount = 0
+
+  const curves = draft.tracks.map((t) => {
+    const seg = trackToSegments(t)
+    totalSegmentCount += seg.segmentCount
+    totalPointCount += seg.pointCount
+    return {
+      Target: 'Parameter' as const,
+      Id: t.param,
+      Segments: seg.segments,
+    }
+  })
+
+  const data: RawMotion3 = {
+    Version: 3,
+    Meta: {
+      Duration: draft.duration,
+      Fps: fps,
+      Loop: draft.loop,
+      CurveCount: curves.length,
+    },
+    Curves: curves,
+    ...(draft.description
+      ? { UserData: [{ Time: 0, Value: draft.description }] }
+      : {}),
+  }
+  // @ts-expect-error 补充 Meta 额外字段
+  data.Meta.AreBeziersRestricted = true
+  // @ts-expect-error
+  data.Meta.TotalSegmentCount = totalSegmentCount
+  // @ts-expect-error
+  data.Meta.TotalPointCount = totalPointCount
+  // @ts-expect-error
+  data.Meta.UserDataCount = draft.description ? 1 : 0
+  // @ts-expect-error
+  data.Meta.TotalUserDataSize = draft.description?.length ?? 0
+
+  return JSON.stringify(data, null, 2)
+}
+
+/** 一条轨道 → segments 数组 */
+function trackToSegments(t: KeyframeTrack): {
+  segments: number[]
+  segmentCount: number
+  pointCount: number
+} {
+  if (t.keyframes.length === 0) {
+    return { segments: [0, 0], segmentCount: 0, pointCount: 1 }
+  }
+  const sorted = [...t.keyframes].sort((a, b) => a[0] - b[0])
+  const out: number[] = [sorted[0][0], sorted[0][1]]
+  let segCount = 0
+  for (let i = 1; i < sorted.length; i++) {
+    out.push(0, sorted[i][0], sorted[i][1]) // type=0 Linear
+    segCount++
+  }
+  return { segments: out, segmentCount: segCount, pointCount: sorted.length }
+}
+
+/** 解析 motion3.json → 提取参数 id + 估算值范围 */
+export function parseMotion3(filePath: string): {
+  duration: number
+  loop: boolean
+  params: Map<string, { min: number; max: number; count: number }>
+} | null {
+  if (!existsSync(filePath)) return null
+  let raw: RawMotion3
+  try {
+    raw = JSON.parse(readFileSync(filePath, 'utf-8')) as RawMotion3
+  } catch {
+    return null
+  }
+  const params = new Map<string, { min: number; max: number; count: number }>()
+  for (const curve of raw.Curves) {
+    if (curve.Target !== 'Parameter') continue
+    const seg = curve.Segments
+    // 遍历所有 (time, value) 对取 value 极值
+    // 起始点
+    if (seg.length >= 2) updateParam(params, curve.Id, seg[1])
+    // 之后每段
+    let i = 2
+    while (i < seg.length) {
+      const type = seg[i]
+      if (type === 0 || type === 2 || type === 3) {
+        // 2 数 [t, v]
+        if (i + 2 < seg.length) updateParam(params, curve.Id, seg[i + 2])
+        i += 3
+      } else if (type === 1) {
+        // 6 数 [c1t, c1v, c2t, c2v, et, ev]
+        if (i + 6 < seg.length) updateParam(params, curve.Id, seg[i + 6])
+        i += 7
+      } else {
+        i++
+      }
+    }
+  }
+  return { duration: raw.Meta.Duration, loop: raw.Meta.Loop, params }
+}
+
+function updateParam(
+  map: Map<string, { min: number; max: number; count: number }>,
+  id: string,
+  value: number,
+): void {
+  if (!Number.isFinite(value)) return
+  const cur = map.get(id)
+  if (!cur) map.set(id, { min: value, max: value, count: 1 })
+  else {
+    cur.min = Math.min(cur.min, value)
+    cur.max = Math.max(cur.max, value)
+    cur.count++
+  }
+}
+
+/**
+ * 给定模型目录，扫描所有 motion3.json，汇总：
+ * - 每个 motion 的 duration / loop / 用到的 param
+ * - 整个模型用过的所有 param + min/max
+ */
+export function summarizeModelMotions(modelDir: string): ModelMotionSummary {
+  const model3 = findFirst(modelDir, /\.model3\.json$/i)
+  if (!model3) {
+    return { model_dir: modelDir, motions: [], params: [] }
+  }
+  let json: RawModel3
+  try {
+    json = JSON.parse(readFileSync(model3, 'utf-8')) as RawModel3
+  } catch {
+    return { model_dir: modelDir, motions: [], params: [] }
+  }
+  const base = dirname(model3)
+  const motionEntries: Array<{ name: string; file: string }> = []
+  if (json.FileReferences.Motions) {
+    for (const [group, arr] of Object.entries(json.FileReferences.Motions)) {
+      for (const m of arr) {
+        motionEntries.push({
+          name: m.Name ?? `${group}/${motionEntries.length}`,
+          file: m.File,
+        })
+      }
+    }
+  }
+
+  const motions: ModelMotionSummary['motions'] = []
+  const allParams = new Map<string, { min: number; max: number; count: number }>()
+  for (const e of motionEntries) {
+    const abs = join(base, e.file)
+    const parsed = parseMotion3(abs)
+    if (!parsed) continue
+    motions.push({
+      name: e.name,
+      file: e.file,
+      duration: parsed.duration,
+      loop: parsed.loop,
+      params: [...parsed.params.keys()],
+    })
+    for (const [id, range] of parsed.params) {
+      const cur = allParams.get(id)
+      if (!cur) allParams.set(id, { ...range })
+      else {
+        cur.min = Math.min(cur.min, range.min)
+        cur.max = Math.max(cur.max, range.max)
+        cur.count += range.count
+      }
+    }
+  }
+
+  const params: ParamInfo[] = [...allParams.entries()]
+    .map(([id, r]) => ({ id, usage_count: r.count, min: r.min, max: r.max }))
+    .sort((a, b) => b.usage_count - a.usage_count)
+
+  return { model_dir: modelDir, motions, params }
+}
+
+function findFirst(dir: string, pattern: RegExp): string | null {
+  const fs = require('node:fs') as typeof import('node:fs')
+  try {
+    for (const e of fs.readdirSync(dir)) {
+      if (pattern.test(e)) return join(dir, e)
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
