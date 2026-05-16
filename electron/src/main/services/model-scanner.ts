@@ -80,8 +80,19 @@ interface ModelMeta {
 }
 
 /**
+ * pixi-live2d-display 内部用 new URL(relPath, baseUrl) 解析资源，
+ * `#` 会被 URL 标准当成 fragment 分隔符 → 路径被截断 → 加载失败。
+ * 同理 `?` 是 search 分隔符。这种文件名我们无法用 file:// 加载。
+ *
+ * 检测引用字符串本身是否含这些字符（路径里有空格、中文 OK；只防 # 和 ?）。
+ */
+function isUrlSafe(ref: string): boolean {
+  return !ref.includes('#') && !ref.includes('?')
+}
+
+/**
  * 解析 Cubism 4 settings (.model3.json) — 验证 moc + textures + motions 都到位。
- * 完整 = has_core (moc3 存在) && has_motions (至少 1 个 motion)
+ * 完整 = has_core (moc3 存在 + texture 引用全部 URL-safe) && has_motions
  */
 function probeModel3(modelPath: string): ModelMeta {
   const reasons: string[] = []
@@ -99,36 +110,48 @@ function probeModel3(modelPath: string): ModelMeta {
     }
     const refs = json.FileReferences ?? {}
     const mocPath = refs.Moc ? resolve(base, refs.Moc) : null
-    const mocOk = !!mocPath && existsSync(mocPath)
-    if (!mocOk) reasons.push('moc3 缺失')
+    const mocOk = !!mocPath && existsSync(mocPath) && (refs.Moc ? isUrlSafe(refs.Moc) : false)
+    if (!mocOk) {
+      if (refs.Moc && !isUrlSafe(refs.Moc)) reasons.push('moc 文件名含 # 或 ?')
+      else reasons.push('moc3 缺失')
+    }
 
-    const texturesOk =
-      Array.isArray(refs.Textures) &&
-      refs.Textures.length > 0 &&
-      refs.Textures.some((t) => existsSync(resolve(base, t)))
-    if (!texturesOk) reasons.push('texture 缺失')
+    const textures = Array.isArray(refs.Textures) ? refs.Textures : []
+    const hasAnyTexture = textures.length > 0 && textures.some((t) => existsSync(resolve(base, t)))
+    const allTexturesUrlSafe = textures.every(isUrlSafe)
+    const texturesOk = hasAnyTexture && allTexturesUrlSafe
+    if (!hasAnyTexture) reasons.push('texture 缺失')
+    else if (!allTexturesUrlSafe) reasons.push('texture 文件名含 # 或 ?')
 
     let motionCount = 0
+    let motionsAllUrlSafe = true
     if (refs.Motions && typeof refs.Motions === 'object') {
       for (const arr of Object.values(refs.Motions)) {
         if (Array.isArray(arr)) {
           for (const m of arr) {
-            if (m.File && existsSync(resolve(base, m.File))) motionCount++
+            if (m.File && existsSync(resolve(base, m.File))) {
+              if (!isUrlSafe(m.File)) motionsAllUrlSafe = false
+              else motionCount++
+            }
           }
         }
       }
     }
     if (motionCount === 0) reasons.push('无动作')
+    if (!motionsAllUrlSafe) reasons.push('motion 文件名含 # 或 ?')
 
     const expressionCount =
       Array.isArray(refs.Expressions)
-        ? refs.Expressions.filter((e) => e.File && existsSync(resolve(base, e.File))).length
+        ? refs.Expressions.filter(
+            (e) => e.File && existsSync(resolve(base, e.File)) && isUrlSafe(e.File),
+          ).length
         : 0
 
-    const hasPhysics = !!refs.Physics && existsSync(resolve(base, refs.Physics))
+    const hasPhysics =
+      !!refs.Physics && existsSync(resolve(base, refs.Physics)) && isUrlSafe(refs.Physics)
 
     const hasCore = mocOk && texturesOk
-    const hasMotions = motionCount > 0
+    const hasMotions = motionCount > 0 && motionsAllUrlSafe
     return {
       has_core: hasCore,
       has_motions: hasMotions,
