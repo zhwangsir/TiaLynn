@@ -6,6 +6,7 @@
  */
 import { ipcMain, type BrowserWindow } from 'electron'
 import type { ChatMessage, ChatOptions, IpcStreamChunk, LlmProvider } from '@shared/types'
+import type { ToolDefinition } from '@shared/tools'
 import { buildProvider } from '../services/llm'
 import { loadConfig } from '../services/config-store'
 
@@ -21,6 +22,8 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
         messages: ChatMessage[]
         options?: Partial<ChatOptions>
         provider_override?: { provider?: LlmProvider; endpoint?: string; api_key?: string; model?: string }
+        tools?: ToolDefinition[]
+        tool_results?: Array<{ tool_use_id: string; content: string; is_error?: boolean }>
       },
     ) => {
       const cfg = loadConfig()
@@ -53,6 +56,12 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
               fullText += evt.delta
               send({ streamId: payload.streamId, delta: evt.delta })
             }
+            if (evt.tool_use) {
+              send({ streamId: payload.streamId, tool_use: evt.tool_use })
+            }
+            if (evt.needs_tools) {
+              send({ streamId: payload.streamId, needs_tools: true })
+            }
             if (evt.error) {
               send({ streamId: payload.streamId, error: evt.error })
             }
@@ -61,6 +70,7 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
             }
           },
           abort.signal,
+          { tools: payload.tools, tool_results: payload.tool_results },
         )
         return { ok: true }
       } catch (e) {

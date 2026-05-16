@@ -2,7 +2,7 @@
  * OpenAI-compatible chat completions streaming（覆盖 OpenAI / SiliconFlow / DeepSeek / 任意自建 OAI 兼容服务）。
  */
 import type { ChatMessage, ChatOptions } from '@shared/types'
-import type { ChatStreamCallback, LlmProviderImpl } from './types'
+import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 import { consumeSse } from './anthropic'
 
 export class OpenAiCompatProvider implements LlmProviderImpl {
@@ -20,6 +20,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     options: ChatOptions,
     onEvent: ChatStreamCallback,
     abortSignal?: AbortSignal,
+    _extra?: ChatExtraOptions, // v0.6.4 暂不支持 tools（Anthropic 优先）
   ): Promise<void> {
     const url = `${this.endpoint.replace(/\/+$/, '')}/v1/chat/completions`
     const body = {

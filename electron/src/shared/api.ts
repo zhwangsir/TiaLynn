@@ -11,6 +11,14 @@ import type {
   RuntimeConfig,
   SoulConfig,
 } from './types'
+import type {
+  ApprovalDecision,
+  ApprovalRequest,
+  ToolDefinition,
+  ToolInvocation,
+  ToolPolicy,
+  ToolResult,
+} from './tools'
 
 export interface SystemPaths {
   projectRoot: string
@@ -65,6 +73,8 @@ export interface TialynnApi {
       messages: ChatMessage[]
       options?: Partial<ChatOptions>
       provider_override?: { provider?: LlmProvider; endpoint?: string; api_key?: string; model?: string }
+      tools?: ToolDefinition[]
+      tool_results?: Array<{ tool_use_id: string; content: string; is_error?: boolean }>
     }): Promise<{ ok: boolean; reason?: string }>
     abort(streamId: string): Promise<{ ok: boolean }>
     test(payload: {
@@ -74,6 +84,18 @@ export interface TialynnApi {
       model: string
     }): Promise<{ ok: boolean; message: string }>
     onChunk(cb: (chunk: IpcStreamChunk) => void): () => void
+  }
+  tools: {
+    list(): Promise<ToolDefinition[]>
+    run(call: ToolInvocation): Promise<ToolResult>
+    policyGet(): Promise<ToolPolicy>
+    policySet(payload: {
+      tool_name: string
+      decision: 'always_allow' | 'always_deny' | null
+    }): Promise<ToolPolicy>
+    policyClear(): Promise<ToolPolicy>
+    onApprovalRequest(cb: (req: ApprovalRequest) => void): () => void
+    sendApprovalDecision(payload: { invocation_id: string; decision: ApprovalDecision }): void
   }
   tts: {
     speak(payload: { text: string; voice?: string; emotion?: string }): Promise<{

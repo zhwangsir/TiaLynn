@@ -1,18 +1,32 @@
 /**
- * 对话 store —— 历史 + 流式控制 + 事件分发。
+ * 对话 store —— 历史 + 流式控制 + 工具调用 loop。
+ *
+ * 工具调用流程：
+ *   1. 第一轮：用户 message + tools 定义 → LLM 返回 text + 0~n 个 tool_use
+ *   2. 若收到 needs_tools：依次执行 tool_use（IPC tools:run，含审批）→ 收集 results
+ *   3. 后续轮：把上一轮 tool_results 作为 extra 再调 LLM；直到没有 needs_tools
+ *   4. 最终把累计的 text 当作 assistant.text，emotion/intensity 用 parseReply
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ChatMessage, EmotionId, IpcStreamChunk } from '@shared/types'
+import type { ToolDefinition } from '@shared/tools'
 import { useConfigStore } from '../../infra/stores/config'
 import { bus } from '../../infra/eventbus'
 import { parsePartialText, parseReply } from '../parser'
 import type { DialogTurn } from '../types'
 
 const MAX_HISTORY = 40
+const MAX_TOOL_ROUNDS = 6 // 防止 LLM 自循环
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+interface ToolUseRecord {
+  id: string
+  name: string
+  input: Record<string, unknown>
 }
 
 export const useDialogStore = defineStore('dialog', () => {
@@ -20,13 +34,26 @@ export const useDialogStore = defineStore('dialog', () => {
   const replying = ref(false)
   const currentStreamId = ref<string | null>(null)
   const partialBuffer = ref<string>('')
+  const availableTools = ref<ToolDefinition[]>([])
+
+  /** 本轮 LLM 产生的所有 tool_use（按顺序） */
+  let pendingToolUses: ToolUseRecord[] = []
+  /** 本轮是否被 stop_reason='tool_use' 标记，决定流结束后是否继续 loop */
+  let pendingNeedsTools = false
+  /** 跨轮累积的纯文本（用于 parseReply 最终落地） */
+  let accumulatedText = ''
+  /** 当前 active assistant turn id（多轮 tool loop 共用同一个 turn） */
+  let activeAssistantId: string | null = null
+  /** tool round 计数 */
+  let toolRound = 0
 
   let unsubChunk: (() => void) | null = null
+  let pendingResolve: (() => void) | null = null
 
   async function bootstrap(): Promise<void> {
-    if (unsubChunk) return
-    unsubChunk = window.api.llm.onChunk((chunk) => handleChunk(chunk))
-    // 恢复最近 50 条
+    if (!unsubChunk) {
+      unsubChunk = window.api.llm.onChunk((chunk) => handleChunk(chunk))
+    }
     try {
       const rows = await window.api.history.listRecent(50)
       if (rows.length > 0) {
@@ -42,6 +69,12 @@ export const useDialogStore = defineStore('dialog', () => {
       }
     } catch (e) {
       console.warn('[dialog] history restore failed:', e)
+    }
+    // 拉取 tools，供 LLM 用
+    try {
+      availableTools.value = await window.api.tools.list()
+    } catch (e) {
+      console.warn('[dialog] tools.list failed:', e)
     }
   }
 
@@ -70,7 +103,7 @@ export const useDialogStore = defineStore('dialog', () => {
     const cfg = useConfigStore()
     const system = cfg.systemPrompt
     const history: ChatMessage[] = turns.value
-      .filter((t) => !t.error && t.role !== 'system')
+      .filter((t) => !t.error && t.role !== 'system' && t.id !== activeAssistantId)
       .slice(-MAX_HISTORY)
       .map((t) => ({ role: t.role, content: t.text }))
     return [
@@ -102,32 +135,142 @@ export const useDialogStore = defineStore('dialog', () => {
       streaming: true,
     }
     turns.value.push(userTurn, assistantTurn)
+    activeAssistantId = assistantTurn.id
     void persist(userTurn)
     bus.emit('brain:chat-input', { text: userTurn.text })
 
+    replying.value = true
+    toolRound = 0
+    accumulatedText = ''
+    pendingToolUses = []
+    pendingNeedsTools = false
+
+    const messages = buildMessages(userTurn.text)
+    await runOneRound(messages, undefined)
+    await loopUntilDone(messages, assistantTurn, cfg.config.llm_provider === 'anthropic')
+
+    finalizeAssistant(assistantTurn)
+  }
+
+  /** 工具 loop：在主流结束后若 needs_tools，执行 → 续 LLM 直到结束或超限 */
+  async function loopUntilDone(
+    baseMessages: ChatMessage[],
+    assistant: DialogTurn,
+    toolsCapable: boolean,
+  ): Promise<void> {
+    while (toolsCapable && pendingNeedsTools && pendingToolUses.length > 0) {
+      if (++toolRound > MAX_TOOL_ROUNDS) {
+        bus.emit('ui:toast', {
+          kind: 'warn',
+          message: `工具调用轮数超过 ${MAX_TOOL_ROUNDS}，已强制停止`,
+          ttl_ms: 6000,
+        })
+        break
+      }
+      const calls = pendingToolUses
+      pendingToolUses = []
+      pendingNeedsTools = false
+
+      const results = await runTools(calls)
+      // 把当前累积文本作为 assistant 中间显示（让用户看到 "正在用工具…"）
+      assistant.text = accumulatedText + (accumulatedText ? '\n\n' : '') + buildToolBanner(calls)
+      await runOneRound(baseMessages, results)
+    }
+  }
+
+  function buildToolBanner(calls: ToolUseRecord[]): string {
+    return calls.map((c) => `（正在用：${c.name}）`).join(' ')
+  }
+
+  async function runTools(calls: ToolUseRecord[]): Promise<
+    Array<{ tool_use_id: string; content: string; is_error?: boolean }>
+  > {
+    const results: Array<{ tool_use_id: string; content: string; is_error?: boolean }> = []
+    for (const call of calls) {
+      try {
+        const r = await window.api.tools.run({
+          invocation_id: call.id,
+          tool_name: call.name,
+          input: call.input,
+        })
+        if (r.ok) {
+          results.push({ tool_use_id: call.id, content: r.output ?? '(empty output)' })
+        } else {
+          results.push({
+            tool_use_id: call.id,
+            content: r.error ?? '(unknown error)',
+            is_error: true,
+          })
+        }
+      } catch (e) {
+        results.push({
+          tool_use_id: call.id,
+          content: e instanceof Error ? e.message : String(e),
+          is_error: true,
+        })
+      }
+    }
+    return results
+  }
+
+  async function runOneRound(
+    messages: ChatMessage[],
+    toolResults?: Array<{ tool_use_id: string; content: string; is_error?: boolean }>,
+  ): Promise<void> {
+    const cfg = useConfigStore()
+    if (!cfg.config) return
     const streamId = uid()
     currentStreamId.value = streamId
     partialBuffer.value = ''
-    replying.value = true
+
+    const done = new Promise<void>((resolve) => {
+      pendingResolve = resolve
+    })
 
     const result = await window.api.llm.chatStream({
       streamId,
-      messages: buildMessages(userTurn.text),
+      messages,
       options: { model: cfg.config.llm_model, temperature: 0.8 },
+      tools: cfg.config.llm_provider === 'anthropic' ? availableTools.value : undefined,
+      tool_results: toolResults,
     })
 
     if (!result.ok) {
-      const t = turns.value.find((x) => x.id === assistantTurn.id)
       const reason = result.reason ?? 'failed'
+      const t = turns.value.find((x) => x.id === activeAssistantId)
       if (t) {
         t.streaming = false
         t.error = reason
         t.text = `（出错：${reason}）`
       }
-      currentStreamId.value = null
       replying.value = false
+      currentStreamId.value = null
+      pendingResolve?.()
+      pendingResolve = null
       bus.emit('ui:toast', { kind: 'error', message: `对话失败：${reason}`, ttl_ms: 8000 })
+      return
     }
+
+    await done
+  }
+
+  function finalizeAssistant(assistant: DialogTurn): void {
+    const parsed = parseReply(accumulatedText || assistant.text)
+    assistant.text = parsed.text || assistant.text
+    assistant.emotion = parsed.emotion
+    assistant.intensity = parsed.intensity
+    assistant.streaming = false
+    void persist(assistant)
+    bus.emit('brain:reply-end', {
+      stream_id: currentStreamId.value ?? '',
+      full_text: assistant.text,
+      emotion: parsed.emotion,
+      intensity: parsed.intensity,
+    })
+    bus.emit('brain:emotion-changed', { emotion: parsed.emotion, intensity: parsed.intensity })
+    replying.value = false
+    currentStreamId.value = null
+    activeAssistantId = null
   }
 
   function abort(): void {
@@ -137,15 +280,22 @@ export const useDialogStore = defineStore('dialog', () => {
 
   function handleChunk(chunk: IpcStreamChunk): void {
     if (chunk.streamId !== currentStreamId.value) return
-    const assistant = turns.value[turns.value.length - 1]
+    const assistant = turns.value.find((t) => t.id === activeAssistantId)
     if (!assistant || assistant.role !== 'assistant') return
 
     if (chunk.delta) {
       partialBuffer.value += chunk.delta
+      accumulatedText += chunk.delta
       const partial = parsePartialText(partialBuffer.value)
       if (partial) assistant.text = partial
-      else assistant.text = partialBuffer.value // 协议没遵守时也展示
+      else assistant.text = accumulatedText
       bus.emit('brain:reply-token', { stream_id: chunk.streamId, delta: chunk.delta })
+    }
+    if (chunk.tool_use) {
+      pendingToolUses.push(chunk.tool_use)
+    }
+    if (chunk.needs_tools) {
+      pendingNeedsTools = true
     }
     if (chunk.error) {
       assistant.error = chunk.error
@@ -154,21 +304,8 @@ export const useDialogStore = defineStore('dialog', () => {
       bus.emit('ui:toast', { kind: 'error', message: chunk.error, ttl_ms: 8000 })
     }
     if (chunk.done) {
-      const parsed = parseReply(chunk.full_text ?? partialBuffer.value)
-      assistant.text = parsed.text
-      assistant.emotion = parsed.emotion
-      assistant.intensity = parsed.intensity
-      assistant.streaming = false
-      void persist(assistant)
-      bus.emit('brain:reply-end', {
-        stream_id: chunk.streamId,
-        full_text: parsed.text,
-        emotion: parsed.emotion,
-        intensity: parsed.intensity,
-      })
-      bus.emit('brain:emotion-changed', { emotion: parsed.emotion, intensity: parsed.intensity })
-      replying.value = false
-      currentStreamId.value = null
+      pendingResolve?.()
+      pendingResolve = null
     }
   }
 
@@ -199,6 +336,7 @@ export const useDialogStore = defineStore('dialog', () => {
   return {
     turns,
     replying,
+    availableTools,
     bootstrap,
     teardown,
     send,

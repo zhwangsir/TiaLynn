@@ -2,7 +2,7 @@
  * Ollama 本地 LLM provider —— /api/chat streaming（NDJSON）。
  */
 import type { ChatMessage, ChatOptions } from '@shared/types'
-import type { ChatStreamCallback, LlmProviderImpl } from './types'
+import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 
 export class OllamaProvider implements LlmProviderImpl {
   readonly name = 'ollama' as const
@@ -16,6 +16,7 @@ export class OllamaProvider implements LlmProviderImpl {
     options: ChatOptions,
     onEvent: ChatStreamCallback,
     abortSignal?: AbortSignal,
+    _extra?: ChatExtraOptions,
   ): Promise<void> {
     const url = `${this.endpoint.replace(/\/+$/, '')}/api/chat`
     const body = {

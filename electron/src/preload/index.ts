@@ -11,6 +11,7 @@ import type {
   LlmProvider,
   RuntimeConfig,
 } from '@shared/types'
+import type { ApprovalRequest } from '@shared/tools'
 import type { TialynnApi } from '@shared/api'
 
 interface ChunkListener {
@@ -106,6 +107,21 @@ const api: TialynnApi = {
     listRecent: (limit) => ipcRenderer.invoke('history:list-recent', limit),
     append: (turn) => ipcRenderer.invoke('history:append', turn),
     clear: () => ipcRenderer.invoke('history:clear'),
+  },
+  tools: {
+    list: () => ipcRenderer.invoke('tools:list'),
+    run: (call) => ipcRenderer.invoke('tools:run', call),
+    policyGet: () => ipcRenderer.invoke('tools:policy-get'),
+    policySet: (payload) => ipcRenderer.invoke('tools:policy-set', payload),
+    policyClear: () => ipcRenderer.invoke('tools:policy-clear'),
+    onApprovalRequest: (cb): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, req: ApprovalRequest): void => cb(req)
+      ipcRenderer.on('tools:approval-request', handler)
+      return () => ipcRenderer.off('tools:approval-request', handler)
+    },
+    sendApprovalDecision: (payload) => {
+      ipcRenderer.send('tools:approval-decision', payload)
+    },
   },
 }
 

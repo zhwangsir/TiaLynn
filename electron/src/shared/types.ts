@@ -77,6 +77,14 @@ export interface IpcStreamChunk {
   full_text?: string
   emotion?: string
   intensity?: number
+  /** LLM 发起的工具调用（流式期间，可能多个） */
+  tool_use?: {
+    id: string
+    name: string
+    input: Record<string, unknown>
+  }
+  /** 该轮 stop_reason 是 tool_use，提示 renderer 需要执行工具并续轮 */
+  needs_tools?: boolean
 }
 
 export type EmotionId =

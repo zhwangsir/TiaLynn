@@ -14,6 +14,7 @@ import { createMainWindow } from './windows/main-window'
 import { registerWindowControlIpc } from './ipc/window-control'
 import { registerLlmIpc } from './ipc/llm'
 import { registerSystemIpc } from './ipc/system'
+import { registerToolIpc } from './ipc/tools'
 import { getPaths } from './services/paths'
 import { close as closeHistoryDb } from './services/history-store'
 
@@ -46,6 +47,7 @@ app.whenReady().then(() => {
   registerWindowControlIpc(getMainWindow)
   registerLlmIpc(getMainWindow)
   registerSystemIpc(getMainWindow)
+  registerToolIpc(getMainWindow)
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })

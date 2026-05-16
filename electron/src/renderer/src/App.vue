@@ -7,15 +7,18 @@ import ContextMenu, { type MenuItem } from './infra/ui/ContextMenu.vue'
 import SettingsPanel from './infra/ui/SettingsPanel.vue'
 import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
 import ToastStack from './infra/ui/ToastStack.vue'
+import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
 import { useSpeechStore } from './presence/stores/speech'
+import { useApprovalStore } from './hands/approval-store'
 import { bus } from './infra/eventbus'
 
 const cfg = useConfigStore()
 const dialog = useDialogStore()
 const speech = useSpeechStore()
+const approval = useApprovalStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
@@ -88,6 +91,7 @@ onMounted(async () => {
   await cfg.bootstrap()
   await dialog.bootstrap()
   speech.bootstrap()
+  approval.bootstrap()
   dialog.injectGreeting()
   ready.value = true
 
@@ -122,6 +126,7 @@ onBeforeUnmount(() => {
         @close="closeMenu"
       />
       <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+      <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
       <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
