@@ -5,7 +5,7 @@
 //!       每条 fact 调 embedding → 写入 memories 表。
 
 use crate::brain::memory::embed;
-use crate::brain::providers::openai_compat::{ChatMessage, ChatOptions, LlmProvider, OpenAiCompatProvider};
+use crate::brain::providers::{build_provider, ChatMessage, ChatOptions};
 use crate::infra::error::{AppError, AppResult};
 use crate::AppState;
 use futures_util::StreamExt;
@@ -56,8 +56,9 @@ pub async fn memory_distill(
          若没有值得记忆的内容，输出 []。不要任何额外解释。",
     );
 
-    let provider = OpenAiCompatProvider::new(
-        cfg.llm_endpoint.clone(),
+    let provider = build_provider(
+        &cfg.llm_provider,
+        &cfg.llm_endpoint,
         if cfg.llm_api_key.is_empty() {
             None
         } else {

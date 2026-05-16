@@ -1,23 +1,22 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useConfigStore, type ConfigDto } from '@/infra/stores/config'
+import { useSoulStore } from '@/brain/stores/soul'
 
 const open = ref(false)
 const activeTab = ref<'llm' | 'model' | 'behavior' | 'tts' | 'system'>('llm')
 const config = useConfigStore()
+const soul = useSoulStore()
 
 const EMOTIONS = ['neutral', 'happy', 'shy', 'angry', 'sad', 'sleepy', 'possessive'] as const
 
 const form = reactive<ConfigDto>({
+  llm_provider: 'openai_compat',
   llm_endpoint: '',
   llm_model: '',
   llm_api_key: '',
   tts_provider: 'sidecar',
   tts_sidecar_url: 'http://127.0.0.1:5050',
-  live2d_model_dir: 'HuTao-Live2D',
-  live2d_model_file: 'Hu Tao.model3.json',
-  live2d_scale: 0.35,
-  live2d_offset_y: 50,
   idle_min_sec: 8,
   idle_max_sec: 15,
   autocomment_interval_sec: 300,
@@ -26,16 +25,10 @@ const form = reactive<ConfigDto>({
   emotion_voice_map: {},
   embedding_endpoint: '',
   embedding_model: 'text-embedding-3-small',
-  motion_enabled: true,
-  motion_min_sec: 90,
-  motion_max_sec: 300,
-  motion_speed: 1.0,
-  extra_model_dirs: [],
 })
 
 const dirty = ref(false)
 const clearedHint = ref<string | null>(null)
-
 const distillResult = ref<string | null>(null)
 
 onMounted(async () => {
@@ -44,35 +37,14 @@ onMounted(async () => {
     config.scanModels(),
     config.loadSidecarStatus(),
     config.loadVoices(),
+    config.listSearchPaths(),
   ])
   if (config.config) Object.assign(form, config.config)
-  // 确保所有情绪都在 emotion_voice_map 里有 key
   if (!form.emotion_voice_map) form.emotion_voice_map = {}
   for (const e of EMOTIONS) {
     if (!form.emotion_voice_map[e]) form.emotion_voice_map[e] = 'edge_xiaoxiao'
   }
 })
-
-async function onStartSidecar() {
-  await config.startSidecar()
-  await config.loadVoices()
-}
-async function onStopSidecar() {
-  await config.stopSidecar()
-}
-async function onRefreshSidecar() {
-  await config.loadSidecarStatus()
-  await config.loadVoices()
-}
-async function onRegisterExampleVoices() {
-  await config.registerExampleVoices()
-}
-async function onDistill() {
-  distillResult.value = '凝练中…'
-  const n = await config.distill()
-  distillResult.value = n > 0 ? `已写入 ${n} 条长期记忆` : '没有值得记忆的新内容'
-  setTimeout(() => (distillResult.value = null), 4000)
-}
 
 watch(
   () => config.config,
@@ -87,6 +59,13 @@ watch(
 watch(form, () => {
   dirty.value = true
 })
+
+watch(
+  () => [form.idle_min_sec, form.idle_max_sec],
+  ([min, max]) => {
+    if (max < min) form.idle_max_sec = min
+  },
+)
 
 async function onSave() {
   await config.save({ ...form })
@@ -105,20 +84,23 @@ async function onClearHistory() {
   setTimeout(() => (clearedHint.value = null), 3000)
 }
 
+async function onDistill() {
+  distillResult.value = '凝练中…'
+  const n = await config.distill()
+  distillResult.value = n > 0 ? `已写入 ${n} 条长期记忆` : '没有值得记忆的新内容'
+  setTimeout(() => (distillResult.value = null), 4000)
+}
+
 async function onRevealData() {
   await config.revealDataDir()
 }
-
 async function onRevealModels() {
   await config.revealModelsDir()
-  // 模型可能刚被添加，重新扫描
   setTimeout(() => config.scanModels(), 200)
 }
-
 async function onRescanModels() {
   await config.scanModels()
 }
-
 async function onAddModelSearchPath() {
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
@@ -135,38 +117,30 @@ async function onAddModelSearchPath() {
     console.warn('[settings] add path failed:', e)
   }
 }
-
 async function onRemoveModelSearchPath(path: string) {
   await config.removeSearchPath(path)
   await config.scanModels()
 }
-
-async function onWalkNow() {
-  // v0.4: 散步功能已砍，留待 M5 重做
-  console.info('[settings] walk_now disabled in v0.4 (M5 will reintroduce)')
+async function onStartSidecar() {
+  await config.startSidecar()
+  await config.loadVoices()
+}
+async function onStopSidecar() {
+  await config.stopSidecar()
+}
+async function onRefreshSidecar() {
+  await config.loadSidecarStatus()
+  await config.loadVoices()
+}
+async function onRegisterExampleVoices() {
+  await config.registerExampleVoices()
 }
 
-function pickModel(m: { dir: string; model_file: string }) {
-  form.live2d_model_dir = m.dir
-  form.live2d_model_file = m.model_file
-}
-
-const isModelSelected = (dir: string, file: string) =>
-  form.live2d_model_dir === dir && form.live2d_model_file === file
-
-// 把 idle min/max 双向约束（max >= min）
-watch(
-  () => form.idle_min_sec,
-  (v) => {
-    if (form.idle_max_sec < v) form.idle_max_sec = v
-  },
-)
-watch(
-  () => form.idle_max_sec,
-  (v) => {
-    if (form.idle_min_sec > v) form.idle_min_sec = v
-  },
-)
+const currentModelDisplay = computed(() => {
+  return soul.config?.appearance?.live2d_model_dir
+    ? `${soul.config.appearance.live2d_model_dir} / ${soul.config.appearance.model_file}`
+    : '(未加载)'
+})
 
 const tabs = computed(() => [
   { id: 'llm' as const, label: 'LLM' },
@@ -246,14 +220,24 @@ function emotionLabel(id: string): string {
 
     <!-- LLM -->
     <section v-show="activeTab === 'llm'">
-      <h3>本地 LLM (OpenAI-compatible)</h3>
+      <h3>本地 / 云端 LLM</h3>
+      <label>Provider</label>
+      <select v-model="form.llm_provider">
+        <option value="openai_compat">OpenAI-compatible（Ollama / vLLM / LM Studio）</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="ollama">Ollama 原生</option>
+      </select>
+
       <label>Endpoint</label>
-      <input v-model="form.llm_endpoint" placeholder="http://192.168.x.x:1234/v1" />
+      <input
+        v-model="form.llm_endpoint"
+        placeholder="OpenAI: http://x:1234/v1 | Claude: https://api.anthropic.com | Ollama: http://127.0.0.1:11434"
+      />
 
       <label>Model</label>
-      <input v-model="form.llm_model" placeholder="qwen2.5:14b / kimi 等" />
+      <input v-model="form.llm_model" placeholder="claude-sonnet-4-6 / qwen2.5:14b / kimi 等" />
 
-      <label>API Key（可选）</label>
+      <label>API Key（Claude 必填，本地可空）</label>
       <input v-model="form.llm_api_key" type="password" placeholder="（无则留空）" />
 
       <div class="actions">
@@ -269,23 +253,22 @@ function emotionLabel(id: string): string {
         v-model="form.embedding_endpoint"
         placeholder="http://192.168.x.x:1234/v1（留空则不启用记忆召回）"
       />
-
       <label>Embedding Model</label>
-      <input v-model="form.embedding_model" placeholder="text-embedding-3-small / bge-m3 等" />
+      <input v-model="form.embedding_model" placeholder="text-embedding-3-small / bge-m3" />
     </section>
 
     <!-- 外观 / 模型 -->
     <section v-show="activeTab === 'model'">
       <h3>Live2D 模型 <span class="hint-inline">共 {{ config.models.length }} 个</span></h3>
 
+      <div class="hint" style="margin-bottom: 6px">
+        当前：<strong>{{ currentModelDisplay }}</strong><br>
+        v0.4 起：模型选择请编辑 <code>soul/identity.yaml</code> 的 <code>avatar.model_dir/model_file</code>，
+        热重载生效。
+      </div>
+
       <div class="model-list">
-        <div
-          v-for="m in config.models"
-          :key="`${m.root_id}/${m.dir}/${m.model_file}`"
-          class="model-item"
-          :class="{ active: isModelSelected(m.dir, m.model_file) }"
-          @click="pickModel(m)"
-        >
+        <div v-for="m in config.models" :key="`${m.root_id}/${m.dir}/${m.model_file}`" class="model-item">
           <div class="model-name">{{ m.display || m.dir }}</div>
           <div class="model-meta">
             <span class="badge" :class="{ c2: m.cubism === 'cubism2' }">
@@ -297,7 +280,7 @@ function emotionLabel(id: string): string {
           </div>
         </div>
         <div v-if="config.models.length === 0" class="empty">
-          未发现可用模型。可在下方添加"模型搜索路径"。
+          未发现可用模型。下方添加搜索路径。
         </div>
       </div>
 
@@ -307,100 +290,25 @@ function emotionLabel(id: string): string {
         <button class="ghost" type="button" @click="onAddModelSearchPath">+ 添加搜索路径</button>
       </div>
 
-      <div v-if="(config.config?.extra_model_dirs?.length ?? 0) > 0" style="margin-top: 12px">
+      <div v-if="config.searchPaths.length > 0" style="margin-top: 12px">
         <h3 style="font-size: 11px">已添加的搜索路径</h3>
-        <div
-          v-for="p in config.config?.extra_model_dirs ?? []"
-          :key="p"
-          class="path-row"
-        >
+        <div v-for="p in config.searchPaths" :key="p" class="path-row">
           <span class="path-text" :title="p">{{ p }}</span>
-          <button
-            class="path-remove"
-            type="button"
-            title="移除"
-            @click="onRemoveModelSearchPath(p)"
-          >
-            ×
-          </button>
+          <button class="path-remove" type="button" title="移除" @click="onRemoveModelSearchPath(p)">×</button>
         </div>
         <div class="hint" style="margin-top: 6px">
-          注：添加新路径后**需重启 TiaLynn** 让 vite static server 加载新路径
+          注：新增路径后需重启 TiaLynn（vite 静态根仅启动时加载）
         </div>
       </div>
-
-      <label>缩放 ({{ form.live2d_scale.toFixed(2) }})</label>
-      <input
-        v-model.number="form.live2d_scale"
-        type="range"
-        min="0.1"
-        max="1.0"
-        step="0.01"
-      />
-
-      <label>垂直偏移 ({{ form.live2d_offset_y.toFixed(0) }}px)</label>
-      <input
-        v-model.number="form.live2d_offset_y"
-        type="range"
-        min="-200"
-        max="300"
-        step="2"
-      />
     </section>
 
     <!-- 行为 -->
     <section v-show="activeTab === 'behavior'">
-      <h3>自主移动（桌宠）</h3>
-
-      <div class="row">
-        <label style="margin: 0; flex: 1">允许在屏幕上散步</label>
-        <input v-model="form.motion_enabled" type="checkbox" />
-      </div>
-
-      <label>移动间隔下限 ({{ form.motion_min_sec }}s ≈ {{ Math.round(form.motion_min_sec / 60) }}min)</label>
-      <input
-        v-model.number="form.motion_min_sec"
-        type="range"
-        min="30"
-        max="1200"
-        step="15"
-        :disabled="!form.motion_enabled"
-      />
-
-      <label>移动间隔上限 ({{ form.motion_max_sec }}s ≈ {{ Math.round(form.motion_max_sec / 60) }}min)</label>
-      <input
-        v-model.number="form.motion_max_sec"
-        type="range"
-        min="60"
-        max="3600"
-        step="30"
-        :disabled="!form.motion_enabled"
-      />
-
-      <label>移动速度 ({{ form.motion_speed.toFixed(2) }}x)</label>
-      <input
-        v-model.number="form.motion_speed"
-        type="range"
-        min="0.3"
-        max="2.5"
-        step="0.05"
-        :disabled="!form.motion_enabled"
-      />
-
-      <div class="row" style="margin-top: 8px">
-        <button class="ghost" type="button" @click="onWalkNow" :disabled="!form.motion_enabled">
-          立即散步一次
-        </button>
-        <span class="hint-inline">立刻去随机位置（不等间隔）</span>
-      </div>
-
-      <h3 style="margin-top: 14px">Idle 微动作</h3>
+      <h3>Idle 微动作 / 主动开口</h3>
       <label>Idle 动作最小间隔 ({{ form.idle_min_sec }}s)</label>
       <input v-model.number="form.idle_min_sec" type="range" min="3" max="60" step="1" />
       <label>Idle 动作最大间隔 ({{ form.idle_max_sec }}s)</label>
       <input v-model.number="form.idle_max_sec" type="range" min="5" max="120" step="1" />
-
-      <h3 style="margin-top: 14px">情绪与对话</h3>
       <label>主动开口间隔 ({{ form.autocomment_interval_sec }}s)</label>
       <input
         v-model.number="form.autocomment_interval_sec"
@@ -410,27 +318,18 @@ function emotionLabel(id: string): string {
         step="30"
       />
       <label>情绪衰减率 (/分钟，{{ form.emotion_decay_per_minute.toFixed(3) }})</label>
-      <input
-        v-model.number="form.emotion_decay_per_minute"
-        type="range"
-        min="0"
-        max="0.3"
-        step="0.005"
-      />
+      <input v-model.number="form.emotion_decay_per_minute" type="range" min="0" max="0.3" step="0.005" />
       <label>反差变量触发概率 ({{ (form.flip_probability * 100).toFixed(0) }}%)</label>
-      <input
-        v-model.number="form.flip_probability"
-        type="range"
-        min="0"
-        max="0.5"
-        step="0.01"
-      />
+      <input v-model.number="form.flip_probability" type="range" min="0" max="0.5" step="0.01" />
+
+      <div class="hint" style="margin-top: 8px">
+        自主散步（M5 重做）暂不可用。当前 idle 仅为微动作（眨眼、视线跟随）。
+      </div>
     </section>
 
     <!-- 语音 -->
     <section v-show="activeTab === 'tts'">
       <h3>语音 (TTS)</h3>
-
       <label>提供方</label>
       <select v-model="form.tts_provider">
         <option value="sidecar">Sidecar（edge-tts / Qwen3-TTS / 自定义）</option>
@@ -441,25 +340,18 @@ function emotionLabel(id: string): string {
       <input v-model="form.tts_sidecar_url" placeholder="http://127.0.0.1:5050" />
 
       <div class="row" style="margin-top: 6px">
-        <span class="badge" :class="sidecarBadgeClass">
-          {{ sidecarLabel }}
-        </span>
-        <button class="ghost" type="button" style="margin-left: auto" @click="onRefreshSidecar">
-          刷新
-        </button>
+        <span class="badge" :class="sidecarBadgeClass">{{ sidecarLabel }}</span>
+        <button class="ghost" type="button" style="margin-left: auto" @click="onRefreshSidecar">刷新</button>
         <button class="ghost" type="button" @click="onStartSidecar">启动</button>
         <button class="ghost" type="button" @click="onStopSidecar">停止</button>
       </div>
-      <div v-if="config.sidecar?.last_error" class="hint">
-        {{ config.sidecar.last_error }}
-      </div>
+      <div v-if="config.sidecar?.last_error" class="hint">{{ config.sidecar.last_error }}</div>
 
       <h3 style="margin-top: 14px">情绪 → 音色路由</h3>
       <div class="row">
         <button class="ghost" type="button" @click="onRegisterExampleVoices">
           从 example_voice/ 一键注册
         </button>
-        <span class="hint-inline">扫描子目录注册为 clone_xxx</span>
       </div>
       <div class="emotion-map">
         <div v-for="e in EMOTIONS" :key="e" class="emotion-row">
@@ -469,7 +361,7 @@ function emotionLabel(id: string): string {
               {{ v.id }} {{ v.note ? `(${v.note})` : '' }}
             </option>
             <option v-if="config.voices.length === 0" value="edge_xiaoxiao">
-              edge_xiaoxiao (启动 sidecar 后会有更多)
+              edge_xiaoxiao（启动 sidecar 后会有更多）
             </option>
           </select>
         </div>
@@ -496,9 +388,7 @@ function emotionLabel(id: string): string {
       </div>
 
       <div class="row">
-        <button class="ghost danger" type="button" @click="onClearHistory">
-          清空对话历史
-        </button>
+        <button class="ghost danger" type="button" @click="onClearHistory">清空对话历史</button>
         <span v-if="clearedHint" class="hint-inline ok">{{ clearedHint }}</span>
       </div>
 
@@ -545,7 +435,6 @@ function emotionLabel(id: string): string {
   color: white;
   transform: rotate(90deg);
 }
-
 .settings-panel {
   position: absolute;
   top: 60px;
@@ -563,300 +452,52 @@ function emotionLabel(id: string): string {
   font-size: 13px;
   color: #2a1c1c;
 }
-.settings-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.settings-panel header { display: flex; align-items: center; justify-content: space-between; }
+.settings-panel h2 { font-size: 15px; font-weight: 600; margin: 0; }
+.settings-panel .close { background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: rgba(42, 28, 28, 0.5); }
+.tabs { display: flex; gap: 4px; margin: 10px 0 8px; border-bottom: 1px solid rgba(168, 36, 42, 0.15); padding-bottom: 6px; flex-wrap: wrap; }
+.tabs button { padding: 4px 10px; font-size: 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: rgba(42, 28, 28, 0.6); cursor: pointer; }
+.tabs button:hover { background: rgba(168, 36, 42, 0.06); color: #2a1c1c; }
+.tabs button.active { background: #a8242a; color: white; }
+.settings-panel section { padding-top: 4px; }
+.settings-panel h3 { font-size: 12px; font-weight: 600; color: #a8242a; margin: 0 0 8px; letter-spacing: 0.5px; }
+.settings-panel label { display: block; margin: 8px 0 4px; font-size: 12px; color: rgba(42, 28, 28, 0.7); }
+.settings-panel input[type='text'], .settings-panel input[type='password'], .settings-panel input:not([type]), .settings-panel select {
+  width: 100%; padding: 7px 10px; font-size: 13px; border-radius: 8px; border: 1px solid rgba(168, 36, 42, 0.25); background: white; outline: none; color: #2a1c1c;
 }
-.settings-panel h2 {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
-}
-.settings-panel .close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  color: rgba(42, 28, 28, 0.5);
-}
-
-.tabs {
-  display: flex;
-  gap: 4px;
-  margin: 10px 0 8px;
-  border-bottom: 1px solid rgba(168, 36, 42, 0.15);
-  padding-bottom: 6px;
-  flex-wrap: wrap;
-}
-.tabs button {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: rgba(42, 28, 28, 0.6);
-  cursor: pointer;
-}
-.tabs button:hover {
-  background: rgba(168, 36, 42, 0.06);
-  color: #2a1c1c;
-}
-.tabs button.active {
-  background: #a8242a;
-  color: white;
-}
-
-.settings-panel section {
-  padding-top: 4px;
-}
-.settings-panel h3 {
-  font-size: 12px;
-  font-weight: 600;
-  color: #a8242a;
-  margin: 0 0 8px;
-  letter-spacing: 0.5px;
-}
-.settings-panel label {
-  display: block;
-  margin: 8px 0 4px;
-  font-size: 12px;
-  color: rgba(42, 28, 28, 0.7);
-}
-.settings-panel input[type='text'],
-.settings-panel input[type='password'],
-.settings-panel input:not([type]),
-.settings-panel select {
-  width: 100%;
-  padding: 7px 10px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid rgba(168, 36, 42, 0.25);
-  background: white;
-  outline: none;
-  color: #2a1c1c;
-}
-.settings-panel input[type='range'] {
-  width: 100%;
-  accent-color: #a8242a;
-}
-.settings-panel input:focus,
-.settings-panel select:focus {
-  border-color: #a8242a;
-}
-
-.actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.settings-panel button.ghost {
-  padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(168, 36, 42, 0.4);
-  background: transparent;
-  color: #a8242a;
-  cursor: pointer;
-}
-.settings-panel button.ghost:hover {
-  background: rgba(168, 36, 42, 0.08);
-}
-.settings-panel button.ghost.danger {
-  border-color: rgba(220, 38, 38, 0.6);
-  color: #b91c1c;
-}
-.settings-panel button.ghost.danger:hover {
-  background: rgba(220, 38, 38, 0.08);
-}
-.settings-panel button.primary {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 999px;
-  background: #a8242a;
-  color: white;
-  border: none;
-  cursor: pointer;
-}
-.settings-panel button.primary:hover:not(:disabled) {
-  background: #8a1d22;
-}
-.settings-panel button.primary:disabled {
-  background: #b89999;
-  cursor: not-allowed;
-}
-.settings-panel .hint {
-  margin-top: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  background: rgba(168, 36, 42, 0.08);
-  color: #2a1c1c;
-  white-space: pre-wrap;
-}
-.settings-panel .hint-inline {
-  font-size: 11px;
-  color: rgba(42, 28, 28, 0.55);
-  margin-left: 8px;
-}
-.settings-panel .hint-inline.ok {
-  color: #166534;
-}
-.settings-panel .row {
-  display: flex;
-  align-items: center;
-  margin: 6px 0;
-}
-.settings-panel footer {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(168, 36, 42, 0.12);
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-}
-.dirty {
-  font-size: 11px;
-  color: #b45309;
-}
-
-/* 模型列表 */
-.model-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  margin-top: 6px;
-}
-.model-item {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(168, 36, 42, 0.2);
-  background: white;
-  cursor: pointer;
-  transition: all 120ms;
-}
-.model-item:hover {
-  border-color: #a8242a;
-}
-.model-item.active {
-  background: #a8242a;
-  color: white;
-  border-color: #a8242a;
-}
-.model-item.active .badge,
-.model-item.active .model-meta {
-  color: rgba(255, 255, 255, 0.85);
-}
-.model-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-.model-meta {
-  margin-top: 2px;
-  font-size: 11px;
-  color: rgba(42, 28, 28, 0.55);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.badge {
-  padding: 1px 6px;
-  font-size: 10px;
-  border-radius: 4px;
-  background: rgba(168, 36, 42, 0.12);
-  color: #a8242a;
-}
-.badge.c2 {
-  background: rgba(120, 80, 20, 0.15);
-  color: #7a5a18;
-}
-.badge.external {
-  background: rgba(80, 100, 180, 0.15);
-  color: #3b5bdb;
-}
-
-.path-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  margin-bottom: 4px;
-  background: rgba(168, 36, 42, 0.05);
-  border-radius: 6px;
-  border: 1px solid rgba(168, 36, 42, 0.1);
-}
-.path-text {
-  flex: 1;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px;
-  color: #2a1c1c;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-}
-.path-remove {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(168, 36, 42, 0.3);
-  background: transparent;
-  color: #a8242a;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.path-remove:hover {
-  background: rgba(168, 36, 42, 0.1);
-}
-.empty {
-  padding: 16px;
-  text-align: center;
-  font-size: 12px;
-  color: rgba(42, 28, 28, 0.5);
-  border: 1px dashed rgba(168, 36, 42, 0.25);
-  border-radius: 8px;
-}
-
-.badge.ok {
-  background: rgba(22, 101, 52, 0.12);
-  color: #166534;
-}
-.badge.warn {
-  background: rgba(180, 83, 9, 0.12);
-  color: #b45309;
-}
-.badge.err {
-  background: rgba(185, 28, 28, 0.12);
-  color: #b91c1c;
-}
-
-.emotion-map {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.emotion-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.emotion-label {
-  width: 70px;
-  font-size: 12px;
-  color: rgba(42, 28, 28, 0.7);
-  flex-shrink: 0;
-}
-.emotion-row select {
-  flex: 1;
-}
+.settings-panel input[type='range'] { width: 100%; accent-color: #a8242a; }
+.settings-panel input:focus, .settings-panel select:focus { border-color: #a8242a; }
+.actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.settings-panel button.ghost { padding: 6px 12px; font-size: 12px; border-radius: 8px; border: 1px solid rgba(168, 36, 42, 0.4); background: transparent; color: #a8242a; cursor: pointer; }
+.settings-panel button.ghost:hover { background: rgba(168, 36, 42, 0.08); }
+.settings-panel button.ghost.danger { border-color: rgba(220, 38, 38, 0.6); color: #b91c1c; }
+.settings-panel button.ghost.danger:hover { background: rgba(220, 38, 38, 0.08); }
+.settings-panel button.primary { padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 999px; background: #a8242a; color: white; border: none; cursor: pointer; }
+.settings-panel button.primary:hover:not(:disabled) { background: #8a1d22; }
+.settings-panel button.primary:disabled { background: #b89999; cursor: not-allowed; }
+.settings-panel .hint { margin-top: 6px; padding: 6px 10px; font-size: 12px; border-radius: 6px; background: rgba(168, 36, 42, 0.08); color: #2a1c1c; }
+.settings-panel .hint-inline { font-size: 11px; color: rgba(42, 28, 28, 0.55); margin-left: 8px; }
+.settings-panel .hint-inline.ok { color: #166534; }
+.settings-panel .row { display: flex; align-items: center; margin: 6px 0; }
+.settings-panel footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(168, 36, 42, 0.12); display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.dirty { font-size: 11px; color: #b45309; }
+.model-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; margin-top: 6px; }
+.model-item { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(168, 36, 42, 0.2); background: white; }
+.model-name { font-size: 13px; font-weight: 500; }
+.model-meta { margin-top: 2px; font-size: 11px; color: rgba(42, 28, 28, 0.55); display: flex; align-items: center; gap: 6px; }
+.badge { padding: 1px 6px; font-size: 10px; border-radius: 4px; background: rgba(168, 36, 42, 0.12); color: #a8242a; }
+.badge.c2 { background: rgba(120, 80, 20, 0.15); color: #7a5a18; }
+.badge.external { background: rgba(80, 100, 180, 0.15); color: #3b5bdb; }
+.badge.ok { background: rgba(22, 101, 52, 0.12); color: #166534; }
+.badge.warn { background: rgba(180, 83, 9, 0.12); color: #b45309; }
+.badge.err { background: rgba(185, 28, 28, 0.12); color: #b91c1c; }
+.empty { padding: 16px; text-align: center; font-size: 12px; color: rgba(42, 28, 28, 0.5); border: 1px dashed rgba(168, 36, 42, 0.25); border-radius: 8px; }
+.path-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 4px; background: rgba(168, 36, 42, 0.05); border-radius: 6px; border: 1px solid rgba(168, 36, 42, 0.1); }
+.path-text { flex: 1; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: #2a1c1c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.path-remove { width: 22px; height: 22px; border-radius: 999px; border: 1px solid rgba(168, 36, 42, 0.3); background: transparent; color: #a8242a; cursor: pointer; font-size: 14px; line-height: 1; }
+.path-remove:hover { background: rgba(168, 36, 42, 0.1); }
+.emotion-map { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.emotion-row { display: flex; align-items: center; gap: 8px; }
+.emotion-label { width: 70px; font-size: 12px; color: rgba(42, 28, 28, 0.7); flex-shrink: 0; }
+.emotion-row select { flex: 1; }
 </style>

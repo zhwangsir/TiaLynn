@@ -1,42 +1,9 @@
+use super::{ChatMessage, ChatOptions, LlmProvider, TokenStream};
 use crate::infra::error::AppResult;
 use async_trait::async_trait;
-use futures_util::stream::{BoxStream, Stream, StreamExt};
+use futures_util::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: String, // "system" | "user" | "assistant"
-    pub content: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ChatOptions {
-    pub model: String,
-    pub temperature: f32,
-    pub max_tokens: Option<u32>,
-}
-
-impl Default for ChatOptions {
-    fn default() -> Self {
-        Self {
-            model: "default".into(),
-            temperature: 0.85,
-            max_tokens: Some(512),
-        }
-    }
-}
-
-pub type TokenStream = BoxStream<'static, AppResult<String>>;
-
-#[async_trait]
-pub trait LlmProvider: Send + Sync {
-    async fn chat_stream(
-        &self,
-        messages: Vec<ChatMessage>,
-        opts: ChatOptions,
-    ) -> AppResult<TokenStream>;
-}
 
 /// OpenAI-compatible 流式 chat completions 客户端。
 /// 覆盖 vLLM / LM Studio / Ollama (with /v1) / OpenAI 本身。
@@ -87,6 +54,9 @@ struct ChatStreamDelta {
 
 #[async_trait]
 impl LlmProvider for OpenAiCompatProvider {
+    fn name(&self) -> &'static str {
+        "openai_compat"
+    }
     async fn chat_stream(
         &self,
         messages: Vec<ChatMessage>,

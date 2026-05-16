@@ -116,13 +116,151 @@ pub struct VisionCfg {
 }
 
 impl SoulConfig {
+    /// 智能加载：
+    /// - path 是单文件 → 旧 schema（向后兼容 default.yaml）
+    /// - path 是目录 → 多文件加载（soul/identity.yaml + personality.yaml + ...）
     pub fn load_from_path(path: &Path) -> AppResult<Self> {
         if !path.exists() {
             return Err(AppError::SoulNotFound(path.display().to_string()));
         }
-        let text = std::fs::read_to_string(path)?;
-        let cfg: SoulConfig = serde_yaml::from_str(&text)?;
-        Ok(cfg)
+        if path.is_dir() {
+            Self::load_from_soul_dir(path)
+        } else {
+            let text = std::fs::read_to_string(path)?;
+            let cfg: SoulConfig = serde_yaml::from_str(&text)?;
+            Ok(cfg)
+        }
+    }
+
+    /// 从 soul/ 多文件加载并合成。
+    ///
+    /// 字段映射：
+    /// - identity.yaml → identity + appearance + speech_style.call_master_as
+    /// - personality.yaml → personality + speech_style 其余字段
+    /// - core_memories.yaml → 暂存（M3 接入 RAG，不进当前 schema）
+    /// - learned_traits.yaml → learned_traits
+    pub fn load_from_soul_dir(dir: &Path) -> AppResult<Self> {
+        let identity_yaml = dir.join("identity.yaml");
+        let personality_yaml = dir.join("personality.yaml");
+        let learned_yaml = dir.join("learned_traits.yaml");
+
+        // identity.yaml 必填
+        if !identity_yaml.exists() || !personality_yaml.exists() {
+            return Err(AppError::SoulNotFound(format!(
+                "soul/ 目录缺少 identity.yaml 或 personality.yaml：{}",
+                dir.display()
+            )));
+        }
+
+        let id_text = std::fs::read_to_string(&identity_yaml)?;
+        let id_val: serde_yaml::Value = serde_yaml::from_str(&id_text)?;
+        let p_text = std::fs::read_to_string(&personality_yaml)?;
+        let p_val: serde_yaml::Value = serde_yaml::from_str(&p_text)?;
+
+        let identity = Identity {
+            name: str_of(&id_val, "name").unwrap_or_else(|| "TiaLynn".into()),
+            master: str_of(&id_val, "master").unwrap_or_else(|| "master".into()),
+            birthday: str_of(&id_val, "birthday").unwrap_or_else(|| "2026-05-15".into()),
+        };
+
+        let avatar = id_val.get("avatar");
+        let appearance = Appearance {
+            live2d_model_dir: avatar
+                .and_then(|a| a.get("model_dir"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("HuTao-Live2D")
+                .into(),
+            model_file: avatar
+                .and_then(|a| a.get("model_file"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Hu Tao.model3.json")
+                .into(),
+            anchor: Anchor {
+                scale: avatar
+                    .and_then(|a| a.get("scale"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.35) as f32,
+                x_offset: 0.0,
+                y_offset: avatar
+                    .and_then(|a| a.get("offset_y"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(50.0) as f32,
+            },
+        };
+
+        let personality = Personality {
+            layer1_core: str_of(&p_val, "layer1_core").unwrap_or_default(),
+            layer2_surface: str_of(&p_val, "layer2_surface").unwrap_or_default(),
+            layer3_volatility: p_val
+                .get("layer3_volatility")
+                .and_then(|v| serde_yaml::from_value(v.clone()).ok())
+                .unwrap_or(Volatility {
+                    flip_probability: 0.15,
+                    flip_modes: vec![],
+                }),
+        };
+
+        let speech_style: SpeechStyle = p_val
+            .get("speech_style")
+            .and_then(|v| {
+                let mut m: serde_yaml::Mapping =
+                    serde_yaml::from_value(v.clone()).unwrap_or_default();
+                if !m.contains_key("call_master_as") {
+                    if let Some(c) = id_val.get("call_master_as") {
+                        m.insert("call_master_as".into(), c.clone());
+                    }
+                }
+                serde_yaml::from_value::<SpeechStyle>(serde_yaml::Value::Mapping(m)).ok()
+            })
+            .unwrap_or(SpeechStyle {
+                max_length: 80,
+                use_emoticons: true,
+                signature_lines: vec![],
+                call_master_as: str_of(&id_val, "call_master_as").unwrap_or_else(|| "主人".into()),
+            });
+
+        // emotions / behavior / tts / vision 在 multi-file schema 里暂无对应字段，
+        // 给 sensible defaults（M2 加完整支持）。
+        let emotions = EmotionsCfg {
+            initial: "neutral".into(),
+            decay_per_minute: 0.05,
+            states: HashMap::new(),
+        };
+        let behavior = Behavior {
+            tick_interval_sec: 30,
+            auto_comment_interval_sec: 300,
+            curiosity_threshold: 60,
+            energy_sleep_threshold: 20,
+        };
+        let tts = TtsCfg {
+            provider: "macos_say".into(),
+            voice_id: "Tingting".into(),
+            speed: 1.0,
+            pitch_shift: 0.0,
+            emotion_routing: HashMap::new(),
+        };
+
+        let learned_traits = if learned_yaml.exists() {
+            std::fs::read_to_string(&learned_yaml)
+                .ok()
+                .and_then(|t| serde_yaml::from_str::<LearnedTraits>(&t).ok())
+                .unwrap_or_default()
+        } else {
+            LearnedTraits::default()
+        };
+
+        Ok(SoulConfig {
+            schema_version: "2.0".into(),
+            identity,
+            appearance,
+            personality,
+            speech_style,
+            emotions,
+            behavior,
+            learned_traits,
+            tts,
+            vision: VisionCfg::default(),
+        })
     }
 
     /// 拼合三层人格 system prompt（核心算法）。
@@ -196,6 +334,10 @@ impl SoulConfig {
     }
 }
 
+fn str_of(v: &serde_yaml::Value, key: &str) -> Option<String> {
+    v.get(key).and_then(|x| x.as_str()).map(|s| s.to_string())
+}
+
 fn color_for_emotion(cfg: &SoulConfig, emotion: &str) -> String {
     cfg.emotions
         .states
@@ -214,25 +356,35 @@ fn rand_f32() -> f32 {
     (nanos % 10_000) as f32 / 10_000.0
 }
 
-/// 在多个候选位置寻找 default.yaml：
-/// 1. ~/.tialynn/soul/active.yaml （用户优先）
-/// 2. <项目根>/default.yaml         （开发期）
-/// 3. <可执行目录>/default.yaml     （打包后）
+/// 在多个候选位置寻找灵魂档案。
+/// 优先级：
+/// 1. ~/.tialynn/soul/                   （用户优先，多文件）
+/// 2. <项目根>/soul/                     （v0.4+ 多文件结构）
+/// 3. ~/.tialynn/soul/active.yaml         （旧用户副本）
+/// 4. <项目根>/default.yaml               （旧单文件兼容）
+/// 5. <可执行目录>/default.yaml           （打包后）
 pub fn locate_default_soul() -> Option<PathBuf> {
     if let Some(home) = dirs::home_dir() {
-        let user_copy = home.join(".tialynn").join("soul").join("active.yaml");
-        if user_copy.exists() {
-            return Some(user_copy);
+        let user_dir = home.join(".tialynn").join("soul");
+        if user_dir.join("identity.yaml").exists() {
+            return Some(user_dir);
+        }
+        let user_legacy = home.join(".tialynn").join("soul").join("active.yaml");
+        if user_legacy.exists() {
+            return Some(user_legacy);
         }
     }
 
-    // 项目根（CARGO_MANIFEST_DIR/..）
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let project_root = Path::new(manifest_dir).parent();
     if let Some(root) = project_root {
-        let p = root.join("default.yaml");
-        if p.exists() {
-            return Some(p);
+        let soul_dir = root.join("soul");
+        if soul_dir.join("identity.yaml").exists() {
+            return Some(soul_dir);
+        }
+        let legacy = root.join("default.yaml");
+        if legacy.exists() {
+            return Some(legacy);
         }
     }
 

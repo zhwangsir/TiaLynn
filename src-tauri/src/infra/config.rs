@@ -13,6 +13,8 @@ use tauri::{Emitter, State};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ConfigDto {
+    #[serde(default = "default_llm_provider")]
+    pub llm_provider: String,
     pub llm_endpoint: String,
     pub llm_model: String,
     pub llm_api_key: String,
@@ -57,6 +59,9 @@ fn default_flip() -> f32 {
 fn default_embedding_model() -> String {
     "text-embedding-3-small".to_string()
 }
+fn default_llm_provider() -> String {
+    "openai_compat".to_string()
+}
 
 impl Default for ConfigDto {
     fn default() -> Self {
@@ -67,6 +72,7 @@ impl Default for ConfigDto {
 impl From<&RuntimeConfig> for ConfigDto {
     fn from(c: &RuntimeConfig) -> Self {
         ConfigDto {
+            llm_provider: c.llm_provider.clone(),
             llm_endpoint: c.llm_endpoint.clone(),
             llm_model: c.llm_model.clone(),
             llm_api_key: c.llm_api_key.clone(),
@@ -87,6 +93,7 @@ impl From<&RuntimeConfig> for ConfigDto {
 impl From<ConfigDto> for RuntimeConfig {
     fn from(d: ConfigDto) -> Self {
         RuntimeConfig {
+            llm_provider: d.llm_provider,
             llm_endpoint: d.llm_endpoint,
             llm_model: d.llm_model,
             llm_api_key: d.llm_api_key,
@@ -153,16 +160,15 @@ pub async fn config_save(
 
 #[tauri::command]
 pub async fn config_test_llm(dto: ConfigDto) -> AppResult<String> {
-    if dto.llm_endpoint.trim().is_empty() {
+    if dto.llm_endpoint.trim().is_empty() && dto.llm_provider != "anthropic" {
         return Err(AppError::LlmNotConfigured);
     }
-    use crate::brain::providers::openai_compat::{
-        ChatMessage, ChatOptions, LlmProvider, OpenAiCompatProvider,
-    };
+    use crate::brain::providers::{build_provider, ChatMessage, ChatOptions};
     use futures_util::StreamExt;
 
-    let provider = OpenAiCompatProvider::new(
-        dto.llm_endpoint.clone(),
+    let provider = build_provider(
+        &dto.llm_provider,
+        &dto.llm_endpoint,
         if dto.llm_api_key.is_empty() {
             None
         } else {

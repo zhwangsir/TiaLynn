@@ -4,13 +4,51 @@
 
 ## [Unreleased]
 
-### 路线（重订）
-- M1 (v0.5.x)：能聊（Claude/Ollama provider + 表情联动）
+### 路线
 - M2 (v0.6.x)：能听能说（CosyVoice + whisper.cpp + 嘴型同步）
 - M3 (v0.7.x)：能记（ChromaDB + 共同回忆导入）
 - M4 (v0.8.x)：能干活（MCP 工具调用，**项目灵魂**）
 - M5 (v0.9.x)：能主动（屏幕感知 + 主动开口）
 - M6：能进化（习惯学习 + 记忆衰减）
+
+---
+
+## [0.5.0] — 2026-05-16 — M1 能聊
+
+### 多 LLM Provider + 多文件灵魂加载
+
+**LLM Provider 抽象**：
+- `brain/providers/mod.rs::LlmProvider` 统一 trait
+- `anthropic.rs` — Claude Messages API 流式（带 tool_use 预留位）
+- `ollama.rs` — Ollama 原生 `/api/chat` NDJSON
+- `openai_compat.rs` — 重命名整合（vLLM / LM Studio / 旧 endpoint）
+- `build_provider(name, endpoint, api_key)` 工厂：菜单切换 provider 即生效
+
+**SoulConfig 多文件 loader**：
+- `load_from_path(&Path)` 智能判断：path 是目录 → 多文件，是单文件 → 旧 schema
+- `load_from_soul_dir(&Path)` 解析 `soul/{identity,personality,learned_traits}.yaml` 合成 SoulConfig
+- `locate_default_soul()` 优先 `soul/` 目录，回退 `default.yaml`（兼容旧版）
+- 未编辑 yaml 字段（emotions / behavior / tts）用 sensible defaults
+
+**RuntimeConfig 加 llm_provider 字段**：
+- `"anthropic" | "ollama" | "openai_compat"`
+- 菜单 → LLM Tab → Provider 下拉
+
+**设置面板大幅简化**：
+- 砍掉过期字段（live2d_* / motion_* / extra_model_dirs）
+- 模型 Tab 改为只读展示（编辑请编辑 soul/identity.yaml）+ 搜索路径管理
+- 自主散步 slider 砍掉（M5 重做）
+- 添加 LLM Provider 下拉
+
+### 砍代码
+- `RuntimeConfig` 中 9 个 v0.3 字段（live2d_* / motion_* / extra_model_dirs）
+- `extra_model_dirs` 独立 JSON 文件（`~/Library/Application Support/TiaLynn/extra_model_dirs.json`）
+- 旧 `OpenAiCompatProvider` 直接 import → 全部走 `build_provider`
+
+### 编译验证
+- ✅ pnpm typecheck 无错误
+- ✅ cargo check 无错误（1 warning，已 #[allow]）
+- ✅ pnpm build 成功
 
 ---
 
@@ -457,7 +495,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.5.0
 [0.4.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.4.0
 [0.3.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.2
 [0.3.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.1

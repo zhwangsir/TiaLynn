@@ -3,16 +3,16 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
+/**
+ * 与 Rust 端 ConfigDto 严格对齐（v0.4 起 live2d_* 与 motion_* 已迁到 soul yaml）。
+ */
 export interface ConfigDto {
+  llm_provider: string // "anthropic" | "ollama" | "openai_compat"
   llm_endpoint: string
   llm_model: string
   llm_api_key: string
   tts_provider: string
   tts_sidecar_url: string
-  live2d_model_dir: string
-  live2d_model_file: string
-  live2d_scale: number
-  live2d_offset_y: number
   idle_min_sec: number
   idle_max_sec: number
   autocomment_interval_sec: number
@@ -21,11 +21,6 @@ export interface ConfigDto {
   emotion_voice_map: Record<string, string>
   embedding_endpoint: string
   embedding_model: string
-  motion_enabled: boolean
-  motion_min_sec: number
-  motion_max_sec: number
-  motion_speed: number
-  extra_model_dirs: string[]
 }
 
 export interface ModelInfo {
@@ -64,6 +59,7 @@ export const useConfigStore = defineStore('config', () => {
   const models = ref<ModelInfo[]>([])
   const voices = ref<VoiceEntry[]>([])
   const sidecar = ref<SidecarState | null>(null)
+  const searchPaths = ref<string[]>([])
   const saving = ref(false)
   const testing = ref(false)
   const testResult = ref<string | null>(null)
@@ -108,25 +104,35 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  async function listSearchPaths(): Promise<string[]> {
+    try {
+      const list = await invoke<string[]>('models_list_search_paths')
+      searchPaths.value = list
+      return list
+    } catch {
+      return []
+    }
+  }
+
   async function addSearchPath(path: string): Promise<string[]> {
     try {
       const list = await invoke<string[]>('models_add_search_path', { path })
-      if (config.value) config.value.extra_model_dirs = list
+      searchPaths.value = list
       return list
     } catch (e) {
       console.warn('[config] add_search_path failed', e)
-      return config.value?.extra_model_dirs ?? []
+      return searchPaths.value
     }
   }
 
   async function removeSearchPath(path: string): Promise<string[]> {
     try {
       const list = await invoke<string[]>('models_remove_search_path', { path })
-      if (config.value) config.value.extra_model_dirs = list
+      searchPaths.value = list
       return list
     } catch (e) {
       console.warn('[config] remove_search_path failed', e)
-      return config.value?.extra_model_dirs ?? []
+      return searchPaths.value
     }
   }
 
@@ -203,6 +209,7 @@ export const useConfigStore = defineStore('config', () => {
     models,
     voices,
     sidecar,
+    searchPaths,
     saving,
     testing,
     testResult,
@@ -211,6 +218,7 @@ export const useConfigStore = defineStore('config', () => {
     save,
     testLlm,
     scanModels,
+    listSearchPaths,
     addSearchPath,
     removeSearchPath,
     loadSidecarStatus,

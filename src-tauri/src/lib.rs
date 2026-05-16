@@ -22,6 +22,7 @@ use tauri::{Emitter, Manager};
 /// **注意**：v0.4 开始 live2d 模型路径由 soul/identity.yaml 管理，不再放这里。
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
+    pub llm_provider: String, // "anthropic" | "ollama" | "openai_compat"
     pub llm_endpoint: String,
     pub llm_model: String,
     pub llm_api_key: String,
@@ -40,6 +41,8 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
+            llm_provider: std::env::var("TIALYNN_LLM_PROVIDER")
+                .unwrap_or_else(|_| "openai_compat".to_string()),
             llm_endpoint: std::env::var("TIALYNN_LLM_ENDPOINT")
                 .unwrap_or_else(|_| "http://192.168.71.100:1234/v1".to_string()),
             llm_model: std::env::var("TIALYNN_LLM_MODEL")
