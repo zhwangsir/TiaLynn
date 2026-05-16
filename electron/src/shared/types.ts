@@ -19,6 +19,12 @@ export interface RuntimeConfig {
   emotion_voice_map: Record<string, string>
   embedding_endpoint: string
   embedding_model: string
+  /**
+   * v0.7.5: OpenAI-compat 兼容模式 — 把 system message 合并到第一个 user message 前。
+   * 默认 true，兼容 LM Studio 上的 Qwen/Llama 量化模型（jinja template bug）。
+   * 真 OpenAI / SiliconFlow 可关掉（它们对 system 支持完美）。
+   */
+  openai_compat_merge_system?: boolean
 }
 
 export interface ChatMessage {

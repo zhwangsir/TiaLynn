@@ -24,6 +24,7 @@ function blankConfig(): RuntimeConfig {
     emotion_voice_map: {},
     embedding_endpoint: '',
     embedding_model: '',
+    openai_compat_merge_system: true,
   }
 }
 
@@ -302,6 +303,20 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           <span>API Key</span>
           <input v-model="form.llm_api_key" type="password" placeholder="（本地服务可留空）" @input="markDirty" />
         </label>
+        <label v-if="form.llm_provider === 'openai_compat'">
+          <span>兼容模式</span>
+          <div class="check-row">
+            <input
+              type="checkbox"
+              :checked="form.openai_compat_merge_system !== false"
+              @change="(e) => { form.openai_compat_merge_system = (e.target as HTMLInputElement).checked; markDirty() }"
+            />
+            <span class="check-label">
+              合并 system 到 user
+              <span class="check-hint">LM Studio / Qwen MoE / 其它 jinja template 兼容性差的模型必开。OpenAI 真版可关。</span>
+            </span>
+          </div>
+        </label>
         <div class="row">
           <button class="ghost" @click="testLlm" :disabled="cfg.testing">
             {{ cfg.testing ? '测试中…' : '测试连接' }}
@@ -532,6 +547,25 @@ select:focus {
 .primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.check-row input[type='checkbox'] {
+  width: auto;
+  margin-top: 4px;
+}
+.check-label {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-sm);
+}
+.check-hint {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  margin-top: 2px;
 }
 .result {
   font-size: var(--text-xs);
