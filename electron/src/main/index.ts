@@ -18,6 +18,7 @@ import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { registerMotionEngineIpc } from './ipc/motion-engine'
+import { registerTriggerIpc } from './ipc/trigger'
 import { getPaths } from './services/paths'
 import { close as closeHistoryDb } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
@@ -55,6 +56,7 @@ app.whenReady().then(() => {
   registerMarketIpc(getMainWindow)
   registerMotionFactoryIpc(getMainWindow)
   registerMotionEngineIpc()
+  registerTriggerIpc()
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })

@@ -5,6 +5,7 @@
  */
 import mitt, { type Emitter } from 'mitt'
 import type { EmotionId } from '@shared/types'
+import type { MotionDraft } from '@shared/motion'
 
 export type BusEventMap = {
   /* 立绘 */
@@ -29,6 +30,11 @@ export type BusEventMap = {
   'infra:soul-reloaded': void
   /* 通知 */
   'ui:toast': { kind: 'info' | 'warn' | 'error' | 'success'; message: string; ttl_ms?: number }
+  /* 动作播放 (v0.7.4) */
+  'avatar:play-draft': { draft: MotionDraft; on_end?: () => void }
+  'avatar:stop-motion': void
+  'avatar:motion-started': { draft_name: string }
+  'avatar:motion-ended': { draft_name: string }
 }
 
 export const bus: Emitter<BusEventMap> = mitt<BusEventMap>()

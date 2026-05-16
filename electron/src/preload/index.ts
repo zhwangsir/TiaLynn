@@ -160,6 +160,21 @@ const api: TialynnApi = {
     apply: (payload) =>
       invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
   },
+  trigger: {
+    decide: (payload) =>
+      invoke('trigger:decide', payload) as ReturnType<TialynnApi['trigger']['decide']>,
+    listRules: () =>
+      invoke('trigger:list-rules') as ReturnType<TialynnApi['trigger']['listRules']>,
+    saveRules: (rules) =>
+      invoke('trigger:save-rules', rules) as ReturnType<TialynnApi['trigger']['saveRules']>,
+    resetDefaults: () =>
+      invoke('trigger:reset-defaults') as ReturnType<TialynnApi['trigger']['resetDefaults']>,
+    resetCooldowns: () =>
+      invoke('trigger:reset-cooldowns') as ReturnType<TialynnApi['trigger']['resetCooldowns']>,
+  },
+  strategy: {
+    list: () => invoke('strategy:list') as ReturnType<TialynnApi['strategy']['list']>,
+  },
   engine: {
     list: (filter) => invoke('engine:list', filter) as ReturnType<TialynnApi['engine']['list']>,
     get: (id: number) => invoke('engine:get', id) as ReturnType<TialynnApi['engine']['get']>,

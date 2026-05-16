@@ -23,6 +23,7 @@ import type { ModelMotionSummary, MotionDraft } from './motion'
 import type { SemanticsMap } from './motion-semantics'
 import type { ApplyResult, LibrarySummary, MotionTemplate } from './motion-library'
 import type { MotionEntry, MotionFilter, MotionVersion, SyncReport } from './motion-engine'
+import type { TriggerDecision, TriggerEvent, TriggerRule } from './trigger'
 
 export interface SystemPaths {
   projectRoot: string
@@ -123,6 +124,27 @@ export interface TialynnApi {
       intensity_scale?: number
       name_suffix?: string
     }): Promise<ApplyResult>
+  }
+  trigger: {
+    decide(payload: {
+      event: TriggerEvent
+      model_dir?: string
+      ignore_cooldown?: boolean
+    }): Promise<TriggerDecision | null>
+    listRules(): Promise<TriggerRule[]>
+    saveRules(rules: TriggerRule[]): Promise<TriggerRule[]>
+    resetDefaults(): Promise<TriggerRule[]>
+    resetCooldowns(): Promise<{ ok: boolean }>
+  }
+  strategy: {
+    list(): Promise<
+      Array<{
+        id: string
+        display_name_zh: string
+        description: string
+        cost: 'low' | 'medium' | 'high'
+      }>
+    >
   }
   engine: {
     list(filter?: MotionFilter): Promise<MotionEntry[]>

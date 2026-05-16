@@ -118,6 +118,28 @@ export class Live2DRenderer {
     this.lipsyncValue = clamp(value, 0, 1)
   }
 
+  /**
+   * 强制写入一个参数（每帧自定义动作的入口）。
+   * v0.7.4：motion-player 用这个来播 MotionDraft。
+   */
+  applyParam(id: string, value: number): void {
+    if (!this.model) return
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cm = (this.model as any).internalModel?.coreModel
+      if (cm && typeof cm.setParameterValueById === 'function') {
+        cm.setParameterValueById(id, value)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** motion-player 检查模型已就绪 */
+  hasModel(): boolean {
+    return this.model != null
+  }
+
   /** 重设大小（窗口 resize） */
   resize(w: number, h: number): void {
     this.app.renderer.resize(w, h)

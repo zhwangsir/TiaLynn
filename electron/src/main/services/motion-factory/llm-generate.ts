@@ -13,6 +13,8 @@ import type { MotionDraft, ModelMotionSummary } from '@shared/motion'
 import { buildProvider } from '../llm'
 import { loadConfig } from '../config-store'
 import { introspect } from './parameter-introspector'
+import * as strategyRegistry from './strategies'
+import type { StrategyId } from './strategies'
 
 const SYSTEM_PROMPT = `你是 Live2D 动作设计师。给定模型的可用参数和示例动作，生成一个新动作。
 严格输出 JSON，无其它文字：
@@ -66,10 +68,37 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
     throw new Error(`${cfg.llm_provider} 需要 endpoint URL；请在「设置」中填入`)
   }
 
+  // 优先走 StrategyRegistry（v0.7.4 起）
+  const semantics = introspect(p.summary.model_dir)
+  if (p.strategy) {
+    const strat = strategyRegistry.get(p.strategy as StrategyId)
+    if (strat) {
+      return strat.generate({
+        summary: p.summary,
+        semantics,
+        description: p.description,
+        style: p.style,
+        examples: p.examples,
+      })
+    }
+  }
+
+  // 默认 strategy = direct_llm（如果未指定）
+  const defaultStrat = strategyRegistry.get('direct_llm')
+  if (defaultStrat) {
+    return defaultStrat.generate({
+      summary: p.summary,
+      semantics,
+      description: p.description,
+      style: p.style,
+      examples: p.examples,
+    })
+  }
+
+  // 终极 fallback：直接调 provider（保留旧实现，万一 strategy 没注册）
   const provider = buildProvider(cfg.llm_provider, cfg.llm_endpoint, cfg.llm_api_key)
 
-  // v0.7.2: 拿到参数语义图，让 LLM 知道每个 param 是什么部位
-  const semantics = introspect(p.summary.model_dir)
+  // 已在上面拿到 semantics，复用
   const semByParamId = new Map<string, string>()
   for (const ps of semantics.params) {
     if (ps.semantic !== 'unknown' && ps.confidence > 0.5) {
