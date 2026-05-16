@@ -19,6 +19,8 @@ import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { registerMotionEngineIpc } from './ipc/motion-engine'
 import { registerTriggerIpc } from './ipc/trigger'
+import { registerPerceptionIpc } from './ipc/perception'
+import { startPerception, stopPerception } from './services/perception'
 import { getPaths } from './services/paths'
 import { close as closeHistoryDb } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
@@ -57,6 +59,10 @@ app.whenReady().then(() => {
   registerMotionFactoryIpc(getMainWindow)
   registerMotionEngineIpc()
   registerTriggerIpc()
+  registerPerceptionIpc()
+
+  // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
+  startPerception(getMainWindow)
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })
@@ -82,4 +88,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   closeHistoryDb()
   closeMotionEngineDb()
+  stopPerception()
 })

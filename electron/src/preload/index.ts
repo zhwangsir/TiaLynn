@@ -160,6 +160,24 @@ const api: TialynnApi = {
     apply: (payload) =>
       invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
   },
+  perception: {
+    getConfig: () =>
+      invoke('perception:get-config') as ReturnType<TialynnApi['perception']['getConfig']>,
+    updateConfig: (patch) =>
+      invoke('perception:update-config', patch) as ReturnType<
+        TialynnApi['perception']['updateConfig']
+      >,
+    recent: (payload) =>
+      invoke('perception:recent', payload) as ReturnType<TialynnApi['perception']['recent']>,
+    onEvent: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        ev: import('@shared/perception').PerceptionEvent,
+      ): void => cb(ev)
+      ipcRenderer.on('perception:event', handler)
+      return () => ipcRenderer.off('perception:event', handler)
+    },
+  },
   trigger: {
     decide: (payload) =>
       invoke('trigger:decide', payload) as ReturnType<TialynnApi['trigger']['decide']>,

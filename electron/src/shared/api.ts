@@ -24,6 +24,7 @@ import type { SemanticsMap } from './motion-semantics'
 import type { ApplyResult, LibrarySummary, MotionTemplate } from './motion-library'
 import type { MotionEntry, MotionFilter, MotionVersion, SyncReport } from './motion-engine'
 import type { TriggerDecision, TriggerEvent, TriggerRule } from './trigger'
+import type { PerceptionConfig, PerceptionEvent, PerceptionEventType } from './perception'
 
 export interface SystemPaths {
   projectRoot: string
@@ -124,6 +125,12 @@ export interface TialynnApi {
       intensity_scale?: number
       name_suffix?: string
     }): Promise<ApplyResult>
+  }
+  perception: {
+    getConfig(): Promise<PerceptionConfig>
+    updateConfig(patch: Partial<PerceptionConfig>): Promise<PerceptionConfig>
+    recent(payload: { limit?: number; types?: PerceptionEventType[] }): Promise<PerceptionEvent[]>
+    onEvent(cb: (e: PerceptionEvent) => void): () => void
   }
   trigger: {
     decide(payload: {

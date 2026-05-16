@@ -89,10 +89,12 @@ export class WindowInteraction {
 
   private onMouseMove = (e: MouseEvent): void => {
     if (this.destroyed) return
-    const rect = this.opts.container.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    this.opts.renderer.setGaze(x, y)
+    // v0.8 主体性架构：
+    // 鼠标位置不再直接驱动视线 — 这是反射式。
+    // 位置作为「感知信号」由主进程 MouseSensor 通过 PerceptionBus 收集，
+    // AttentionScheduler + BehaviorPlanner 决定何时/是否看向鼠标。
+    // 此 callback 保留只为：兼容拖动 fallback 软件模拟（onWindowMouseMove）。
+    void e
   }
 
   /**
