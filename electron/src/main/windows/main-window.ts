@@ -7,12 +7,10 @@
  *   3. `setVisibleOnAllWorkspaces` —— 所有桌面都显示
  *   4. `setAlwaysOnTop` —— 浮在最前
  */
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { platform, transparentWindowConfig } from './shared'
-
-const DEFAULT_WIDTH = 480
-const DEFAULT_HEIGHT = 720
+import { loadWindowState, saveNow, scheduleSave } from '../services/window-state-store'
 
 export interface MainWindowOpts {
   preloadPath: string
@@ -21,21 +19,16 @@ export interface MainWindowOpts {
 }
 
 export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
-  const display = screen.getPrimaryDisplay()
-  const { width: sw, height: sh } = display.workAreaSize
-  const x = sw - DEFAULT_WIDTH - 40
-  const y = sh - DEFAULT_HEIGHT - 20
+  const state = loadWindowState()
 
   const win = new BrowserWindow({
-    width: DEFAULT_WIDTH,
-    height: DEFAULT_HEIGHT,
-    x,
-    y,
+    ...state.bounds,
     minWidth: 240,
     minHeight: 360,
     // macOS NSPanel 模式：不抢焦点 + 跨 space
     type: platform.isMacOS ? 'panel' : undefined,
-    alwaysOnTop: true,
+    alwaysOnTop: state.alwaysOnTop,
+    resizable: true, // v0.6.3：允许调整立绘窗口大小
     show: false,
     // 关键：让 NSPanel 在非 active 状态下也立即响应第一次 mouse click（不只激活窗口）。
     // 默认 false 时桌宠点了"一下"只是激活窗口，第二下才触发 button。
@@ -57,7 +50,20 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
   }
 
   // 浮在最前（screen-saver 是 Electron 中 alwaysOnTop 最高级别）
-  win.setAlwaysOnTop(true, 'screen-saver')
+  if (state.alwaysOnTop) win.setAlwaysOnTop(true, 'screen-saver')
+
+  // 拖/缩放后节流持久化；关闭前同步存
+  const persist = (): void => {
+    if (win.isDestroyed()) return
+    scheduleSave({ bounds: win.getBounds(), alwaysOnTop: win.isAlwaysOnTop() })
+  }
+  win.on('move', persist)
+  win.on('resize', persist)
+  win.on('always-on-top-changed', persist)
+  win.on('close', () => {
+    if (win.isDestroyed()) return
+    saveNow({ bounds: win.getBounds(), alwaysOnTop: win.isAlwaysOnTop() })
+  })
 
   // 默认就是穿透状态（透明区不响应鼠标），但保留 forward 让 webview 仍能收到
   // mousemove 以便切回非穿透模式。这正是 Tauri 缺的关键能力。
@@ -71,11 +77,11 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
     }
   })
 
-  // 把 renderer 的 console 中继到主进程 stdout，方便从 dev 终端看 Live2D / IPC 状态
-  if (process.env.NODE_ENV !== 'production') {
+  // 仅在 TIALYNN_DEBUG=1 时把 renderer console 转发到主进程 stdout
+  // 平时关掉（生产噪声 + dev 时 devtools 已经能看）
+  if (process.env.TIALYNN_DEBUG === '1') {
     win.webContents.on('console-message', (_event, level, message, line, source) => {
       const tag = ['LOG', 'WARN', 'ERROR', 'INFO'][level] ?? `L${level}`
-      // 静默 devtools 自己产生的噪声
       if (typeof source === 'string' && source.startsWith('devtools://')) return
       // eslint-disable-next-line no-console
       console.log(`[renderer:${tag}] ${message}${line ? ` (${source}:${line})` : ''}`)

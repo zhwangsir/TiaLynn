@@ -5,6 +5,8 @@ import DialogBubble from './infra/ui/DialogBubble.vue'
 import InputBar from './infra/ui/InputBar.vue'
 import ContextMenu, { type MenuItem } from './infra/ui/ContextMenu.vue'
 import SettingsPanel from './infra/ui/SettingsPanel.vue'
+import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
+import ToastStack from './infra/ui/ToastStack.vue'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
@@ -89,11 +91,6 @@ onMounted(async () => {
   dialog.injectGreeting()
   ready.value = true
 
-  bus.on('ui:toast', ({ kind, message }) => {
-    if (kind === 'error') console.error('[toast]', message)
-    else if (kind === 'warn') console.warn('[toast]', message)
-  })
-
   const handler = ({ x, y }: { x: number; y: number }): void => openMenu(x, y)
   bus.on('avatar:contextmenu', handler)
   offCtxMenuFn = () => bus.off('avatar:contextmenu', handler)
@@ -111,22 +108,25 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="root">
-    <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
-    <DialogBubble v-if="ready" />
-    <InputBar v-if="ready && inputOpen" @close="closeInput" />
-    <ContextMenu
-      :open="menuOpen"
-      :x="menuX"
-      :y="menuY"
-      :items="menuItems"
-      @select="onMenuSelect"
-      @close="closeMenu"
-    />
-    <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
-    <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
-    <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
-  </div>
+  <ErrorBoundary>
+    <div class="root">
+      <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
+      <DialogBubble v-if="ready" />
+      <InputBar v-if="ready && inputOpen" @close="closeInput" />
+      <ContextMenu
+        :open="menuOpen"
+        :x="menuX"
+        :y="menuY"
+        :items="menuItems"
+        @select="onMenuSelect"
+        @close="closeMenu"
+      />
+      <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+      <ToastStack />
+      <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
+      <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
+    </div>
+  </ErrorBoundary>
 </template>
 
 <style scoped>

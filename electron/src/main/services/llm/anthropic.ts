@@ -74,15 +74,26 @@ export class AnthropicProvider implements LlmProviderImpl {
       return
     }
 
+    let serverError: string | null = null
     await consumeSse(resp.body, (data) => {
-      // event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
+      // event: content_block_delta\ndata: {"type":"content_block_delta","delta":{...}}
+      // event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"..."}}
       try {
         const ev = JSON.parse(data) as {
           type?: string
           delta?: { type?: string; text?: string }
+          error?: { type?: string; message?: string }
         }
-        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+        if (
+          ev?.type === 'content_block_delta' &&
+          ev.delta?.type === 'text_delta' &&
+          ev.delta.text
+        ) {
           onEvent({ delta: ev.delta.text })
+        } else if (ev?.type === 'error' && ev.error) {
+          serverError =
+            ev.error.message ?? ev.error.type ?? 'Anthropic 返回了未明确说明的错误'
+          onEvent({ error: `Anthropic: ${serverError}` })
         }
       } catch {
         /* skip malformed */

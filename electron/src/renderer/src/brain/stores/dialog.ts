@@ -84,13 +84,15 @@ export const useDialogStore = defineStore('dialog', () => {
 
     if (!result.ok) {
       const t = turns.value.find((x) => x.id === assistantTurn.id)
+      const reason = result.reason ?? 'failed'
       if (t) {
         t.streaming = false
-        t.error = result.reason ?? 'failed'
-        t.text = `（出错：${result.reason ?? 'failed'}）`
+        t.error = reason
+        t.text = `（出错：${reason}）`
       }
       currentStreamId.value = null
       replying.value = false
+      bus.emit('ui:toast', { kind: 'error', message: `对话失败：${reason}`, ttl_ms: 8000 })
     }
   }
 
@@ -115,6 +117,7 @@ export const useDialogStore = defineStore('dialog', () => {
       assistant.error = chunk.error
       assistant.streaming = false
       bus.emit('brain:reply-error', { stream_id: chunk.streamId, error: chunk.error })
+      bus.emit('ui:toast', { kind: 'error', message: chunk.error, ttl_ms: 8000 })
     }
     if (chunk.done) {
       const parsed = parseReply(chunk.full_text ?? partialBuffer.value)
