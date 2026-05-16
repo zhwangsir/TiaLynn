@@ -200,14 +200,15 @@ const modelOptions = computed(() => {
     .map((m) => {
       const isCubism2 = m.cubism !== 'cubism4'
       const incomplete = !m.meta?.complete
+      let prefix = ''
       let suffix = ''
       let disabled = false
+      if (m.meta?.recommended) prefix = '⭐ '
       if (isCubism2) {
         suffix = '（Cubism 2，暂不支持）'
         disabled = true
       } else if (incomplete) {
         suffix = `（${m.meta?.reason ?? '不完整'}）`
-        // 仅 moc/texture 缺失才禁用；"无动作" 仍可加载（只是没动）
         disabled = !m.meta?.has_core
       } else {
         const parts: string[] = []
@@ -215,10 +216,11 @@ const modelOptions = computed(() => {
           if (m.meta.motion_count > 0) parts.push(`${m.meta.motion_count} 动作`)
           if (m.meta.expression_count > 0) parts.push(`${m.meta.expression_count} 表情`)
           if (m.meta.has_physics) parts.push('物理')
+          if (m.meta.texture_kb > 0) parts.push(`${m.meta.texture_kb}KB 贴图`)
         }
         if (parts.length > 0) suffix = ` · ${parts.join(' · ')}`
       }
-      return { value: m.dir, label: `${m.display}${suffix}`, disabled }
+      return { value: m.dir, label: `${prefix}${m.display}${suffix}`, disabled }
     })
 })
 
@@ -226,6 +228,7 @@ const totalCount = computed(() => cfg.models.length)
 const usableCount = computed(
   () => cfg.models.filter((m) => m.cubism === 'cubism4' && m.meta?.complete).length,
 )
+const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recommended).length)
 </script>
 
 <template>
@@ -288,8 +291,11 @@ const usableCount = computed(
           </label>
         </div>
         <p class="hint">
-          已显示 {{ modelOptions.length }} / 总 {{ totalCount }} · 可用（cubism4 + 含动作）{{ usableCount }}
-          。把任意 *.model3.json 的模型目录放到 ~/.tialynn/models / 项目根 / ~/Documents/Live2d-model-master 任一处。
+          ⭐ 推荐 {{ recommendedCount }} · 可用 {{ usableCount }} · 总扫到 {{ totalCount }}（已显示 {{ modelOptions.length }}）
+        </p>
+        <p class="hint">
+          完整判定：cubism4 + moc3 ≥ 50KB + texture ≥ 200KB + 至少 1 动作。
+          外部模型可能加载失败（黑屏/无渲染），优先选 ⭐ 推荐项。
         </p>
       </section>
 

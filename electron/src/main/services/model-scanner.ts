@@ -46,6 +46,9 @@ export function scanModels(): ModelInfo[] {
 
       const meta = cubism === 'cubism4' ? probeModel3(abs) : probeModel2(abs)
 
+      // builtin + 完整 → 推荐
+      if (meta) meta.recommended = source === 'builtin' && meta.complete
+
       results.push({
         dir: dirName,
         model_file: modelFile,
@@ -60,10 +63,15 @@ export function scanModels(): ModelInfo[] {
   }
 
   return results.sort((a, b) => {
-    // 完整 > 不完整，按显示名 alphabetical
-    const ac = a.meta?.complete ? 0 : 1
-    const bc = b.meta?.complete ? 0 : 1
-    if (ac !== bc) return ac - bc
+    // 推荐 > 完整 > 不完整，组内按显示名 alphabetical
+    const score = (m: ModelInfo): number => {
+      if (m.meta?.recommended) return 0
+      if (m.meta?.complete) return 1
+      return 2
+    }
+    const sa = score(a)
+    const sb = score(b)
+    if (sa !== sb) return sa - sb
     return a.display.localeCompare(b.display)
   })
 }
@@ -75,9 +83,17 @@ interface ModelMeta {
   has_physics: boolean
   motion_count: number
   expression_count: number
+  moc_kb: number
+  texture_kb: number
   complete: boolean
+  recommended: boolean
   reason?: string
 }
+
+/** 过滤阈值：低于这些值通常是占位/不完整模型 */
+const MIN_MOC_KB = 50
+const MIN_TEXTURE_KB = 200
+const MIN_MOTIONS = 1
 
 /**
  * pixi-live2d-display 内部用 new URL(relPath, baseUrl) 解析资源，
@@ -116,12 +132,20 @@ function probeModel3(modelPath: string): ModelMeta {
       else reasons.push('moc3 缺失')
     }
 
+    const mocKb = mocPath && existsSync(mocPath) ? Math.round(statSync(mocPath).size / 1024) : 0
+
     const textures = Array.isArray(refs.Textures) ? refs.Textures : []
     const hasAnyTexture = textures.length > 0 && textures.some((t) => existsSync(resolve(base, t)))
     const allTexturesUrlSafe = textures.every(isUrlSafe)
     const texturesOk = hasAnyTexture && allTexturesUrlSafe
     if (!hasAnyTexture) reasons.push('texture 缺失')
     else if (!allTexturesUrlSafe) reasons.push('texture 文件名含 # 或 ?')
+
+    let textureKb = 0
+    for (const t of textures) {
+      const tp = resolve(base, t)
+      if (existsSync(tp)) textureKb += Math.round(statSync(tp).size / 1024)
+    }
 
     let motionCount = 0
     let motionsAllUrlSafe = true
@@ -150,8 +174,13 @@ function probeModel3(modelPath: string): ModelMeta {
     const hasPhysics =
       !!refs.Physics && existsSync(resolve(base, refs.Physics)) && isUrlSafe(refs.Physics)
 
+    if (mocKb > 0 && mocKb < MIN_MOC_KB) reasons.push(`moc3 仅 ${mocKb}KB（疑似占位）`)
+    if (textureKb > 0 && textureKb < MIN_TEXTURE_KB) reasons.push(`texture 仅 ${textureKb}KB（疑似纯色块）`)
+
     const hasCore = mocOk && texturesOk
-    const hasMotions = motionCount > 0 && motionsAllUrlSafe
+    const hasMotions = motionCount >= MIN_MOTIONS && motionsAllUrlSafe
+    const sizesOk = mocKb >= MIN_MOC_KB && textureKb >= MIN_TEXTURE_KB
+    const complete = hasCore && hasMotions && sizesOk
     return {
       has_core: hasCore,
       has_motions: hasMotions,
@@ -159,7 +188,10 @@ function probeModel3(modelPath: string): ModelMeta {
       has_physics: hasPhysics,
       motion_count: motionCount,
       expression_count: expressionCount,
-      complete: hasCore && hasMotions,
+      moc_kb: mocKb,
+      texture_kb: textureKb,
+      complete,
+      recommended: false, // 由 scanModels() 根据 source 标
       reason: reasons.length > 0 ? reasons.join('；') : undefined,
     }
   } catch (e) {
@@ -170,7 +202,10 @@ function probeModel3(modelPath: string): ModelMeta {
       has_physics: false,
       motion_count: 0,
       expression_count: 0,
+      moc_kb: 0,
+      texture_kb: 0,
       complete: false,
+      recommended: false,
       reason: `model3.json 解析失败: ${e instanceof Error ? e.message : String(e)}`,
     }
   }
@@ -217,7 +252,10 @@ function probeModel2(modelPath: string): ModelMeta {
       has_physics: !!json.physics && existsSync(resolve(base, json.physics)),
       motion_count: motionCount,
       expression_count: expressionCount,
+      moc_kb: 0,
+      texture_kb: 0,
       complete: mocOk && texturesOk && motionCount > 0,
+      recommended: false,
     }
   } catch {
     return {
@@ -227,7 +265,10 @@ function probeModel2(modelPath: string): ModelMeta {
       has_physics: false,
       motion_count: 0,
       expression_count: 0,
+      moc_kb: 0,
+      texture_kb: 0,
       complete: false,
+      recommended: false,
     }
   }
 }

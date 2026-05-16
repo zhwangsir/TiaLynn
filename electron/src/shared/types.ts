@@ -54,8 +54,14 @@ export interface ModelInfo {
     motion_count: number
     /** 表情总数 */
     expression_count: number
-    /** 综合判定："完整可用"= has_core && has_motions */
+    /** moc3 文件 size (KB) - 占位模型通常 < 50KB */
+    moc_kb: number
+    /** 全部 texture 总大小 (KB) - 占位/小色块通常 < 200KB */
+    texture_kb: number
+    /** 综合判定：has_core && has_motions && 大小达标 */
     complete: boolean
+    /** 强烈推荐（builtin + 通过严格阈值） */
+    recommended: boolean
     /** 不完整时给出原因（多个用 ; 连接） */
     reason?: string
   }

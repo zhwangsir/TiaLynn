@@ -78,16 +78,18 @@ async function pickAndLoad(): Promise<void> {
         (m) => m.dir === wanted && (!wantedFile || m.model_file === wantedFile),
       ) ?? cfg.models.find((m) => m.dir === wanted)
 
-    // v0.6.9: 优先级 = 完整 cubism4 > 任意 cubism4 > （报错）
+    // v0.6.11: 优先级 = ⭐ builtin 推荐 > 完整 cubism4 > 任意 cubism4 > 报错
+    const recommended = cfg.models.filter((m) => m.meta?.recommended)
     const completeC4 = cfg.models.filter(
       (m) => m.cubism === 'cubism4' && m.meta?.complete,
     )
     const anyC4 = cfg.models.filter((m) => m.cubism === 'cubism4')
+    const fallbackChain = [...recommended, ...completeC4.filter((m) => !recommended.includes(m)), ...anyC4]
     let found = exact
 
     // 选了 cubism2 → fallback
     if (found && found.cubism !== 'cubism4') {
-      const fallback = completeC4[0] ?? anyC4[0]
+      const fallback = fallbackChain[0]
       if (fallback) {
         bus.emit('ui:toast', {
           kind: 'warn',
@@ -106,7 +108,7 @@ async function pickAndLoad(): Promise<void> {
 
     // 选了 cubism4 但缺关键资源（moc/texture）→ fallback
     if (found && found.cubism === 'cubism4' && found.meta && !found.meta.has_core) {
-      const fallback = completeC4[0]
+      const fallback = fallbackChain.find((m) => m.dir !== found?.dir)
       if (fallback) {
         bus.emit('ui:toast', {
           kind: 'warn',
@@ -118,7 +120,7 @@ async function pickAndLoad(): Promise<void> {
       }
     }
 
-    if (!found) found = completeC4[0] ?? anyC4[0] ?? cfg.models[0]
+    if (!found) found = fallbackChain[0] ?? cfg.models[0]
 
     if (!found) {
       status.value = 'error'
@@ -143,6 +145,32 @@ async function pickAndLoad(): Promise<void> {
       model_path: found.absolute_path,
       cubism: found.cubism,
     })
+    // v0.6.11 运行时验证：加载 1.5s 后若 alpha sampler 检测画面没有任何不透明像素
+    // → 模型加载了但渲染失败（黑屏/全透明）→ 自动 fallback 到推荐
+    const loadedDir = found.dir
+    setTimeout(() => {
+      if (!sampler || !renderer) return
+      if (status.value !== 'ready') return
+      // 当前 cfg.soul 还是 loadedDir 才检查（用户已经手动切走就别管）
+      if (cfg.soul?.avatar.model_dir !== loadedDir) return
+      if (sampler.isReady() && !sampler.hasOpaque()) {
+        const fallback = recommended[0] ?? completeC4.find((m) => m.dir !== loadedDir)
+        if (fallback && fallback.dir !== loadedDir) {
+          bus.emit('ui:toast', {
+            kind: 'warn',
+            message: `「${loadedDir}」加载后没有渲染出任何像素（可能模型损坏/不兼容）。已自动切到「${fallback.dir}」`,
+            ttl_ms: 8000,
+          })
+          void cfg.saveAvatar({ model_dir: fallback.dir, model_file: fallback.model_file })
+        } else {
+          bus.emit('ui:toast', {
+            kind: 'error',
+            message: `「${loadedDir}」加载后空白；没有可用的备用模型可切换`,
+            ttl_ms: 8000,
+          })
+        }
+      }
+    }, 1500)
   } catch (e) {
     console.error('[live2d] load failed', e)
     status.value = 'error'
