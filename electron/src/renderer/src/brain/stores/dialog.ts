@@ -324,6 +324,20 @@ export const useDialogStore = defineStore('dialog', () => {
     }
   }
 
+  /** v0.8: BehaviorPlanner 主动发起的 utterance（不经 LLM 生成，直接注入） */
+  function injectAssistantUtterance(text: string, emotion: EmotionId, intensity: number): void {
+    const turn: DialogTurn = {
+      id: uid(),
+      role: 'assistant',
+      text,
+      emotion,
+      intensity,
+      ts: Date.now(),
+    }
+    turns.value.push(turn)
+    void persist(turn)
+  }
+
   /** 只在没有任何历史时注入开场白，避免重复 */
   function injectGreeting(): void {
     if (turns.value.length > 0) return
@@ -349,5 +363,6 @@ export const useDialogStore = defineStore('dialog', () => {
     abort,
     clear,
     injectGreeting,
+    injectAssistantUtterance,
   }
 })

@@ -160,6 +160,28 @@ const api: TialynnApi = {
     apply: (payload) =>
       invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
   },
+  attention: {
+    getConfig: () =>
+      invoke('attention:get-config') as ReturnType<TialynnApi['attention']['getConfig']>,
+    updateConfig: (patch) =>
+      invoke('attention:update-config', patch) as ReturnType<
+        TialynnApi['attention']['updateConfig']
+      >,
+    snapshot: () =>
+      invoke('attention:snapshot') as ReturnType<TialynnApi['attention']['snapshot']>,
+    recentPlans: (limit) =>
+      invoke('attention:recent-plans', limit) as ReturnType<
+        TialynnApi['attention']['recentPlans']
+      >,
+    onPlan: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        plan: import('@shared/attention').BehaviorPlan,
+      ): void => cb(plan)
+      ipcRenderer.on('attention:plan', handler)
+      return () => ipcRenderer.off('attention:plan', handler)
+    },
+  },
   perception: {
     getConfig: () =>
       invoke('perception:get-config') as ReturnType<TialynnApi['perception']['getConfig']>,

@@ -6,6 +6,7 @@
 import mitt, { type Emitter } from 'mitt'
 import type { EmotionId } from '@shared/types'
 import type { MotionDraft } from '@shared/motion'
+import type { BehaviorPlan } from '@shared/attention'
 
 export type BusEventMap = {
   /* 立绘 */
@@ -35,6 +36,8 @@ export type BusEventMap = {
   'avatar:stop-motion': void
   'avatar:motion-started': { draft_name: string }
   'avatar:motion-ended': { draft_name: string }
+  /* 主体性 Behavior 执行 (v0.8) */
+  'attention:execute-plan': { plan: BehaviorPlan }
 }
 
 export const bus: Emitter<BusEventMap> = mitt<BusEventMap>()

@@ -95,7 +95,16 @@ function closeInput(): void {
 let offCtxMenuFn: (() => void) | null = null
 let offSoulFn: (() => void) | null = null
 let offInstalledFn: (() => void) | null = null
+let offAttentionPlanFn: (() => void) | null = null
 const dragOver = ref(false)
+
+/** Plan 执行入口：从 Live2DStage 拿 renderer + container 引用 */
+async function executePlanForCurrentStage(
+  plan: import('@shared/attention').BehaviorPlan,
+): Promise<void> {
+  // 通过 bus 让 Live2DStage 接管（它持有 renderer + container）
+  bus.emit('attention:execute-plan', { plan })
+}
 
 function onDragOver(e: DragEvent): void {
   e.preventDefault()
@@ -170,12 +179,18 @@ onMounted(async () => {
   offInstalledFn = window.api.market.onInstalled(() => {
     void cfg.rescanModels()
   })
+
+  // v0.8 主体性架构：监听主进程 BehaviorPlan → 执行
+  offAttentionPlanFn = window.api.attention.onPlan((plan) => {
+    void executePlanForCurrentStage(plan)
+  })
 })
 
 onBeforeUnmount(() => {
   offCtxMenuFn?.()
   offSoulFn?.()
   offInstalledFn?.()
+  offAttentionPlanFn?.()
 })
 </script>
 

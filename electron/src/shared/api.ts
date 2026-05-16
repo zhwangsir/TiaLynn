@@ -25,6 +25,7 @@ import type { ApplyResult, LibrarySummary, MotionTemplate } from './motion-libra
 import type { MotionEntry, MotionFilter, MotionVersion, SyncReport } from './motion-engine'
 import type { TriggerDecision, TriggerEvent, TriggerRule } from './trigger'
 import type { PerceptionConfig, PerceptionEvent, PerceptionEventType } from './perception'
+import type { AttentionConfig, AttentionSnapshot, BehaviorPlan } from './attention'
 
 export interface SystemPaths {
   projectRoot: string
@@ -125,6 +126,13 @@ export interface TialynnApi {
       intensity_scale?: number
       name_suffix?: string
     }): Promise<ApplyResult>
+  }
+  attention: {
+    getConfig(): Promise<AttentionConfig>
+    updateConfig(patch: Partial<AttentionConfig>): Promise<AttentionConfig>
+    snapshot(): Promise<AttentionSnapshot>
+    recentPlans(limit?: number): Promise<BehaviorPlan[]>
+    onPlan(cb: (plan: BehaviorPlan) => void): () => void
   }
   perception: {
     getConfig(): Promise<PerceptionConfig>
