@@ -1,45 +1,74 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { bus } from '../eventbus'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const cfg = useConfigStore()
-const form = reactive<RuntimeConfig>({
-  llm_provider: 'openai_compat',
-  llm_endpoint: '',
-  llm_model: '',
-  llm_api_key: '',
-  tts_provider: 'sidecar',
-  tts_sidecar_url: '',
-  idle_min_sec: 60,
-  idle_max_sec: 180,
-  autocomment_interval_sec: 600,
-  emotion_decay_per_minute: 0.1,
-  flip_probability: 0.15,
-  emotion_voice_map: {},
-  embedding_endpoint: '',
-  embedding_model: '',
-})
 
+function blankConfig(): RuntimeConfig {
+  return {
+    llm_provider: 'openai_compat',
+    llm_endpoint: '',
+    llm_model: '',
+    llm_api_key: '',
+    tts_provider: 'sidecar',
+    tts_sidecar_url: '',
+    idle_min_sec: 60,
+    idle_max_sec: 180,
+    autocomment_interval_sec: 600,
+    emotion_decay_per_minute: 0.1,
+    flip_probability: 0.15,
+    emotion_voice_map: {},
+    embedding_endpoint: '',
+    embedding_model: '',
+  }
+}
+
+const form = reactive<RuntimeConfig>(blankConfig())
 const selectedModel = ref<string>('')
+/** 用户是否已在面板上做过编辑（true 后停止从 store 覆盖，避免 IPC 推送把输入回退） */
+const userEdited = ref(false)
+/** 最近一次保存反馈 */
+const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 
+function loadFromStore(): void {
+  if (cfg.config) Object.assign(form, JSON.parse(JSON.stringify(cfg.config)))
+  if (cfg.soul?.avatar.model_dir) selectedModel.value = cfg.soul.avatar.model_dir
+}
+
+// 初始化：拷一份 store 当前值
+loadFromStore()
+
+// 用户没动过表单时，store 变化可以镜像回 form（避免显示陈旧值）
 watch(
   () => cfg.config,
-  (v) => {
-    if (!v) return
-    Object.assign(form, JSON.parse(JSON.stringify(v)))
+  () => {
+    if (!userEdited.value) loadFromStore()
   },
-  { immediate: true },
 )
 watch(
   () => cfg.soul?.avatar.model_dir,
   (v) => {
-    if (v) selectedModel.value = v
+    if (!userEdited.value && v) selectedModel.value = v
   },
-  { immediate: true },
 )
+
+/** 任何字段被改动 → markDirty，停止外部覆盖 */
+function markDirty(): void {
+  userEdited.value = true
+  saveStatus.value = null
+}
+
+const dirty = computed<boolean>(() => {
+  if (!cfg.config) return false
+  const a = JSON.stringify(form)
+  const b = JSON.stringify(cfg.config)
+  const modelChanged = !!selectedModel.value && selectedModel.value !== cfg.soul?.avatar.model_dir
+  return a !== b || modelChanged
+})
 
 const ttsHealth = ref<{ ok: boolean; status?: number; reason?: string } | null>(null)
 
@@ -54,33 +83,69 @@ async function bootstrapMeta(): Promise<void> {
 }
 bootstrapMeta()
 
+/**
+ * 一键保存：先存 RuntimeConfig，再（如需）存 avatar。
+ * 任一步失败 → 不关面板 + toast；全成功 → toast + 关面板。
+ */
 async function save(): Promise<void> {
-  await cfg.save(form)
+  const errors: string[] = []
+  let configSaved = false
+  let avatarSaved = false
+
+  try {
+    await cfg.save(form)
+    configSaved = true
+  } catch (e) {
+    errors.push(`运行配置：${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // 模型切换（如果选了一个跟当前不一样的）
+  const targetDir = selectedModel.value
+  if (cfg.soul && targetDir && targetDir !== cfg.soul.avatar.model_dir) {
+    try {
+      const target = cfg.models.find((m) => m.dir === targetDir)
+      const ok = await cfg.saveAvatar({
+        model_dir: targetDir,
+        model_file: target?.model_file ?? cfg.soul.avatar.model_file,
+      })
+      if (ok) avatarSaved = true
+      else errors.push('立绘配置写回 identity.yaml 失败（已在前端切换，但磁盘没生效）')
+    } catch (e) {
+      errors.push(`立绘配置：${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  if (errors.length === 0) {
+    saveStatus.value = { ok: true, message: '已保存' }
+    const parts: string[] = []
+    if (configSaved) parts.push('运行配置')
+    if (avatarSaved) parts.push('立绘')
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: parts.length > 0 ? `已保存：${parts.join(' + ')}` : '已保存',
+      ttl_ms: 2500,
+    })
+    userEdited.value = false
+    // 短暂展示「已保存」再关闭，比直接关闭更让人放心
+    setTimeout(() => emit('close'), 350)
+  } else {
+    saveStatus.value = { ok: false, message: errors.join('；') }
+    bus.emit('ui:toast', { kind: 'error', message: `保存失败：${errors[0]}`, ttl_ms: 8000 })
+  }
 }
 
 async function testLlm(): Promise<void> {
   await cfg.testLlm(form)
 }
 
-async function switchModel(): Promise<void> {
-  if (!selectedModel.value || !cfg.soul) return
-  const target = cfg.models.find((m) => m.dir === selectedModel.value)
-  const ok = await cfg.saveAvatar({
-    model_dir: selectedModel.value,
-    model_file: target?.model_file ?? cfg.soul.avatar.model_file,
-  })
-  if (!ok) {
-    // 至少前端 mutate，让 watch 触发重新加载
-    cfg.soul.avatar.model_dir = selectedModel.value
-  }
-}
-
 async function rescan(): Promise<void> {
   await cfg.rescanModels()
+  bus.emit('ui:toast', { kind: 'info', message: `已扫描，${cfg.models.length} 个模型`, ttl_ms: 2500 })
 }
 
 async function reloadSoul(): Promise<void> {
   await cfg.reloadSoul()
+  bus.emit('ui:toast', { kind: 'info', message: '灵魂档案已重载', ttl_ms: 2000 })
 }
 
 async function openDataDir(): Promise<void> {
@@ -89,6 +154,14 @@ async function openDataDir(): Promise<void> {
 
 async function openModelsDir(): Promise<void> {
   await window.api.system.revealModelsDir()
+}
+
+function cancel(): void {
+  if (dirty.value) {
+    // 简单提示：丢弃改动；下次面板打开会从 store 重新读
+    bus.emit('ui:toast', { kind: 'warn', message: '已放弃未保存的改动', ttl_ms: 2500 })
+  }
+  emit('close')
 }
 
 const providerOptions = [
@@ -114,21 +187,21 @@ const modelOptions = computed(() =>
         <h3>大脑 (LLM)</h3>
         <label>
           <span>提供商</span>
-          <select v-model="form.llm_provider">
+          <select v-model="form.llm_provider" @change="markDirty">
             <option v-for="o in providerOptions" :key="o.v" :value="o.v">{{ o.label }}</option>
           </select>
         </label>
         <label>
           <span>Endpoint</span>
-          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." />
+          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" />
         </label>
         <label>
           <span>Model</span>
-          <input v-model="form.llm_model" type="text" placeholder="claude-sonnet-4-6 / qwen2.5-7b / gpt-4o-mini" />
+          <input v-model="form.llm_model" type="text" placeholder="claude-sonnet-4-6 / qwen2.5-7b / gpt-4o-mini" @input="markDirty" />
         </label>
         <label>
           <span>API Key</span>
-          <input v-model="form.llm_api_key" type="password" placeholder="（本地服务可留空）" />
+          <input v-model="form.llm_api_key" type="password" placeholder="（本地服务可留空）" @input="markDirty" />
         </label>
         <div class="row">
           <button class="ghost" @click="testLlm" :disabled="cfg.testing">
@@ -144,31 +217,29 @@ const modelOptions = computed(() =>
         <h3>立绘 (Avatar)</h3>
         <label>
           <span>模型</span>
-          <select v-model="selectedModel">
-            <option value="">（保持当前）</option>
+          <select v-model="selectedModel" @change="markDirty">
             <option v-for="o in modelOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
         </label>
         <div class="row">
           <button class="ghost" @click="rescan">重扫</button>
-          <button class="ghost" @click="switchModel" :disabled="!selectedModel">应用</button>
           <button class="ghost" @click="openModelsDir">打开模型目录</button>
         </div>
-        <p class="hint">把任意 *.model3.json / *.model.json 的模型目录放到 ~/.tialynn/models / 项目根 / ~/Documents/Live2d-model-master 任一处即可。</p>
+        <p class="hint">把任意 *.model3.json / *.model.json 的模型目录放到 ~/.tialynn/models / 项目根 / ~/Documents/Live2d-model-master 任一处即可。改完点底部「保存」即生效。</p>
       </section>
 
       <section>
         <h3>声音 (TTS)</h3>
         <label>
           <span>方案</span>
-          <select v-model="form.tts_provider">
+          <select v-model="form.tts_provider" @change="markDirty">
             <option value="sidecar">本地 sidecar（FastAPI）</option>
             <option value="none">关闭语音</option>
           </select>
         </label>
         <label>
           <span>Sidecar URL</span>
-          <input v-model="form.tts_sidecar_url" type="text" placeholder="http://localhost:8765" />
+          <input v-model="form.tts_sidecar_url" type="text" placeholder="http://localhost:8765" @input="markDirty" />
         </label>
         <div class="row">
           <button class="ghost" @click="probeTts">探测</button>
@@ -189,9 +260,14 @@ const modelOptions = computed(() =>
       </section>
 
       <footer>
-        <button class="ghost" @click="emit('close')">取消</button>
-        <button class="primary" @click="save" :disabled="cfg.saving">
-          {{ cfg.saving ? '保存中…' : '保存' }}
+        <span v-if="saveStatus" :class="['save-status', saveStatus.ok ? 'ok' : 'bad']">
+          {{ saveStatus.ok ? '✓' : '✗' }} {{ saveStatus.message }}
+        </span>
+        <span v-else-if="dirty" class="save-status dirty">有未保存的改动</span>
+        <span class="spacer" />
+        <button class="ghost" @click="cancel">取消</button>
+        <button class="primary" @click="save" :disabled="cfg.saving || !dirty">
+          {{ cfg.saving ? '保存中…' : dirty ? '保存' : '已是最新' }}
         </button>
       </footer>
     </div>
@@ -351,8 +427,29 @@ code {
 footer {
   display: flex;
   gap: 8px;
+  align-items: center;
   justify-content: flex-end;
   border-top: 1px solid var(--color-bubble-border);
   padding-top: 12px;
+}
+.spacer {
+  flex: 1;
+}
+.save-status {
+  font-size: var(--text-xs);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+}
+.save-status.ok {
+  background: oklch(95% 0.06 145 / 0.6);
+  color: oklch(40% 0.1 145);
+}
+.save-status.bad {
+  background: oklch(95% 0.08 25 / 0.6);
+  color: oklch(45% 0.15 25);
+}
+.save-status.dirty {
+  background: oklch(95% 0.05 80 / 0.6);
+  color: oklch(45% 0.12 80);
 }
 </style>
