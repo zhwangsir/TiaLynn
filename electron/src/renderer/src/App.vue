@@ -15,14 +15,15 @@ const dialog = useDialogStore()
 const speech = useSpeechStore()
 
 const settingsOpen = ref(false)
-// 当 settings 打开 / hover 到对话气泡时，关闭穿透判定（避免气泡被穿透）
 const passthroughEnabled = ref(true)
+const ready = ref(false) // 等 cfg.bootstrap 完成（含 soul + models）后才挂 Live2DStage，避免 race
 
 onMounted(async () => {
   await cfg.bootstrap()
   dialog.bootstrap()
   speech.bootstrap()
   dialog.injectGreeting()
+  ready.value = true // 现在才允许 Live2DStage 挂载
 
   bus.on('ui:toast', ({ kind, message }) => {
     console[kind === 'error' ? 'error' : kind === 'warn' ? 'warn' : 'log']('[toast]', message)
@@ -47,11 +48,12 @@ async function reloadModel(): Promise<void> {
 
 <template>
   <div class="root">
-    <Live2DStage :passthrough-enabled="passthroughEnabled" />
-    <DialogBubble />
-    <ControlDock @open-settings="openSettings" @reload-model="reloadModel" />
-    <InputBar />
+    <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
+    <DialogBubble v-if="ready" />
+    <ControlDock v-if="ready" @open-settings="openSettings" @reload-model="reloadModel" />
+    <InputBar v-if="ready" />
     <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+    <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
   </div>
 </template>
 
@@ -62,5 +64,17 @@ async function reloadModel(): Promise<void> {
   height: 100%;
   background: transparent;
   pointer-events: auto;
+}
+.boot-hint {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--color-muted);
+  background: var(--color-bubble);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
 }
 </style>

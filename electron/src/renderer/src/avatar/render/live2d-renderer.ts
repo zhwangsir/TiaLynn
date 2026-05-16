@@ -34,6 +34,8 @@ export class Live2DRenderer {
   private gazeY = 0
   private lipsyncValue = 0
   private destroyed = false
+  /** 自增加载序号，用于在并发加载时识别「最新一次请求」，丢弃过期结果 */
+  private loadSeq = 0
 
   constructor(opts: RendererOptions) {
     this.app = new PIXI.Application({
@@ -52,18 +54,26 @@ export class Live2DRenderer {
 
   async loadModel(modelUrl: string, opts: ModelOptions = {}): Promise<void> {
     if (this.destroyed) throw new Error('renderer destroyed')
+    const mySeq = ++this.loadSeq
 
-    if (this.model) {
+    // 1. 同步清理舞台上所有旧模型（不只是 this.model —— race 时可能挂了多个）
+    this.disposeAllStageModels()
+
+    // 2. 异步加载新模型
+    const model = await Live2DModel.from(modelUrl, { autoInteract: false })
+
+    // 3. 加载完成时如果不是最新请求，立即销毁这个 zombie，不挂上 stage
+    if (this.destroyed || mySeq !== this.loadSeq) {
       try {
-        this.app.stage.removeChild(this.model)
-        this.model.destroy({ children: true, texture: true, baseTexture: true })
-      } catch (e) {
-        console.warn('[live2d] dispose old model failed', e)
+        model.destroy({ children: true, texture: true, baseTexture: true })
+      } catch {
+        /* ignore */
       }
-      this.model = null
+      return
     }
 
-    const model = await Live2DModel.from(modelUrl, { autoInteract: false })
+    // 4. 再次清理 —— 防御并发期间又有别的 model 被挂上
+    this.disposeAllStageModels()
     this.model = model
     this.app.stage.addChild(model)
 
@@ -118,19 +128,31 @@ export class Live2DRenderer {
     if (this.destroyed) return
     this.destroyed = true
     this.app.ticker.remove(this.tick, this)
-    try {
-      if (this.model) {
-        this.app.stage.removeChild(this.model)
-        this.model.destroy({ children: true, texture: true, baseTexture: true })
-      }
-    } catch (e) {
-      console.warn('[live2d] destroy model failed', e)
-    }
+    this.disposeAllStageModels()
+    this.model = null
     try {
       this.app.destroy(false, { children: true })
     } catch (e) {
       console.warn('[live2d] destroy app failed', e)
     }
+  }
+
+  /** 一次清掉 stage 上挂着的所有 Live2DModel —— race 时可能多于 1 个 */
+  private disposeAllStageModels(): void {
+    const stage = this.app.stage
+    const victims: PIXI.DisplayObject[] = []
+    for (const child of stage.children) {
+      if (child instanceof Live2DModel) victims.push(child)
+    }
+    for (const v of victims) {
+      try {
+        stage.removeChild(v)
+        ;(v as Live2DModel).destroy({ children: true, texture: true, baseTexture: true })
+      } catch (e) {
+        console.warn('[live2d] dispose stage model failed', e)
+      }
+    }
+    this.model = null
   }
 
   private tick = (): void => {
