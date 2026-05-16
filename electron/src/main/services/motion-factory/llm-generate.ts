@@ -48,6 +48,21 @@ export interface GenerateParams {
 
 export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
   const cfg = loadConfig()
+
+  // 提前明确诊断 — 之前 buildProvider 不抛错但 chatStream 失败时上层只看到模糊错误
+  if (!cfg.llm_provider) {
+    throw new Error('LLM provider 未配置；请在「设置」中选择 Anthropic / OpenAI 兼容 / Ollama')
+  }
+  if (cfg.llm_provider === 'anthropic' && !cfg.llm_api_key) {
+    throw new Error('Anthropic provider 需要 API key；请在「设置」填入 llm_api_key')
+  }
+  if (!cfg.llm_model) {
+    throw new Error('LLM model 未配置；请在「设置」中填入模型名（如 claude-sonnet-4-5）')
+  }
+  if (!cfg.llm_endpoint && cfg.llm_provider !== 'anthropic') {
+    throw new Error(`${cfg.llm_provider} 需要 endpoint URL；请在「设置」中填入`)
+  }
+
   const provider = buildProvider(cfg.llm_provider, cfg.llm_endpoint, cfg.llm_api_key)
 
   // 选 top-N 高频参数 (~30 个足够)，避免上下文爆
@@ -85,18 +100,45 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
   ]
 
   let buffer = ''
-  await provider.chatStream(
-    messages,
-    { model: cfg.llm_model, temperature: 0.7, max_tokens: 4000 },
-    (evt) => {
-      if (evt.delta) buffer += evt.delta
-      if (evt.error) throw new Error(evt.error)
-    },
-  )
+  let streamError: string | null = null
+  let done = false
+
+  try {
+    await provider.chatStream(
+      messages,
+      { model: cfg.llm_model, temperature: 0.7, max_tokens: 4000 },
+      (evt) => {
+        if (evt.delta) buffer += evt.delta
+        if (evt.error) streamError = evt.error // capture，不 throw（chatStream 内部会吞）
+        if (evt.done) done = true
+      },
+    )
+  } catch (e) {
+    throw new Error(
+      `LLM 流式调用失败 (${cfg.llm_provider} @ ${cfg.llm_endpoint || '默认'}): ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    )
+  }
+
+  if (streamError) {
+    throw new Error(`LLM 返回错误: ${streamError}`)
+  }
+  if (!done) {
+    throw new Error('LLM 流未正常结束（可能网络中断）')
+  }
+  if (buffer.length === 0) {
+    throw new Error(
+      `LLM 没有返回任何文本。可能是 model 名错误、API key 无效、endpoint 不可达。检查 ${cfg.llm_provider} 配置：endpoint=${cfg.llm_endpoint || '默认'}, model=${cfg.llm_model}`,
+    )
+  }
 
   const json = extractJson(buffer)
   if (!json) {
-    throw new Error('LLM 输出无法解析为 JSON：' + buffer.slice(0, 200))
+    throw new Error(
+      `LLM 输出无法解析为 JSON（前 300 字符）：\n${buffer.slice(0, 300)}\n\n` +
+        `提示：可能该模型不支持复杂 JSON 输出，或被 system prompt 拒绝。试试换 model 或简化描述。`,
+    )
   }
   const draft = validateDraft(json, p.summary)
   return draft

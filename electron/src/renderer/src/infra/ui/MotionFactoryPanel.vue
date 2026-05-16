@@ -79,7 +79,10 @@ async function generate(): Promise<void> {
       examples: 2,
     })
     if (!r.ok || !r.draft) {
-      bus.emit('ui:toast', { kind: 'error', message: r.reason ?? '生成失败', ttl_ms: 8000 })
+      // 把详细 reason 同时展示到 draftRaw 区域，方便用户读完整错误信息
+      const detail = r.reason ?? '生成失败（无详细原因）'
+      bus.emit('ui:toast', { kind: 'error', message: detail.slice(0, 200), ttl_ms: 10000 })
+      draftRaw.value = `❌ 生成失败：\n\n${detail}\n\n请到「设置」检查 LLM 配置后重试。`
       return
     }
     draft.value = r.draft
