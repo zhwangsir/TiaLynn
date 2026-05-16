@@ -4,10 +4,69 @@
 
 ## [Unreleased]
 
-### 路线
-- v0.3.3：水墨视觉重塑 + 桌宠细节
-- v0.4.0：屏幕感知 + Vision LLM
-- v0.5.0：RPA 键鼠操作
+### 路线（重订）
+- M1 (v0.5.x)：能聊（Claude/Ollama provider + 表情联动）
+- M2 (v0.6.x)：能听能说（CosyVoice + whisper.cpp + 嘴型同步）
+- M3 (v0.7.x)：能记（ChromaDB + 共同回忆导入）
+- M4 (v0.8.x)：能干活（MCP 工具调用，**项目灵魂**）
+- M5 (v0.9.x)：能主动（屏幕感知 + 主动开口）
+- M6：能进化（习惯学习 + 记忆衰减）
+
+---
+
+## [0.4.0] — 2026-05-16 — Constitutional Rewrite ★ M0
+
+### 项目宪法落地：五大能力域
+
+按 ARCHITECTURE.md 重组整个项目。从"通用桌宠 SDK"重定向为
+**"常驻桌面的自我进化型 AI 智能体"**：身体（Live2D）+ 大脑（LLM）+ **手脚（MCP 工具调用）** + 灵魂（人格 + 记忆）。
+
+```
+avatar/   形象表现（Live2D + 窗口）
+brain/    智能核心（LLM + 记忆 + persona）
+hands/    工具执行（MCP，M4 启用，目录占位）
+presence/ 陪伴交互（TTS / STT / 主动行为）
+infra/    基础设施（config / eventbus / system）
+```
+
+**模块间通信只走事件总线**（mitt 前端 + Tauri emit 后端）。  
+**禁止跨域 import 内部函数**。
+
+### 砍代码（8 项）
+- `alpha/mask.ts` — 128×96 像素穿透 mask
+- `core/motion.rs` + `commands/motion.rs` — 散步系统（M5 重做）
+- `behavior/persona.ts` — 10 状态 FSM
+- `behavior/autoComment.ts` — 主动开口（M5 重做）
+- `behavior/idle.ts` — 8 种 idle 动作（与 persona 重叠）
+- `emotion/fsm.ts` — 关键词触发表（LLM JSON emotion 取代）
+- `alpha/sampler.ts::hitTestAlpha` — 拖动逻辑保留，hit-test 砍
+- RuntimeConfig 中 `live2d_*` / `motion_*` / `extra_model_dirs` 字段（迁到 soul）
+
+### 灵魂 YAML 拆分
+单文件 `default.yaml` 拆为 4 份：
+- `soul/identity.yaml` — 身份 + avatar 模型路径 + 搜索路径
+- `soul/personality.yaml` — 三层人格 prompt 模板
+- `soul/core_memories.yaml` — 永久注入的核心记忆
+- `soul/learned_traits.yaml` — 系统自动写入
+
+### 新增
+- `src/infra/eventbus.ts` — mitt + EventMap（完整事件类型定义）
+- `src-tauri/src/infra/eventbus.rs` — Rust 端事件名常量
+- `hands/` 目录占位 + README
+- 5 个域 README（明确边界规范）
+- 4 份文档：`ARCHITECTURE.md` / `ROADMAP.md` / `DECISIONS.md` / `M0_INVENTORY.md` / `M0_COMPLETION.md`
+
+### 编译验证
+- ✅ `pnpm typecheck` — 0 错误
+- ✅ `cargo check` — 0 错误
+- ✅ `pnpm build` — 成功
+
+### 自审计通过
+- 跨域 `crate::core::` / `crate::commands::` 残留：0
+- 前端 `@/{alpha,behavior,live2d,components,stores,emotion,audio}` 残留：0
+- RuntimeConfig 砍掉 9 个迁出字段，新增 0 字段
+
+历史 v0.1 - v0.3 改动保留在 git history。**v0.4.0 是干净起点**。
 
 ---
 
@@ -398,7 +457,8 @@ device_query 在 macOS Retina 返回物理像素，与 Tauri 一致。
 - Voice clone 实际推理（v0.2，目前 sidecar 返回静音占位）
 - 表情/动作 motion 文件（永久走程序化驱动）
 
-[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/zhwangsir/TiaLynn/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.4.0
 [0.3.2]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.2
 [0.3.1]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.1
 [0.3.0]: https://github.com/zhwangsir/TiaLynn/releases/tag/v0.3.0

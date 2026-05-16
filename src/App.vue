@@ -1,19 +1,17 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import Live2DStage from './components/Live2DStage.vue'
-import DialogBubble from './components/DialogBubble.vue'
-import InputBar from './components/InputBar.vue'
-import SettingsPanel from './components/SettingsPanel.vue'
-import { useSoulStore } from './stores/soul'
-import { useDialogStore } from './stores/dialog'
-import { useEmotionStore } from './stores/emotion'
-import { useConfigStore } from './stores/config'
-import { useSttStore } from './stores/stt'
-import { startAlphaHitTest, stopAlphaHitTest } from './alpha/sampler'
-import { startEmotionTick } from './behavior/emotionTick'
-import { startAutoComment } from './behavior/autoComment'
-import { startDistillTick } from './behavior/distillTick'
-import { persona } from './behavior/persona'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import Live2DStage from '@/avatar/components/Live2DStage.vue'
+import DialogBubble from '@/brain/components/DialogBubble.vue'
+import InputBar from '@/brain/components/InputBar.vue'
+import SettingsPanel from '@/infra/ui/SettingsPanel.vue'
+import { useSoulStore } from '@/brain/stores/soul'
+import { useDialogStore } from '@/brain/stores/dialog'
+import { useEmotionStore } from '@/brain/stores/emotion'
+import { useConfigStore } from '@/infra/stores/config'
+import { useSttStore } from '@/presence/stores/stt'
+import { startAlphaHitTest, stopAlphaHitTest } from '@/avatar/interaction/drag'
+import { startEmotionTick } from '@/brain/emotion/decayTick'
+import { startDistillTick } from '@/brain/memory/distillTick'
 
 const soul = useSoulStore()
 const dialog = useDialogStore()
@@ -24,7 +22,6 @@ const ready = ref(false)
 void stt // 触发 store 初始化（事件监听）
 
 let stopEmotionTick: (() => void) | null = null
-let stopAutoComment: (() => void) | null = null
 let stopDistillTick: (() => void) | null = null
 
 onMounted(async () => {
@@ -32,42 +29,16 @@ onMounted(async () => {
   emotion.init(soul.config?.emotions?.initial ?? 'neutral')
   startAlphaHitTest()
   stopEmotionTick = startEmotionTick()
-  stopAutoComment = startAutoComment()
   stopDistillTick = startDistillTick()
-  // 启动桌宠人格 + 自主移动
-  applyPersonaConfig()
-  await persona.start()
   ready.value = true
 })
-
-function applyPersonaConfig(): void {
-  persona.setConfig({
-    enabled: config.config?.motion_enabled ?? true,
-    minSec: config.config?.motion_min_sec ?? 90,
-    maxSec: config.config?.motion_max_sec ?? 300,
-    speed: config.config?.motion_speed ?? 1.0,
-  })
-}
-
-watch(
-  () => [
-    config.config?.motion_enabled,
-    config.config?.motion_min_sec,
-    config.config?.motion_max_sec,
-    config.config?.motion_speed,
-  ],
-  () => applyPersonaConfig(),
-)
 
 onBeforeUnmount(() => {
   stopAlphaHitTest()
   stopEmotionTick?.()
-  stopAutoComment?.()
   stopDistillTick?.()
-  persona.stop()
 })
 
-// 抑制 TS 未使用变量警告
 void dialog
 </script>
 
