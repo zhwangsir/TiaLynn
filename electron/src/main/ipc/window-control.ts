@@ -7,7 +7,7 @@
  *   - `set-ignore-mouse`: 在透明区 / 立绘区切换穿透状态
  *     带 `forward: true` 让 webview 仍能收到 mousemove（关键魔法）
  */
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { platform } from '../windows/shared'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,4 +112,32 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
     if (!win || win.isDestroyed()) return
     win.setAlwaysOnTop(!!pin, 'screen-saver')
   })
+
+  // === 主进程 cursor polling ===
+  // 解决：当鼠标静止悬停在 UI 上、未触发 webview mousemove 时，
+  // 渲染层无从得知该切回 ignore=false。主进程主动 poll 屏幕坐标，
+  // 通过 IPC 推给 renderer 让其判定。频率 50ms，比 click 反应快 4 倍。
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+  function startCursorPolling(): void {
+    if (pollTimer) return
+    pollTimer = setInterval(() => {
+      const win = getWindow()
+      if (!win || win.isDestroyed() || !win.isVisible()) return
+      const cursor = screen.getCursorScreenPoint()
+      const b = win.getBounds()
+      const x = cursor.x - b.x
+      const y = cursor.y - b.y
+      // 只把窗口内的 cursor 推给 renderer；窗口外不推（让 renderer 默认 ignore=true）
+      const inside = x >= 0 && y >= 0 && x < b.width && y < b.height
+      win.webContents.send('cursor:tick', { x, y, inside })
+    }, 50)
+  }
+  function stopCursorPolling(): void {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+  ipcMain.handle('cursor:poll-start', () => startCursorPolling())
+  ipcMain.handle('cursor:poll-stop', () => stopCursorPolling())
 }

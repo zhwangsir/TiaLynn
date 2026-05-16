@@ -39,6 +39,11 @@ export interface TialynnApi {
     minimize(): Promise<void>
     togglePin(pin: boolean): Promise<void>
   }
+  cursor: {
+    pollStart(): Promise<void>
+    pollStop(): Promise<void>
+    onTick(cb: (pt: { x: number; y: number; inside: boolean }) => void): () => void
+  }
   config: {
     load(): Promise<RuntimeConfig>
     save(dto: RuntimeConfig): Promise<RuntimeConfig>

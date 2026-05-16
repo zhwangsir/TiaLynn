@@ -37,6 +37,18 @@ const api: TialynnApi = {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     togglePin: (pin: boolean): Promise<void> => ipcRenderer.invoke('window:toggle-pin', pin),
   },
+  cursor: {
+    pollStart: (): Promise<void> => ipcRenderer.invoke('cursor:poll-start'),
+    pollStop: (): Promise<void> => ipcRenderer.invoke('cursor:poll-stop'),
+    onTick: (cb: (pt: { x: number; y: number; inside: boolean }) => void): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        pt: { x: number; y: number; inside: boolean },
+      ): void => cb(pt)
+      ipcRenderer.on('cursor:tick', handler)
+      return () => ipcRenderer.off('cursor:tick', handler)
+    },
+  },
   config: {
     load: (): Promise<RuntimeConfig> => ipcRenderer.invoke('config:load'),
     save: (dto: RuntimeConfig): Promise<RuntimeConfig> => ipcRenderer.invoke('config:save', dto),
