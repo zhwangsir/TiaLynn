@@ -151,6 +151,41 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('motion:written', handler)
     },
   },
+  library: {
+    summary: () => invoke('library:summary') as ReturnType<TialynnApi['library']['summary']>,
+    list: () => invoke('library:list') as ReturnType<TialynnApi['library']['list']>,
+    get: (id: string) =>
+      invoke('library:get', id) as ReturnType<TialynnApi['library']['get']>,
+    reload: () => invoke('library:reload') as ReturnType<TialynnApi['library']['reload']>,
+    apply: (payload) =>
+      invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
+  },
+  engine: {
+    list: (filter) => invoke('engine:list', filter) as ReturnType<TialynnApi['engine']['list']>,
+    get: (id: number) => invoke('engine:get', id) as ReturnType<TialynnApi['engine']['get']>,
+    create: (input) =>
+      invoke('engine:create', input) as ReturnType<TialynnApi['engine']['create']>,
+    update: (payload) =>
+      invoke('engine:update', payload) as ReturnType<TialynnApi['engine']['update']>,
+    delete: (id: number) =>
+      invoke('engine:delete', id) as ReturnType<TialynnApi['engine']['delete']>,
+    saveVersion: (payload) =>
+      invoke('engine:save-version', payload) as ReturnType<TialynnApi['engine']['saveVersion']>,
+    listVersions: (entryId: number) =>
+      invoke('engine:list-versions', entryId) as ReturnType<TialynnApi['engine']['listVersions']>,
+    getVersion: (payload) =>
+      invoke('engine:get-version', payload) as ReturnType<TialynnApi['engine']['getVersion']>,
+    recordPlay: (id: number) => invoke('engine:record-play', id) as Promise<void>,
+    setRating: (payload) => invoke('engine:set-rating', payload) as Promise<void>,
+    byEmotion: (payload) =>
+      invoke('engine:by-emotion', payload) as ReturnType<TialynnApi['engine']['byEmotion']>,
+    byContext: (payload) =>
+      invoke('engine:by-context', payload) as ReturnType<TialynnApi['engine']['byContext']>,
+    topRated: (payload) =>
+      invoke('engine:top-rated', payload) as ReturnType<TialynnApi['engine']['topRated']>,
+    sync: (modelDir: string) =>
+      invoke('engine:sync', modelDir) as ReturnType<TialynnApi['engine']['sync']>,
+  },
   market: {
     installZip: (zipPath: string) =>
       invoke('market:install-zip', zipPath) as ReturnType<TialynnApi['market']['installZip']>,

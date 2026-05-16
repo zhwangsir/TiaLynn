@@ -21,6 +21,8 @@ import type {
 } from './tools'
 import type { ModelMotionSummary, MotionDraft } from './motion'
 import type { SemanticsMap } from './motion-semantics'
+import type { ApplyResult, LibrarySummary, MotionTemplate } from './motion-library'
+import type { MotionEntry, MotionFilter, MotionVersion, SyncReport } from './motion-engine'
 
 export interface SystemPaths {
   projectRoot: string
@@ -98,7 +100,8 @@ export interface TialynnApi {
       description: string
       style?: string
       examples?: number
-    }): Promise<{ ok: boolean; draft?: MotionDraft; reason?: string }>
+      strategy?: string
+    }): Promise<{ ok: boolean; draft?: MotionDraft; reason?: string; strategy_used?: string }>
     write(payload: {
       model_json_path: string
       draft: MotionDraft
@@ -107,6 +110,57 @@ export interface TialynnApi {
     onWritten(
       cb: (e: { model_json_path: string; motion_relative?: string }) => void,
     ): () => void
+  }
+  library: {
+    summary(): Promise<LibrarySummary>
+    list(): Promise<MotionTemplate[]>
+    get(id: string): Promise<MotionTemplate | undefined>
+    reload(): Promise<LibrarySummary>
+    apply(payload: {
+      template_id: string
+      model_dir: string
+      speed_scale?: number
+      intensity_scale?: number
+      name_suffix?: string
+    }): Promise<ApplyResult>
+  }
+  engine: {
+    list(filter?: MotionFilter): Promise<MotionEntry[]>
+    get(id: number): Promise<MotionEntry | null>
+    create(input: {
+      model_dir: string
+      name: string
+      file_path: string
+      group_name?: string
+      source: MotionEntry['source']
+      strategy?: string | null
+      prompt?: string | null
+      llm_provider?: string | null
+      llm_model?: string | null
+      duration_ms?: number
+      loop_flag?: boolean
+      param_count?: number
+      validator_score?: number | null
+      scorer_score?: number | null
+      parent_entry_id?: number | null
+      emotion_tags?: string[]
+      context_tags?: string[]
+    }): Promise<MotionEntry>
+    update(payload: { id: number; patch: Partial<MotionEntry> }): Promise<MotionEntry>
+    delete(id: number): Promise<{ ok: boolean }>
+    saveVersion(payload: {
+      entry_id: number
+      snapshot_json: string
+      edited_by: string
+    }): Promise<MotionVersion>
+    listVersions(entryId: number): Promise<MotionVersion[]>
+    getVersion(payload: { entry_id: number; version_no: number }): Promise<MotionVersion | null>
+    recordPlay(id: number): Promise<void>
+    setRating(payload: { id: number; rating: -1 | 0 | 1 }): Promise<void>
+    byEmotion(payload: { model_dir: string; emotion: string; limit?: number }): Promise<MotionEntry[]>
+    byContext(payload: { model_dir: string; context: string; limit?: number }): Promise<MotionEntry[]>
+    topRated(payload: { model_dir: string; n?: number }): Promise<MotionEntry[]>
+    sync(modelDir: string): Promise<SyncReport>
   }
   market: {
     installZip(zipPath: string): Promise<{

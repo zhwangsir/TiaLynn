@@ -45,6 +45,8 @@ export interface GenerateParams {
   style?: string
   /** 已有 motions 的 few-shot 数量（最大 3） */
   examples?: number
+  /** 策略 (v0.7.4 strategy registry 后会用) */
+  strategy?: string
 }
 
 export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {

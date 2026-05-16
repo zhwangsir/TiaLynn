@@ -17,8 +17,10 @@ import { registerSystemIpc } from './ipc/system'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
+import { registerMotionEngineIpc } from './ipc/motion-engine'
 import { getPaths } from './services/paths'
 import { close as closeHistoryDb } from './services/history-store'
+import { close as closeMotionEngineDb } from './services/motion-engine/storage'
 
 // macOS 透明窗口需要硬件加速正确工作
 app.commandLine.appendSwitch('enable-features', 'Metal')
@@ -52,6 +54,7 @@ app.whenReady().then(() => {
   registerToolIpc(getMainWindow)
   registerMarketIpc(getMainWindow)
   registerMotionFactoryIpc(getMainWindow)
+  registerMotionEngineIpc()
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })
@@ -76,4 +79,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   closeHistoryDb()
+  closeMotionEngineDb()
 })
