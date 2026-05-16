@@ -2,6 +2,10 @@
  * Preload —— 通过 contextBridge 把主进程能力安全暴露给 renderer。
  *
  * 渲染层只使用 window.api.*，永远不能访问 ipcRenderer 全集合 / Node API。
+ *
+ * 关键：所有 IPC invoke/send 的参数都过 deepPlain() 兜底，
+ * 避免 renderer 不小心传入 Vue reactive Proxy / class instance / function
+ * 导致 V8 结构化克隆 "An object could not be cloned" 报错。
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
@@ -18,29 +22,53 @@ interface ChunkListener {
   (chunk: IpcStreamChunk): void
 }
 
+/**
+ * 把任意参数 deep clone 成纯 JS 对象。
+ * 优先用 V8 structuredClone (Electron renderer 已支持)；它不接受 Proxy 时
+ * 退回 JSON 一遍（JSON.stringify 会走 Proxy getter 自动 unwrap）。
+ */
+function deepPlain<T>(v: T): T {
+  if (v === undefined || v === null) return v
+  if (typeof v !== 'object') return v
+  try {
+    return structuredClone(v)
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(v)) as T
+    } catch {
+      return v
+    }
+  }
+}
+
+const invoke = (channel: string, ...args: unknown[]): Promise<unknown> =>
+  ipcRenderer.invoke(channel, ...args.map(deepPlain))
+
+const send = (channel: string, ...args: unknown[]): void =>
+  ipcRenderer.send(channel, ...args.map(deepPlain))
+
 const api: TialynnApi = {
   system: {
-    version: () => ipcRenderer.invoke('system:version'),
-    paths: () => ipcRenderer.invoke('system:paths'),
-    revealDataDir: () => ipcRenderer.invoke('system:reveal-data-dir'),
-    revealModelsDir: () => ipcRenderer.invoke('system:reveal-models-dir'),
+    version: () => invoke('system:version') as Promise<string>,
+    paths: () => invoke('system:paths') as ReturnType<TialynnApi['system']['paths']>,
+    revealDataDir: () => invoke('system:reveal-data-dir') as Promise<string>,
+    revealModelsDir: () => invoke('system:reveal-models-dir') as Promise<string>,
   },
   window: {
-    startDrag: (): Promise<{ ok: boolean; reason?: string }> =>
-      ipcRenderer.invoke('window:start-drag'),
-    softDrag: (x: number, y: number): void => ipcRenderer.send('window:soft-drag', { x, y }),
-    setIgnoreMouse: (ignore: boolean, forward = true): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke('window:set-ignore-mouse', { ignore, forward }),
-    getBounds: (): Promise<Electron.Rectangle | null> => ipcRenderer.invoke('window:get-bounds'),
-    setBounds: (b: Partial<Electron.Rectangle>): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke('window:set-bounds', b),
-    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
-    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
-    togglePin: (pin: boolean): Promise<void> => ipcRenderer.invoke('window:toggle-pin', pin),
+    startDrag: () => invoke('window:start-drag') as Promise<{ ok: boolean; reason?: string }>,
+    softDrag: (x: number, y: number): void => send('window:soft-drag', { x, y }),
+    setIgnoreMouse: (ignore: boolean, forward = true) =>
+      invoke('window:set-ignore-mouse', { ignore, forward }) as Promise<{ ok: boolean }>,
+    getBounds: () => invoke('window:get-bounds') as Promise<Electron.Rectangle | null>,
+    setBounds: (b: Partial<Electron.Rectangle>) =>
+      invoke('window:set-bounds', b) as Promise<{ ok: boolean }>,
+    close: () => invoke('window:close') as Promise<void>,
+    minimize: () => invoke('window:minimize') as Promise<void>,
+    togglePin: (pin: boolean) => invoke('window:toggle-pin', pin) as Promise<void>,
   },
   cursor: {
-    pollStart: (): Promise<void> => ipcRenderer.invoke('cursor:poll-start'),
-    pollStop: (): Promise<void> => ipcRenderer.invoke('cursor:poll-stop'),
+    pollStart: () => invoke('cursor:poll-start') as Promise<void>,
+    pollStop: () => invoke('cursor:poll-stop') as Promise<void>,
     onTick: (cb: (pt: { x: number; y: number; inside: boolean }) => void): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,
@@ -51,8 +79,8 @@ const api: TialynnApi = {
     },
   },
   config: {
-    load: (): Promise<RuntimeConfig> => ipcRenderer.invoke('config:load'),
-    save: (dto: RuntimeConfig): Promise<RuntimeConfig> => ipcRenderer.invoke('config:save', dto),
+    load: () => invoke('config:load') as Promise<RuntimeConfig>,
+    save: (dto: RuntimeConfig) => invoke('config:save', dto) as Promise<RuntimeConfig>,
     onChanged: (cb: (cfg: RuntimeConfig) => void): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, cfg: RuntimeConfig): void => cb(cfg)
       ipcRenderer.on('config:changed', handler)
@@ -60,13 +88,14 @@ const api: TialynnApi = {
     },
   },
   models: {
-    scan: () => ipcRenderer.invoke('models:scan'),
+    scan: () => invoke('models:scan') as ReturnType<TialynnApi['models']['scan']>,
   },
   soul: {
-    load: () => ipcRenderer.invoke('soul:load'),
-    systemPrompt: () => ipcRenderer.invoke('soul:system-prompt'),
-    pickDirectory: () => ipcRenderer.invoke('soul:pick-directory'),
-    saveAvatar: (avatar) => ipcRenderer.invoke('soul:save-avatar', avatar),
+    load: () => invoke('soul:load') as ReturnType<TialynnApi['soul']['load']>,
+    systemPrompt: () => invoke('soul:system-prompt') as Promise<string>,
+    pickDirectory: () => invoke('soul:pick-directory') as Promise<string | null>,
+    saveAvatar: (avatar) =>
+      invoke('soul:save-avatar', avatar) as ReturnType<TialynnApi['soul']['saveAvatar']>,
     onChanged: (cb): (() => void) => {
       const handler = (): void => cb()
       ipcRenderer.on('soul:changed', handler)
@@ -74,19 +103,11 @@ const api: TialynnApi = {
     },
   },
   llm: {
-    chatStream: (payload: {
-      streamId: string
-      messages: ChatMessage[]
-      options?: Partial<ChatOptions>
-      provider_override?: { provider?: LlmProvider; endpoint?: string; api_key?: string; model?: string }
-    }): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('llm:chat-stream', payload),
-    abort: (streamId: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('llm:abort', streamId),
-    test: (payload: {
-      provider: LlmProvider
-      endpoint: string
-      api_key: string
-      model: string
-    }): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('llm:test', payload),
+    chatStream: (payload) =>
+      invoke('llm:chat-stream', payload) as Promise<{ ok: boolean; reason?: string }>,
+    abort: (streamId: string) => invoke('llm:abort', streamId) as Promise<{ ok: boolean }>,
+    test: (payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string }) =>
+      invoke('llm:test', payload) as Promise<{ ok: boolean; message: string }>,
     onChunk: (cb: ChunkListener): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, chunk: IpcStreamChunk): void => cb(chunk)
       ipcRenderer.on('llm:chunk', handler)
@@ -94,34 +115,35 @@ const api: TialynnApi = {
     },
   },
   tts: {
-    speak: (payload: { text: string; voice?: string; emotion?: string }): Promise<{
-      ok: boolean
-      audio_b64?: string
-      mime?: string
-      reason?: string
-    }> => ipcRenderer.invoke('tts:speak', payload),
-    probe: (): Promise<{ ok: boolean; status?: number; reason?: string }> =>
-      ipcRenderer.invoke('tts:probe'),
+    speak: (payload: { text: string; voice?: string; emotion?: string }) =>
+      invoke('tts:speak', payload) as Promise<{
+        ok: boolean
+        audio_b64?: string
+        mime?: string
+        reason?: string
+      }>,
+    probe: () =>
+      invoke('tts:probe') as Promise<{ ok: boolean; status?: number; reason?: string }>,
   },
   history: {
-    listRecent: (limit) => ipcRenderer.invoke('history:list-recent', limit),
-    append: (turn) => ipcRenderer.invoke('history:append', turn),
-    clear: () => ipcRenderer.invoke('history:clear'),
+    listRecent: (limit) =>
+      invoke('history:list-recent', limit) as ReturnType<TialynnApi['history']['listRecent']>,
+    append: (turn) => invoke('history:append', turn) as Promise<{ ok: boolean }>,
+    clear: () => invoke('history:clear') as Promise<{ deleted: number }>,
   },
   tools: {
-    list: () => ipcRenderer.invoke('tools:list'),
-    run: (call) => ipcRenderer.invoke('tools:run', call),
-    policyGet: () => ipcRenderer.invoke('tools:policy-get'),
-    policySet: (payload) => ipcRenderer.invoke('tools:policy-set', payload),
-    policyClear: () => ipcRenderer.invoke('tools:policy-clear'),
+    list: () => invoke('tools:list') as ReturnType<TialynnApi['tools']['list']>,
+    run: (call) => invoke('tools:run', call) as ReturnType<TialynnApi['tools']['run']>,
+    policyGet: () => invoke('tools:policy-get') as ReturnType<TialynnApi['tools']['policyGet']>,
+    policySet: (payload) =>
+      invoke('tools:policy-set', payload) as ReturnType<TialynnApi['tools']['policySet']>,
+    policyClear: () => invoke('tools:policy-clear') as ReturnType<TialynnApi['tools']['policyClear']>,
     onApprovalRequest: (cb): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, req: ApprovalRequest): void => cb(req)
       ipcRenderer.on('tools:approval-request', handler)
       return () => ipcRenderer.off('tools:approval-request', handler)
     },
-    sendApprovalDecision: (payload) => {
-      ipcRenderer.send('tools:approval-decision', payload)
-    },
+    sendApprovalDecision: (payload) => send('tools:approval-decision', payload),
   },
 }
 
