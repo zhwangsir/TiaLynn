@@ -1,0 +1,40 @@
+{
+  "name": "tialynn-electron",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "description": "TiaLynn v0.6 — Electron 转向，吸收 airi 的成熟做法 + TiaLynn 独有 MCP/记忆/学习",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev --watch",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && vue-tsc -p tsconfig.web.json --noEmit",
+    "start": "electron-vite preview",
+    "rebuild": "electron-rebuild"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "electron-click-drag-plugin": "^2.0.2",
+    "js-yaml": "^4.1.0",
+    "mitt": "^3.0.1",
+    "pinia": "^2.2.6",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-ts": "^2.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.1",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.5.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10"
+  }
+}

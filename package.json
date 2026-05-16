@@ -11,6 +11,9 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "electron:dev": "pnpm -F tialynn-electron dev",
+    "electron:build": "pnpm -F tialynn-electron build",
+    "electron:typecheck": "pnpm -F tialynn-electron typecheck",
     "lint": "eslint --ext .vue,.ts,.tsx src",
     "typecheck": "vue-tsc --noEmit"
   },
