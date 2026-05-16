@@ -23,9 +23,42 @@ export const useDialogStore = defineStore('dialog', () => {
 
   let unsubChunk: (() => void) | null = null
 
-  function bootstrap(): void {
+  async function bootstrap(): Promise<void> {
     if (unsubChunk) return
     unsubChunk = window.api.llm.onChunk((chunk) => handleChunk(chunk))
+    // 恢复最近 50 条
+    try {
+      const rows = await window.api.history.listRecent(50)
+      if (rows.length > 0) {
+        turns.value = rows.map((r) => ({
+          id: r.id,
+          role: r.role,
+          text: r.text,
+          emotion: (r.emotion ?? undefined) as EmotionId | undefined,
+          intensity: r.intensity ?? undefined,
+          ts: r.ts,
+          error: r.error ?? undefined,
+        }))
+      }
+    } catch (e) {
+      console.warn('[dialog] history restore failed:', e)
+    }
+  }
+
+  async function persist(t: DialogTurn): Promise<void> {
+    try {
+      await window.api.history.append({
+        id: t.id,
+        role: t.role,
+        text: t.text,
+        emotion: t.emotion ?? null,
+        intensity: t.intensity ?? null,
+        ts: t.ts,
+        error: t.error ?? null,
+      })
+    } catch (e) {
+      console.warn('[dialog] persist failed:', e)
+    }
   }
 
   function teardown(): void {
@@ -69,6 +102,7 @@ export const useDialogStore = defineStore('dialog', () => {
       streaming: true,
     }
     turns.value.push(userTurn, assistantTurn)
+    void persist(userTurn)
     bus.emit('brain:chat-input', { text: userTurn.text })
 
     const streamId = uid()
@@ -125,6 +159,7 @@ export const useDialogStore = defineStore('dialog', () => {
       assistant.emotion = parsed.emotion
       assistant.intensity = parsed.intensity
       assistant.streaming = false
+      void persist(assistant)
       bus.emit('brain:reply-end', {
         stream_id: chunk.streamId,
         full_text: parsed.text,
@@ -137,11 +172,18 @@ export const useDialogStore = defineStore('dialog', () => {
     }
   }
 
-  function clear(): void {
+  async function clear(): Promise<void> {
     turns.value = []
+    try {
+      await window.api.history.clear()
+    } catch (e) {
+      console.warn('[dialog] clear failed:', e)
+    }
   }
 
+  /** 只在没有任何历史时注入开场白，避免重复 */
   function injectGreeting(): void {
+    if (turns.value.length > 0) return
     const greet: DialogTurn = {
       id: uid(),
       role: 'assistant',
@@ -151,6 +193,7 @@ export const useDialogStore = defineStore('dialog', () => {
       ts: Date.now(),
     }
     turns.value.push(greet)
+    void persist(greet)
   }
 
   return {

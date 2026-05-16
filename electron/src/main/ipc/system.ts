@@ -7,6 +7,7 @@ import { loadSoul } from '../services/soul-loader'
 import { saveAvatar } from '../services/soul-saver'
 import { loadConfig, saveConfig } from '../services/config-store'
 import { getPaths } from '../services/paths'
+import { appendTurn, clearAll, listRecent, type StoredTurn } from '../services/history-store'
 import type { RuntimeConfig, SoulConfig } from '@shared/types'
 
 export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
@@ -50,6 +51,13 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('soul:system-prompt', () => {
     return loadSoul().systemPrompt
   })
+
+  ipcMain.handle('history:list-recent', (_evt, limit?: number) => listRecent(limit ?? 50))
+  ipcMain.handle('history:append', (_evt, turn: Omit<StoredTurn, 'session_id'>) => {
+    appendTurn(turn)
+    return { ok: true }
+  })
+  ipcMain.handle('history:clear', () => ({ deleted: clearAll() }))
 
   ipcMain.handle('soul:save-avatar', (_evt, avatar: Partial<SoulConfig['avatar']>) => {
     const result = saveAvatar(avatar)

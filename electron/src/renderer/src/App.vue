@@ -86,7 +86,7 @@ let offSoulFn: (() => void) | null = null
 
 onMounted(async () => {
   await cfg.bootstrap()
-  dialog.bootstrap()
+  await dialog.bootstrap()
   speech.bootstrap()
   dialog.injectGreeting()
   ready.value = true

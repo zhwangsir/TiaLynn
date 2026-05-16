@@ -1,21 +1,27 @@
 {
   "name": "tialynn-electron",
-  "version": "0.6.0",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "description": "TiaLynn v0.6 — Electron 转向，吸收 airi 的成熟做法 + TiaLynn 独有 MCP/记忆/学习",
   "main": "out/main/index.js",
+  "author": "TiaLynn for Master",
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && vue-tsc -p tsconfig.web.json --noEmit",
     "start": "electron-vite preview",
-    "rebuild": "electron-rebuild"
+    "rebuild": "@electron/rebuild -f -w better-sqlite3",
+    "package": "pnpm build && electron-builder --dir",
+    "package:mac": "pnpm build && electron-builder --mac",
+    "package:win": "pnpm build && electron-builder --win",
+    "package:linux": "pnpm build && electron-builder --linux"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
+    "better-sqlite3": "^12.10.0",
     "electron-click-drag-plugin": "^2.0.2",
     "js-yaml": "^4.1.0",
     "mitt": "^3.0.1",
@@ -26,6 +32,8 @@
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-ts": "^2.0.0",
+    "@electron/rebuild": "^3.7.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.1",
     "@vitejs/plugin-vue": "^5.2.1",
@@ -36,5 +44,62 @@
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vue-tsc": "^2.1.10"
+  },
+  "build": {
+    "appId": "moe.tialynn.app",
+    "productName": "TiaLynn",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/electron-click-drag-plugin/**"
+    ],
+    "directories": {
+      "output": "release/${version}",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "../soul",
+        "to": "soul",
+        "filter": ["**/*.yaml", "**/*.yml"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSMicrophoneUsageDescription": "TiaLynn 在你启用语音输入时使用麦克风。",
+        "NSAppleEventsUsageDescription": "TiaLynn 在你授权后可代你执行桌面自动化任务。"
+      }
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "target": [
+        { "target": "AppImage", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

@@ -84,4 +84,28 @@ export interface TialynnApi {
     }>
     probe(): Promise<{ ok: boolean; status?: number; reason?: string }>
   }
+  history: {
+    listRecent(limit?: number): Promise<
+      Array<{
+        id: string
+        role: 'user' | 'assistant' | 'system'
+        text: string
+        emotion: string | null
+        intensity: number | null
+        ts: number
+        error: string | null
+        session_id: string
+      }>
+    >
+    append(turn: {
+      id: string
+      role: 'user' | 'assistant' | 'system'
+      text: string
+      emotion: string | null
+      intensity: number | null
+      ts: number
+      error: string | null
+    }): Promise<{ ok: boolean }>
+    clear(): Promise<{ deleted: number }>
+  }
 }

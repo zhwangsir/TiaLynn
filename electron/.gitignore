@@ -2,5 +2,6 @@ out/
 dist/
 dist-types/
 node_modules/
+release/
 *.log
 .DS_Store

@@ -102,6 +102,11 @@ const api: TialynnApi = {
     probe: (): Promise<{ ok: boolean; status?: number; reason?: string }> =>
       ipcRenderer.invoke('tts:probe'),
   },
+  history: {
+    listRecent: (limit) => ipcRenderer.invoke('history:list-recent', limit),
+    append: (turn) => ipcRenderer.invoke('history:append', turn),
+    clear: () => ipcRenderer.invoke('history:clear'),
+  },
 }
 
 if (process.contextIsolated) {

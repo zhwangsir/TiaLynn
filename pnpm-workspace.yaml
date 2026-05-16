@@ -3,12 +3,14 @@ packages:
   - 'electron'
 
 allowBuilds:
+  better-sqlite3: true
   electron: true
   electron-click-drag-plugin: true
   esbuild: true
   vue-demi: true
 
 onlyBuiltDependencies:
+  - better-sqlite3
   - electron
   - electron-click-drag-plugin
   - esbuild

@@ -15,6 +15,7 @@ import { registerWindowControlIpc } from './ipc/window-control'
 import { registerLlmIpc } from './ipc/llm'
 import { registerSystemIpc } from './ipc/system'
 import { getPaths } from './services/paths'
+import { close as closeHistoryDb } from './services/history-store'
 
 // macOS 透明窗口需要硬件加速正确工作
 app.commandLine.appendSwitch('enable-features', 'Metal')
@@ -65,4 +66,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // 桌宠语义：所有窗口关闭仍保留 dock；macOS 习惯
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  closeHistoryDb()
 })
