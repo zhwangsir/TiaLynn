@@ -90,6 +90,27 @@ export interface TialynnApi {
       api_key: string
       model: string
     }): Promise<{ ok: boolean; message: string }>
+    healthCheck(payload?: {
+      provider?: LlmProvider
+      endpoint?: string
+      api_key?: string
+      model?: string
+      test_vision?: boolean
+    }): Promise<{
+      provider: LlmProvider
+      endpoint: string
+      model: string
+      overall_ok: boolean
+      results: Array<{
+        test: string
+        ok: boolean
+        detail: string
+        is_thinking_model?: boolean
+        supports_vision?: boolean
+        latency_ms?: number
+      }>
+      recommendations: string[]
+    }>
     onChunk(cb: (chunk: IpcStreamChunk) => void): () => void
   }
   motion: {

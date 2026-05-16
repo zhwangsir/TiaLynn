@@ -108,6 +108,8 @@ const api: TialynnApi = {
     abort: (streamId: string) => invoke('llm:abort', streamId) as Promise<{ ok: boolean }>,
     test: (payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string }) =>
       invoke('llm:test', payload) as Promise<{ ok: boolean; message: string }>,
+    healthCheck: (payload) =>
+      invoke('llm:health-check', payload) as ReturnType<TialynnApi['llm']['healthCheck']>,
     onChunk: (cb: ChunkListener): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, chunk: IpcStreamChunk): void => cb(chunk)
       ipcRenderer.on('llm:chunk', handler)

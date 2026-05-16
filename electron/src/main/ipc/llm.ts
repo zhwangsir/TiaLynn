@@ -9,6 +9,7 @@ import type { ChatMessage, ChatOptions, IpcStreamChunk, LlmProvider } from '@sha
 import type { ToolDefinition } from '@shared/tools'
 import { buildProvider } from '../services/llm'
 import { loadConfig } from '../services/config-store'
+import { runHealthCheck, type FullHealthReport } from '../services/llm/health-check'
 
 const aborts = new Map<string, AbortController>()
 
@@ -115,6 +116,32 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       } catch (e) {
         return { ok: false, message: String(e) }
       }
+    },
+  )
+
+  // v0.8.1: 完整健康自检 (5 项测试)
+  ipcMain.handle(
+    'llm:health-check',
+    async (
+      _evt,
+      payload?: {
+        provider?: LlmProvider
+        endpoint?: string
+        api_key?: string
+        model?: string
+        test_vision?: boolean
+      },
+    ): Promise<FullHealthReport> => {
+      const cfg = loadConfig()
+      return runHealthCheck(
+        {
+          llm_provider: payload?.provider ?? cfg.llm_provider,
+          llm_endpoint: payload?.endpoint ?? cfg.llm_endpoint,
+          llm_model: payload?.model ?? cfg.llm_model,
+          llm_api_key: payload?.api_key ?? cfg.llm_api_key,
+        },
+        { test_vision: payload?.test_vision ?? false },
+      )
     },
   )
 }
