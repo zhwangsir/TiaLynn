@@ -8,7 +8,7 @@
  *   4. 最终把累计的 text 当作 assistant.text，emotion/intensity 用 parseReply
  */
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import type { ChatMessage, EmotionId, IpcStreamChunk } from '@shared/types'
 import type { ToolDefinition } from '@shared/tools'
 import { useConfigStore } from '../../infra/stores/config'
@@ -21,6 +21,11 @@ const MAX_TOOL_ROUNDS = 6 // 防止 LLM 自循环
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** Vue reactive → 纯 JS（IPC 结构化克隆不接受 Proxy） */
+function plain<T>(v: T): T {
+  return JSON.parse(JSON.stringify(toRaw(v as object))) as T
 }
 
 interface ToolUseRecord {
@@ -229,10 +234,11 @@ export const useDialogStore = defineStore('dialog', () => {
 
     const result = await window.api.llm.chatStream({
       streamId,
-      messages,
+      messages: plain(messages),
       options: { model: cfg.config.llm_model, temperature: 0.8 },
-      tools: cfg.config.llm_provider === 'anthropic' ? availableTools.value : undefined,
-      tool_results: toolResults,
+      tools:
+        cfg.config.llm_provider === 'anthropic' ? plain(availableTools.value) : undefined,
+      tool_results: toolResults ? plain(toolResults) : undefined,
     })
 
     if (!result.ok) {

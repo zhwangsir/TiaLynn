@@ -2,9 +2,18 @@
  * Pinia store —— runtime config + 模型列表 + soul 加载。
  */
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import type { ModelInfo, RuntimeConfig, SoulConfig } from '@shared/types'
 import { bus } from '../eventbus'
+
+/**
+ * Electron IPC 用 V8 结构化克隆，对 Vue reactive Proxy 不友好。
+ * 在跨进程之前必须 unwrap 成纯 JS 对象。
+ */
+function toPlain<T>(v: T): T {
+  // toRaw 拿到 Proxy 背后的 target；JSON 一遍确保深层不带 Proxy / Symbol / Function
+  return JSON.parse(JSON.stringify(toRaw(v as object))) as T
+}
 
 export interface ModelInfoExt extends ModelInfo {
   file_url: string
@@ -47,7 +56,7 @@ export const useConfigStore = defineStore('config', () => {
   async function save(dto: RuntimeConfig): Promise<void> {
     saving.value = true
     try {
-      config.value = await window.api.config.save(dto)
+      config.value = await window.api.config.save(toPlain(dto))
     } finally {
       saving.value = false
     }
@@ -65,7 +74,7 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function saveAvatar(avatar: Partial<NonNullable<typeof soul.value>['avatar']>): Promise<boolean> {
-    const result = await window.api.soul.saveAvatar(avatar)
+    const result = await window.api.soul.saveAvatar(toPlain(avatar))
     if (result.ok) await reloadSoul()
     return result.ok
   }
@@ -74,12 +83,15 @@ export const useConfigStore = defineStore('config', () => {
     testing.value = true
     testResult.value = null
     try {
-      testResult.value = await window.api.llm.test({
-        provider: dto.llm_provider,
-        endpoint: dto.llm_endpoint,
-        api_key: dto.llm_api_key,
-        model: dto.llm_model,
-      })
+      // 字面量字段 → 已是 plain，无需 toPlain，但保险起见过一遍
+      testResult.value = await window.api.llm.test(
+        toPlain({
+          provider: dto.llm_provider,
+          endpoint: dto.llm_endpoint,
+          api_key: dto.llm_api_key,
+          model: dto.llm_model,
+        }),
+      )
     } finally {
       testing.value = false
     }
