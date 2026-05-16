@@ -131,6 +131,24 @@ const api: TialynnApi = {
     append: (turn) => invoke('history:append', turn) as Promise<{ ok: boolean }>,
     clear: () => invoke('history:clear') as Promise<{ deleted: number }>,
   },
+  market: {
+    installZip: (zipPath: string) =>
+      invoke('market:install-zip', zipPath) as ReturnType<TialynnApi['market']['installZip']>,
+    installUrl: (url: string) =>
+      invoke('market:install-url', url) as ReturnType<TialynnApi['market']['installUrl']>,
+    installPath: (path: string) =>
+      invoke('market:install-path', path) as ReturnType<TialynnApi['market']['installPath']>,
+    installPaths: (paths: string[]) =>
+      invoke('market:install-paths', paths) as ReturnType<TialynnApi['market']['installPaths']>,
+    onInstalled: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        results: Parameters<typeof cb>[0],
+      ): void => cb(results)
+      ipcRenderer.on('market:installed', handler)
+      return () => ipcRenderer.off('market:installed', handler)
+    },
+  },
   tools: {
     list: () => invoke('tools:list') as ReturnType<TialynnApi['tools']['list']>,
     run: (call) => invoke('tools:run', call) as ReturnType<TialynnApi['tools']['run']>,

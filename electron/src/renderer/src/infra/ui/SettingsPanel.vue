@@ -148,6 +148,49 @@ async function rescan(): Promise<void> {
   bus.emit('ui:toast', { kind: 'info', message: `已扫描，${cfg.models.length} 个模型`, ttl_ms: 2500 })
 }
 
+const zipUrl = ref('')
+const installing = ref(false)
+
+async function installFromZipFile(): Promise<void> {
+  // 走主进程 dialog
+  installing.value = true
+  try {
+    const picked = await window.api.soul.pickDirectory()
+    // soul.pickDirectory 选目录；这里我们复用，但 user 选错时直接走 directory 安装也 OK
+    if (picked) {
+      const r = await window.api.market.installPath(picked)
+      handleInstallResult(r)
+    }
+  } finally {
+    installing.value = false
+  }
+}
+
+async function installFromUrl(): Promise<void> {
+  if (!zipUrl.value.trim()) return
+  installing.value = true
+  try {
+    const r = await window.api.market.installUrl(zipUrl.value.trim())
+    handleInstallResult(r)
+    if (r.ok) zipUrl.value = ''
+  } finally {
+    installing.value = false
+  }
+}
+
+function handleInstallResult(r: { ok: boolean; detected_name?: string; reason?: string }): void {
+  if (r.ok) {
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `已安装：${r.detected_name ?? '模型'}`,
+      ttl_ms: 4000,
+    })
+    void cfg.rescanModels()
+  } else {
+    bus.emit('ui:toast', { kind: 'error', message: `安装失败：${r.reason ?? '未知'}`, ttl_ms: 8000 })
+  }
+}
+
 async function reloadSoul(): Promise<void> {
   await cfg.reloadSoul()
   bus.emit('ui:toast', { kind: 'info', message: '灵魂档案已重载', ttl_ms: 2000 })
@@ -285,11 +328,29 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         <div class="row">
           <button class="ghost" @click="rescan">重扫</button>
           <button class="ghost" @click="openModelsDir">打开模型目录</button>
+          <button class="ghost" @click="installFromZipFile" :disabled="installing">
+            {{ installing ? '安装中…' : '从目录安装' }}
+          </button>
           <label class="inline-toggle" :title="`总共扫到 ${totalCount}，可用 ${usableCount}`">
             <input type="checkbox" v-model="showIncomplete" />
             显示不完整模型
           </label>
         </div>
+        <div class="row">
+          <input
+            v-model="zipUrl"
+            type="text"
+            class="grow"
+            placeholder="或粘贴一个 .zip URL（http/https）..."
+          />
+          <button class="ghost" @click="installFromUrl" :disabled="installing || !zipUrl.trim()">
+            下载安装
+          </button>
+        </div>
+        <p class="hint">
+          📦 安装方式：① <b>拖一个 .zip 到 TiaLynn 窗口</b>（最方便）② 选已解压目录 ③ 粘贴 URL。
+          安装到 ~/.tialynn/models/，自动 dedup 同名。
+        </p>
         <p class="hint">
           ⭐ 推荐 {{ recommendedCount }} · 可用 {{ usableCount }} · 总扫到 {{ totalCount }}（已显示 {{ modelOptions.length }}）
         </p>
@@ -521,6 +582,10 @@ footer {
   padding: 0;
   border: 0;
   background: transparent;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
 }
 .save-status {
   font-size: var(--text-xs);

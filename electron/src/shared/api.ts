@@ -85,6 +85,48 @@ export interface TialynnApi {
     }): Promise<{ ok: boolean; message: string }>
     onChunk(cb: (chunk: IpcStreamChunk) => void): () => void
   }
+  market: {
+    installZip(zipPath: string): Promise<{
+      ok: boolean
+      installed_to?: string
+      detected_name?: string
+      model_file?: string
+      reason?: string
+    }>
+    installUrl(url: string): Promise<{
+      ok: boolean
+      installed_to?: string
+      detected_name?: string
+      model_file?: string
+      reason?: string
+    }>
+    installPath(path: string): Promise<{
+      ok: boolean
+      installed_to?: string
+      detected_name?: string
+      model_file?: string
+      reason?: string
+    }>
+    installPaths(paths: string[]): Promise<
+      Array<{
+        ok: boolean
+        installed_to?: string
+        detected_name?: string
+        model_file?: string
+        reason?: string
+      }>
+    >
+    onInstalled(
+      cb: (
+        results: Array<{
+          ok: boolean
+          installed_to?: string
+          detected_name?: string
+          model_file?: string
+        }>,
+      ) => void,
+    ): () => void
+  }
   tools: {
     list(): Promise<ToolDefinition[]>
     run(call: ToolInvocation): Promise<ToolResult>

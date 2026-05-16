@@ -86,6 +86,60 @@ function closeInput(): void {
 
 let offCtxMenuFn: (() => void) | null = null
 let offSoulFn: (() => void) | null = null
+let offInstalledFn: (() => void) | null = null
+const dragOver = ref(false)
+
+function onDragOver(e: DragEvent): void {
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  dragOver.value = true
+}
+function onDragLeave(e: DragEvent): void {
+  // 仅当离开整个 root 时清除（避免子元素 leave 误触）
+  if ((e.relatedTarget as Node | null)?.nodeType) return
+  dragOver.value = false
+}
+async function onDrop(e: DragEvent): Promise<void> {
+  e.preventDefault()
+  e.stopPropagation()
+  dragOver.value = false
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  // Electron renderer: File.path 在 contextIsolation 下不可用
+  // 用 webUtils.getPathForFile (Electron 32+) 或 fallback File.name
+  const paths: string[] = []
+  for (const f of files) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = (f as any).path as string | undefined
+    if (p) paths.push(p)
+  }
+  if (paths.length === 0) {
+    bus.emit('ui:toast', {
+      kind: 'warn',
+      message: '拖入的文件没有路径信息；请用「设置 → 从目录安装」或「下载安装」按钮',
+      ttl_ms: 6000,
+    })
+    return
+  }
+  const results = await window.api.market.installPaths(paths)
+  const ok = results.filter((r) => r.ok)
+  const fail = results.filter((r) => !r.ok)
+  if (ok.length > 0) {
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `已安装 ${ok.length} 个模型：${ok.map((r) => r.detected_name).filter(Boolean).join('，')}`,
+      ttl_ms: 5000,
+    })
+  }
+  if (fail.length > 0) {
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: `${fail.length} 个安装失败：${fail.map((r) => r.reason).slice(0, 2).join('；')}`,
+      ttl_ms: 8000,
+    })
+  }
+  if (ok.length > 0) await cfg.rescanModels()
+}
 
 onMounted(async () => {
   await cfg.bootstrap()
@@ -103,17 +157,28 @@ onMounted(async () => {
   offSoulFn = window.api.soul.onChanged(() => {
     void cfg.reloadSoul()
   })
+
+  // 模型安装完成 → 刷新模型列表
+  offInstalledFn = window.api.market.onInstalled(() => {
+    void cfg.rescanModels()
+  })
 })
 
 onBeforeUnmount(() => {
   offCtxMenuFn?.()
   offSoulFn?.()
+  offInstalledFn?.()
 })
 </script>
 
 <template>
   <ErrorBoundary>
-    <div class="root">
+    <div
+      class="root"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
       <DialogBubble v-if="ready" />
       <InputBar v-if="ready && inputOpen" @close="closeInput" />
@@ -130,6 +195,15 @@ onBeforeUnmount(() => {
       <ToastStack />
       <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
       <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
+      <transition name="drop">
+        <div v-if="dragOver" class="drop-overlay">
+          <div class="drop-card">
+            <div class="drop-icon">📦</div>
+            <div class="drop-title">松开安装 Live2D 模型</div>
+            <div class="drop-sub">支持 .zip 或解压后的模型目录</div>
+          </div>
+        </div>
+      </transition>
     </div>
   </ErrorBoundary>
 </template>
@@ -166,5 +240,47 @@ onBeforeUnmount(() => {
   10% { opacity: 0.95; transform: translateX(-50%); }
   85% { opacity: 0.85; transform: translateX(-50%); }
   100% { opacity: 0; transform: translate(-50%, 10px); }
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1900;
+  pointer-events: none;
+}
+.drop-card {
+  background: var(--color-bubble);
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-lg);
+  padding: 30px 36px;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  color: var(--color-bubble-text);
+  max-width: 80%;
+}
+.drop-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+.drop-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.drop-sub {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+.drop-enter-active,
+.drop-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-out-expo);
+}
+.drop-enter-from,
+.drop-leave-to {
+  opacity: 0;
 }
 </style>
