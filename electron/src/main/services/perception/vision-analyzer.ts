@@ -55,7 +55,7 @@ export async function analyzeSnapshot(
     const body = {
       model: config.vision_model,
       temperature: 0.3,
-      max_tokens: 600,
+      max_tokens: 4000, // VL 模型有时也有 thinking
       stream: false,
       messages: [
         {
@@ -86,11 +86,28 @@ export async function analyzeSnapshot(
     }
 
     const json = (await resp.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
+      choices?: Array<{
+        message?: { content?: string; reasoning_content?: string }
+        finish_reason?: string
+      }>
+      error?: { message?: string }
     }
-    const content = json.choices?.[0]?.message?.content ?? ''
+    if (json.error?.message) {
+      console.warn(`[vision-analyzer] model error: ${json.error.message}`)
+      return
+    }
+    const choice = json.choices?.[0]
+    // thinking 模型 fallback: 若 content 空但 reasoning_content 有 → 拿 reasoning 末尾试
+    const content =
+      choice?.message?.content ||
+      (choice?.message?.reasoning_content
+        ? extractFinalAnswerFromReasoning(choice.message.reasoning_content)
+        : '') ||
+      ''
     if (!content) {
-      console.warn('[vision-analyzer] empty response')
+      console.warn(
+        `[vision-analyzer] empty response. finish_reason=${choice?.finish_reason ?? '?'} 可能模型不支持 vision 或 max_tokens 太小`,
+      )
       return
     }
 
@@ -128,6 +145,16 @@ export async function analyzeSnapshot(
   } finally {
     inFlight = false
   }
+}
+
+function extractFinalAnswerFromReasoning(reasoning: string): string {
+  // 一些 thinking 模型把答案放在 reasoning 末尾「**Output:**」「最终输出：」之后
+  const markers = ['Final Plan:', 'Output:', '**Output:**', '最终输出:', '最终输出：', 'Final answer:']
+  for (const m of markers) {
+    const idx = reasoning.lastIndexOf(m)
+    if (idx >= 0) return reasoning.slice(idx + m.length).trim()
+  }
+  return ''
 }
 
 function extractJson(text: string): Record<string, unknown> | null {

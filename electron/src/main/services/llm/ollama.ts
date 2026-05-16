@@ -22,7 +22,7 @@ export class OllamaProvider implements LlmProviderImpl {
     const body = {
       model: options.model,
       stream: true,
-      options: { temperature: options.temperature, num_predict: options.max_tokens ?? 1024 },
+      options: { temperature: options.temperature, num_predict: options.max_tokens ?? 8000 },
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
     }
 

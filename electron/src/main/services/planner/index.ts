@@ -118,7 +118,7 @@ export class BehaviorPlanner {
     let done = false
     await provider.chatStream(
       messages,
-      { model: cfg.llm_model, temperature: 0.8, max_tokens: 1000 },
+      { model: cfg.llm_model, temperature: 0.8, max_tokens: 8000 }, // thinking 模型容量
       (evt) => {
         if (evt.delta) buffer += evt.delta
         if (evt.error) errMsg = evt.error

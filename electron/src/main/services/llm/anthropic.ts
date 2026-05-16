@@ -69,7 +69,7 @@ export class AnthropicProvider implements LlmProviderImpl {
     const url = `${this.endpoint.replace(/\/+$/, '')}/v1/messages`
     const body: Record<string, unknown> = {
       model: options.model,
-      max_tokens: options.max_tokens ?? 1024,
+      max_tokens: options.max_tokens ?? 4096,
       temperature: options.temperature,
       stream: true,
       messages: msgs,

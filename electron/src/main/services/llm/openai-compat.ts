@@ -83,7 +83,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     const body = {
       model: options.model,
       temperature: options.temperature,
-      max_tokens: options.max_tokens ?? 1024,
+      max_tokens: options.max_tokens ?? 8000, // v0.8.1: thinking 模型需要大空间
       stream: true,
       messages: normalized,
     }
@@ -121,10 +121,15 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
 
     let sawDelta = false
     let sawTemplateError = false
+    let sawReasoningOnly = false
+    let lastFinishReason: string | null = null
     await consumeSse(resp.body, (data) => {
       try {
         const ev = JSON.parse(data) as {
-          choices?: { delta?: { content?: string } }[]
+          choices?: Array<{
+            delta?: { content?: string; reasoning_content?: string }
+            finish_reason?: string
+          }>
           error?: { message?: string; code?: string }
         }
         // LM Studio 把错误以 SSE event 形式发送
@@ -140,9 +145,16 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
           }
           return
         }
-        const delta = ev.choices?.[0]?.delta?.content
+        const choice = ev.choices?.[0]
+        if (choice?.finish_reason) lastFinishReason = choice.finish_reason
+        // v0.8.1: Qwen3 / DeepSeek-R1 等 thinking 模型把 CoT 推理放 delta.reasoning_content
+        // content 才是最终答案。这里把 reasoning_content drop（debug 模式可选 forward）
+        const reasoning = choice?.delta?.reasoning_content
+        if (reasoning) sawReasoningOnly = true
+        const delta = choice?.delta?.content
         if (delta) {
           sawDelta = true
+          sawReasoningOnly = false
           onEvent({ delta })
         }
       } catch {
@@ -151,6 +163,16 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     })
 
     if (sawTemplateError && !sawDelta) return false
+    // v0.8.1: thinking 模型 max_tokens 被思考吃光 → 用户必须知道
+    if (!sawDelta && (sawReasoningOnly || lastFinishReason === 'length')) {
+      onEvent({
+        error:
+          `LLM 思考过程占满 max_tokens，没有产生最终答案。\n` +
+          `这是 thinking 模型（如 Qwen3 / DeepSeek-R1）的典型问题。\n` +
+          `修复：在「设置 → 大脑」把 max_tokens 调到 8000+（或在 LM Studio 内 reload model 时设大上下文）。`,
+      })
+      return true
+    }
     return true
   }
 }
