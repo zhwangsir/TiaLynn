@@ -53,7 +53,8 @@ function loadDir(dir: string, into: Map<string, MotionTemplate>, source: 'builti
     const full = join(dir, entry)
     try {
       const raw = readFileSync(full, 'utf-8')
-      const parsed = yaml.load(raw) as unknown
+      // v0.13 security: JSON_SCHEMA 防 !!js/* 注入
+      const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as unknown
       if (!parsed || typeof parsed !== 'object') continue
       const t = parsed as MotionTemplate
       // 基本验证

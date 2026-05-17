@@ -24,7 +24,8 @@ export function saveAvatar(avatar: Partial<SoulConfig['avatar']>): { ok: boolean
   if (existsSync(targetFile)) {
     try {
       const raw = readFileSync(targetFile, 'utf-8')
-      const parsed = yaml.load(raw)
+      // v0.13 security: JSON_SCHEMA 防 !!js/* 注入
+      const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA })
       if (parsed && typeof parsed === 'object') current = parsed as Mutable
     } catch (e) {
       return { ok: false, path: targetFile, reason: `parse failed: ${String(e)}` }

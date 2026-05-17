@@ -69,7 +69,8 @@ export function loadSoul(): LoadedSoul {
     if (!existsSync(fp)) continue
     try {
       const raw = readFileSync(fp, 'utf-8')
-      const parsed = yaml.load(raw) as Record<string, unknown> | undefined
+      // v0.13 security: 用 JSON_SCHEMA 防 !!js/* 标签注入
+      const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown> | undefined
       if (parsed && typeof parsed === 'object') {
         Object.assign(merged, parsed)
         sourceFiles.push(fp)
@@ -88,7 +89,7 @@ export function loadSoul(): LoadedSoul {
     ]) {
       if (existsSync(candidate)) {
         try {
-          const parsed = yaml.load(readFileSync(candidate, 'utf-8')) as Record<string, unknown>
+          const parsed = yaml.load(readFileSync(candidate, 'utf-8'), { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
           if (parsed && typeof parsed === 'object') {
             Object.assign(merged, parsed)
             sourceFiles.push(candidate)

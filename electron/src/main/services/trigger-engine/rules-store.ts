@@ -128,7 +128,8 @@ export function load(): TriggerRule[] {
   const p = rulesPath()
   if (existsSync(p)) {
     try {
-      const parsed = yaml.load(readFileSync(p, 'utf-8')) as { rules?: TriggerRule[] }
+      // v0.13 security: JSON_SCHEMA 防 !!js/* 注入
+      const parsed = yaml.load(readFileSync(p, 'utf-8'), { schema: yaml.JSON_SCHEMA }) as { rules?: TriggerRule[] }
       if (parsed && Array.isArray(parsed.rules)) {
         cache = parsed.rules
         return cache

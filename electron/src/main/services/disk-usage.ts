@@ -4,7 +4,7 @@
  * 用 Node fs 跨平台递归 stat，对 1389 模型库约 1-2s（已缓存 60s）。
  */
 import { promises as fsp, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { getPaths } from './paths'
 
 export interface DiskEntry {
@@ -147,28 +147,33 @@ export async function computeDiskUsage(force = false): Promise<DiskUsageReport> 
 }
 
 /** 删除指定 cleanable 路径下的内容（递归）。返回释放的字节数。 */
-export async function cleanPath(path: string): Promise<{ ok: boolean; freed_bytes: number; reason?: string }> {
-  if (!pathExists(path)) return { ok: true, freed_bytes: 0 }
+export async function cleanPath(rawPath: string): Promise<{ ok: boolean; freed_bytes: number; reason?: string }> {
+  // v0.13 security: 先归一化路径，防止 ../ 绕过白名单
+  // 例：rawPath = '~/.tialynn/thumbs/../../etc/passwd' → normalized = '/etc/passwd'
+  // path.resolve 同时展开 .. 和把相对路径变绝对
+  const normalized = resolve(rawPath)
+  if (!pathExists(normalized)) return { ok: true, freed_bytes: 0 }
+
   // 双重保护：只允许删 thumbs / *.sqlite 这类已知 cleanable 路径
   const userData = getPaths().userDataDir
   const allowedPrefixes = [
     join(userData, 'thumbs'),
     join(userData, 'history.sqlite'),
   ]
-  const allowed = allowedPrefixes.some((p) => path === p || path.startsWith(p + '/'))
+  const allowed = allowedPrefixes.some((p) => normalized === p || normalized.startsWith(p + '/'))
   if (!allowed) {
-    return { ok: false, freed_bytes: 0, reason: `路径未在白名单：${path}` }
+    return { ok: false, freed_bytes: 0, reason: `路径未在白名单：${normalized}` }
   }
   try {
     let freed = 0
     try {
-      freed = path.endsWith('.sqlite') || path.endsWith('.db')
-        ? fileSize(path)
-        : await dirSize(path)
+      freed = normalized.endsWith('.sqlite') || normalized.endsWith('.db')
+        ? fileSize(normalized)
+        : await dirSize(normalized)
     } catch {
       /* ignore */
     }
-    await fsp.rm(path, { recursive: true, force: true })
+    await fsp.rm(normalized, { recursive: true, force: true })
     cached = null
     return { ok: true, freed_bytes: freed }
   } catch (e) {

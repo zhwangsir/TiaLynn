@@ -294,7 +294,31 @@ export async function installCustomZip(
   const fileName = decodeURIComponent(url.split('/').pop() ?? 'asset.zip').replace(/\?.*$/, '')
   const tmpFile = join(tmpDir, `${Date.now()}_${fileName}`)
 
-  // 直接下载（不走 HF mirror，用户给的原始 URL）
+  // v0.13 security: SSRF 防护 — 只接受 https?://，拒绝本地/内网/链路本地 IP
+  // 防止用户被诱导粘贴 http://127.0.0.1:8765 之类的内网 URL 探测局域网
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, reason: `仅支持 http:// 或 https:// URL: ${url}` }
+  }
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    const isPrivate =
+      host === 'localhost' ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      /^127\./.test(host) ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      /^169\.254\./.test(host)
+    if (isPrivate) {
+      return { ok: false, reason: `拒绝下载内网/本地 URL（SSRF 防护）: ${host}` }
+    }
+  } catch {
+    return { ok: false, reason: `URL 解析失败: ${url}` }
+  }
+
+  // 下载（用户给的原始 URL）
   try {
     onProgress({ asset_path: url, stage: 'download', percent: 0 })
     const r = await fetch(url, { signal: signal ?? null })
@@ -425,7 +449,14 @@ async function deployRvcZip(
 
   // voice_id：取 zip 文件名第一段（"furina-jp 275 epochs 48k v2.zip" → "furina-jp"）
   const baseName = assetPath.split('/').pop() ?? ''
-  const voiceId = baseName.replace(/\.zip$/i, '').split(/\s+/)[0] ?? baseName
+  const rawVoiceId = baseName.replace(/\.zip$/i, '').split(/\s+/)[0] ?? baseName
+  // v0.13 security: voiceId 会拼到 PowerShell + scp 远程命令，必须严格 sanitize 防注入
+  // 只保留字母 / 数字 / 横线 / 下划线，且 baseName 不可为空、不可含 .. / /
+  const voiceId = rawVoiceId.replace(/[^a-zA-Z0-9_-]/g, '_')
+  if (!voiceId || voiceId === '_' || rawVoiceId.includes('..') || rawVoiceId.includes('/')) {
+    rmSync(extractDir, { recursive: true, force: true })
+    throw new Error(`不安全的 voice_id（含特殊字符或路径分隔符）: ${rawVoiceId}`)
+  }
 
   onProgress({ asset_path: assetPath, stage: 'deploy', percent: 75, message: `scp ${voiceId}` })
 
