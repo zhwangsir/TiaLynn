@@ -85,6 +85,23 @@ export function clearAll(sessionId = DEFAULT_SESSION): number {
   return result.changes
 }
 
+/**
+ * v0.13 (audit M4): 保留策略 — 删除早于 days 天前的回合 + VACUUM 回收空间。
+ * 启动时调用一次（main/index.ts），避免数据库长期膨胀到 GB 级。
+ */
+export function pruneOlderThan(days: number, sessionId = DEFAULT_SESSION): number {
+  if (days <= 0) return 0
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000
+  const result = ensure()
+    .prepare(`DELETE FROM turns WHERE session_id = ? AND ts < ?`)
+    .run(sessionId, cutoffMs)
+  if (result.changes > 0) {
+    // 大批量删除后 VACUUM 释放空间（数据库文件实际缩小）
+    ensure().exec('VACUUM')
+  }
+  return result.changes
+}
+
 export function close(): void {
   if (db) {
     db.close()

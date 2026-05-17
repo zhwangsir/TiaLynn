@@ -56,6 +56,12 @@ export interface RuntimeConfig {
   vision_enabled?: boolean
   vision_endpoint?: string
   vision_model?: string
+  /**
+   * v0.13 (audit M4): 对话历史保留天数。0 或负数 = 永久保留。
+   * 启动时调用 pruneOlderThan(days)，删除老于 N 天的回合并 VACUUM。
+   * 默认 0（不裁剪），用户可在 Settings 改成 90 / 180 / 365 等。
+   */
+  history_retention_days?: number
 }
 
 export interface ChatMessage {

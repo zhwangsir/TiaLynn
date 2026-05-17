@@ -45,7 +45,7 @@ import { startPerception, stopPerception } from './services/perception'
 import { startAttention, stopAttention } from './services/attention'
 import { getPaths } from './services/paths'
 import { loadConfig } from './services/config-store'
-import { close as closeHistoryDb } from './services/history-store'
+import { close as closeHistoryDb, pruneOlderThan } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
 import { initializeLogger } from './services/logger'
 
@@ -106,6 +106,13 @@ app.whenReady().then(() => {
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）
   const cfg = loadConfig()
+
+  // v0.13 (audit M4): 历史保留策略 — 删除老于 history_retention_days 天的回合
+  const days = cfg.history_retention_days ?? 0
+  if (days > 0) {
+    const pruned = pruneOlderThan(days)
+    if (pruned > 0) console.log(`[history] pruned ${pruned} turns older than ${days} days`)
+  }
   startPerception(getMainWindow, {
     vision_enabled: cfg.vision_enabled ?? false,
     vision_endpoint: cfg.vision_endpoint ?? '',

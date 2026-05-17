@@ -47,6 +47,7 @@ const DEFAULT: RuntimeConfig = {
   embedding_endpoint: '',
   embedding_model: '',
   openai_compat_merge_system: true, // 兼容 LM Studio Qwen MoE jinja bug
+  history_retention_days: 0, // 0 = 永久保留；用户可改 90/180/365
 }
 
 function configPath(): string {
