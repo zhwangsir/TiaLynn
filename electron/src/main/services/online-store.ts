@@ -19,9 +19,12 @@ import { spawn } from 'node:child_process'
 import { app } from 'electron'
 
 const HF_MIRRORS = ['https://hf-mirror.com', 'https://huggingface.co']
-const WORKSTATION = process.env.TIALYNN_WORKSTATION || 'merlin chen@workstation'
-const RVC_REMOTE_WEIGHTS = 'C:/TiaLynn-rvc/assets/weights'
-const RVC_REMOTE_LOGS = 'C:/TiaLynn-rvc/logs'
+// v0.13: 全部 RVC 部署相关配置走 env 化，去掉硬编码 master 私网
+// 任何 fork 用户都可以通过 env 改成自己的 workstation
+const WORKSTATION = process.env.TIALYNN_WORKSTATION || ''
+const RVC_REMOTE_WEIGHTS = process.env.TIALYNN_RVC_REMOTE_WEIGHTS || 'C:/TiaLynn-rvc/assets/weights'
+const RVC_REMOTE_LOGS = process.env.TIALYNN_RVC_REMOTE_LOGS || 'C:/TiaLynn-rvc/logs'
+const RVC_PROBE_URL = process.env.TIALYNN_RVC_PROBE_URL || 'http://127.0.0.1:8765/v1/rvc/voices'
 
 export type AssetKind = 'rvc' | 'live2d'
 export type RepoSource = 'huggingface' | 'github' | 'browse_only'
@@ -187,9 +190,9 @@ export async function listRepoAssets(
 
 /** 已部署检查：voice_id → 是否已在 workstation assets/weights/ */
 export async function checkRvcInstalled(voiceId: string): Promise<boolean> {
-  // 简化：通过 sidecar /v1/rvc/voices 查
+  // 简化：通过 sidecar /v1/rvc/voices 查（v0.13: probe URL env 化）
   try {
-    const r = await fetch('http://192.168.71.100:8765/v1/rvc/voices', {
+    const r = await fetch(RVC_PROBE_URL, {
       signal: AbortSignal.timeout(5000),
     })
     if (!r.ok) return false
@@ -538,13 +541,23 @@ function spawnAsync(cmd: string, args: string[]): Promise<void> {
   })
 }
 
+function requireWorkstation(): string {
+  if (!WORKSTATION) {
+    throw new Error(
+      'RVC 远程部署未配置：请设置环境变量 TIALYNN_WORKSTATION="user@host"（详见 README）',
+    )
+  }
+  return WORKSTATION
+}
+
 function runScp(src: string, dst: string): Promise<void> {
+  requireWorkstation()
   return spawnAsync('scp', ['-q', src, dst])
 }
 
 function runSsh(remoteArgs: string[]): Promise<void> {
   // remoteArgs 是要在远端跑的命令；用 powershell -Command 包
-  return spawnAsync('ssh', [WORKSTATION, ...remoteArgs])
+  return spawnAsync('ssh', [requireWorkstation(), ...remoteArgs])
 }
 
 // 防止 dirname unused warning

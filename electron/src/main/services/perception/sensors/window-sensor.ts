@@ -8,12 +8,13 @@
  *
  * 频率：1.5s 一次。变化时 publish app_focus_changed。
  */
-import { exec } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { perception } from '../bus'
 import type { PerceptionConfig } from '@shared/perception'
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const POLL_INTERVAL_MS = 1500
 
 interface State {
@@ -97,7 +98,9 @@ export class WindowSensor {
       end tell
       return appName & "||" & winName
     `
-    const { stdout } = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, {
+    // v0.13 security: 用 execFile 数组参数避免 shell 注入，去掉 replace(/'/g, ...) 转义脆弱性。
+    // 即使脚本目前是硬编码，未来插入变量也安全。
+    const { stdout } = await execFileAsync('osascript', ['-e', script], {
       timeout: 1500,
     })
     const [app, title] = stdout.trim().split('||')
