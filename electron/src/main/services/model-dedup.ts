@@ -9,8 +9,8 @@
  * UI 默认只**标注**同组关系，**不**建议删除。
  * 只有 confidence='exact' 的可考虑删除冗余。
  */
-import { rmSync, existsSync, statSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { rmSync, existsSync, statSync, readFileSync, writeFileSync, renameSync, readdirSync, unlinkSync } from 'node:fs'
+import { dirname, resolve, relative, sep, join } from 'node:path'
 import type { ModelInfo } from '@shared/types'
 import { scanModels } from './model-scanner'
 
@@ -323,14 +323,12 @@ function mergeExactGroup(
 }
 
 function relativePathPortable(fromDir: string, toFile: string): string {
-  const { relative } = require('node:path')
   return relative(fromDir, toFile).replace(/\\/g, '/')
 }
 
 /** 取目录的顶级 segment（用于 mergeGroups 安全检查：只合并同 root 下的） */
 function topLevelOf(dir: string): string {
   // 取 path 的前两层（如 /Users/wangzhenyu/Documents/Live2d-model-master/BanG... → /Users/wangzhenyu/Documents/Live2d-model-master）
-  const { sep } = require('node:path')
   const parts = dir.split(sep).filter(Boolean)
   return parts.slice(0, 5).join(sep) // 5 层够 fingerprint 主人模型库根
 }
@@ -351,8 +349,6 @@ function dirSizeKb(dir: string): number {
     const st = statSync(dir)
     if (!st.isDirectory()) return Math.round(st.size / 1024)
     // 递归累加
-    const { readdirSync } = require('node:fs')
-    const { join } = require('node:path')
     let total = 0
     for (const entry of readdirSync(dir)) {
       const p = join(dir, entry)

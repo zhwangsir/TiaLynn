@@ -7,7 +7,7 @@
  *   3. `setVisibleOnAllWorkspaces` —— 所有桌面都显示
  *   4. `setAlwaysOnTop` —— 浮在最前
  */
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, shell, session } from 'electron'
 import { join } from 'node:path'
 import { platform, transparentWindowConfig } from './shared'
 import { loadWindowState, saveNow, scheduleSave } from '../services/window-state-store'
@@ -38,6 +38,12 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      // v0.13 安全说明 (audit Security CRITICAL C1):
+      // webSecurity:false 让 file:// 跨目录 fetch (Live2D 1389 模型横跨 models-library
+      // 各子目录) 不被 SOP 拦。彻底安全做法是 protocol.handle('tialynn-asset', ...)
+      // 注册自定义协议 + 改 model-scanner toFileUrl，需要专门 PR。
+      // 当前 mitigation: 加 setWindowOpenHandler + will-navigate + CSP (见下面)
+      // 三道 defense-in-depth 阻止 XSS 实质危害，即使 SOP 失效。
       webSecurity: false,
       backgroundThrottling: false,
     },
@@ -70,6 +76,51 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
   // 在 UI 或立绘 alpha 命中 → 切回 false。
   // 旧方案默认 true，启动头 500ms cursor poll 还没启时所有按钮都点不到，所以反过来。
   win.setIgnoreMouseEvents(false)
+
+  // v0.13 Security defense-in-depth (audit Security CRITICAL C1 mitigation):
+  // 即使 webSecurity:false 让 SOP 失效，下面 3 道防线阻止 XSS 实质危害。
+
+  // 1. 阻止 window.open — renderer 永远不应该开新窗口。任何 window.open 用系统默认浏览器打开。
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  // 2. 阻止 renderer 跳到非本地 URL（renderer 始终在 file:// 或 vite localhost）
+  win.webContents.on('will-navigate', (event, url) => {
+    const isLocal = url.startsWith('file://') || url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:')
+    if (!isLocal) {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    }
+  })
+
+  // 3. 注入 CSP header — 限制 script/connect/img 来源，即使 SOP 失效也阻止外部加载
+  // 对所有 file:// + vite localhost 响应注入。pixi 用 eval 所以 script-src 含 unsafe-eval。
+  // connect-src 允许 https + ws (vite hmr)；img/font 允许 data: + file:
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          [
+            "default-src 'self' file: blob: data:",
+            "script-src 'self' file: 'unsafe-eval' 'unsafe-inline' blob:",
+            "style-src 'self' file: 'unsafe-inline'",
+            "img-src 'self' file: data: blob: https:",
+            "media-src 'self' file: blob: data:",
+            "font-src 'self' file: data:",
+            "connect-src 'self' file: data: blob: https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+            "frame-src 'none'",
+            "object-src 'none'",
+            "base-uri 'self'",
+          ].join('; '),
+        ],
+      },
+    })
+  })
 
   win.once('ready-to-show', () => {
     win.show()

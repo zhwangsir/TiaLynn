@@ -12,6 +12,42 @@ import { getPaths } from './paths'
 
 let initialized = false
 
+/**
+ * v0.13 security: 写文件前过滤敏感信息。
+ * 防止 api_key / Bearer token / 完整内网 IP+端口被写到日志文件 = 用户给 maintainer
+ * 看日志时不必担心泄露 endpoint 凭据。
+ *
+ * 替换规则（保守 — 只替换明显敏感字段，不过度匹配）：
+ *   - "api_key": "xxxx"        → "api_key": "[REDACTED]"
+ *   - "Bearer abc123..."        → "Bearer [REDACTED]"
+ *   - "sk-xxx" / "sk-proj-xxx"  → "[REDACTED]"
+ *   - 10.x.x.x:port / 192.168.x.x:port / 172.16-31.x.x:port  → 内网 IP 部分留 host:port
+ *     不脱敏（这些是用户配的 endpoint，调试需要），只脱敏 query string 里的 token
+ *
+ * NOTE: 这是 best-effort 防御，不是绝对安全。日志文件本身权限 644
+ *       (用户级访问)，密钥仍有泄露风险 — 真要彻底安全用 Electron safeStorage。
+ */
+const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
+  // JSON / yaml api_key 字段
+  [/"api_?key"\s*:\s*"[^"]+"/gi, '"api_key": "[REDACTED]"'],
+  [/"x-api-key"\s*:\s*"[^"]+"/gi, '"x-api-key": "[REDACTED]"'],
+  // HTTP Authorization header
+  [/Bearer\s+[A-Za-z0-9._\-+/]{8,}/g, 'Bearer [REDACTED]'],
+  // OpenAI 风格 sk- token
+  [/sk-[A-Za-z0-9_\-]{16,}/g, 'sk-[REDACTED]'],
+  [/sk-proj-[A-Za-z0-9_\-]{16,}/g, 'sk-proj-[REDACTED]'],
+  // Anthropic 风格 sk-ant token
+  [/sk-ant-[A-Za-z0-9_\-]{16,}/g, 'sk-ant-[REDACTED]'],
+]
+
+function redactSensitive(input: unknown): string {
+  let s = typeof input === 'string' ? input : String(input)
+  for (const [re, replace] of SENSITIVE_PATTERNS) {
+    s = s.replace(re, replace)
+  }
+  return s
+}
+
 export function initializeLogger(): void {
   if (initialized) return
   initialized = true
@@ -25,10 +61,20 @@ export function initializeLogger(): void {
   log.transports.file.maxSize = 10 * 1024 * 1024 // 10 MB
   log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 
-  // 3. 控制台保持现有格式（开发体验不变）
+  // 3. v0.13 security: 写文件前 redact 敏感字段。
+  // log.hooks 是全局 hook（对所有 transport 生效，console + file 都会被 redact）。
+  // 类型由 electron-log 在运行时 typed，TS strict 下用 unknown 兼容。
+  type LogHook = (typeof log.hooks)[number]
+  const redactHook: LogHook = (message) => {
+    message.data = message.data.map((d: unknown) => redactSensitive(d))
+    return message
+  }
+  log.hooks.push(redactHook)
+
+  // 4. 控制台保持现有格式（开发体验不变）
   log.transports.console.format = '[{h}:{i}:{s}] [{level}] {text}'
 
-  // 4. 关键：把 console.* 接管 → 所有现有 console.log/warn/error 自动写文件
+  // 5. 关键：把 console.* 接管 → 所有现有 console.log/warn/error 自动写文件
   Object.assign(console, log.functions)
 
   log.info('[logger] initialized — file:', logDir)

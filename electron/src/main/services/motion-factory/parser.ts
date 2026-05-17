@@ -12,7 +12,7 @@
  * 我们生成的 motion3.json 全部用 type=0 (Linear)，
  * 这样 LLM 只需输出 keyframes 即可。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { MotionDraft, KeyframeTrack, ParamInfo, ModelMotionSummary } from '@shared/motion'
 
@@ -225,9 +225,8 @@ export function summarizeModelMotions(modelDir: string): ModelMotionSummary {
 }
 
 function findFirst(dir: string, pattern: RegExp): string | null {
-  const fs = require('node:fs') as typeof import('node:fs')
   try {
-    for (const e of fs.readdirSync(dir)) {
+    for (const e of readdirSync(dir)) {
       if (pattern.test(e)) return join(dir, e)
     }
   } catch {

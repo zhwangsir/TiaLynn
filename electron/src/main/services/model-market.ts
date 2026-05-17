@@ -8,7 +8,7 @@
  * - 同名目录已存在时加 -2 -3 后缀，不覆盖
  */
 import AdmZip from 'adm-zip'
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs'
 import { dirname, join, normalize, posix, sep } from 'node:path'
 import { getPaths } from './paths'
 
@@ -146,7 +146,7 @@ export async function installFromUrl(url: string): Promise<InstallResult> {
 
   const result = await installFromZip(tmpZip)
   try {
-    if (existsSync(tmpZip)) statSync(tmpZip) && require('node:fs').unlinkSync(tmpZip)
+    if (existsSync(tmpZip)) unlinkSync(tmpZip)
   } catch {
     /* ignore */
   }
@@ -212,7 +212,7 @@ function findModel3(dir: string, maxDepth: number, acc: string[] = []): string[]
   if (maxDepth < 0) return acc
   let entries: string[]
   try {
-    entries = (require('node:fs').readdirSync as (p: string) => string[])(dir)
+    entries = readdirSync(dir)
   } catch {
     return acc
   }

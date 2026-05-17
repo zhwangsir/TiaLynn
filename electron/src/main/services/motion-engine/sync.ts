@@ -4,7 +4,7 @@
  * 用户在 Cubism Editor 直接编辑了 motion3.json / 删除文件后调用此函数，
  * DB 自动 reconcile。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SyncReport } from '@shared/motion-engine'
 import { parseMotion3 } from '../motion-factory/parser'
@@ -145,9 +145,8 @@ function readDiskMotions(model3Path: string, modelDir: string): DiskMotion[] {
 }
 
 function findFirstModel3(dir: string): string | null {
-  const fs = require('node:fs') as typeof import('node:fs')
   try {
-    for (const e of fs.readdirSync(dir)) {
+    for (const e of readdirSync(dir)) {
       if (/\.model3\.json$/i.test(e)) return join(dir, e)
     }
   } catch {
