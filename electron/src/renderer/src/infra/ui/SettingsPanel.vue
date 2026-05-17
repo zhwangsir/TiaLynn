@@ -50,6 +50,16 @@ const userEdited = ref(false)
 const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 /** v0.13: 磁盘占用统计 dialog */
 const diskUsageOpen = ref(false)
+/** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
+type SettingsTab = 'llm' | 'avatar' | 'tts' | 'rvc' | 'soul'
+const activeTab = ref<SettingsTab>('llm')
+const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
+  { id: 'llm', label: '大脑', icon: '🧠' },
+  { id: 'avatar', label: '立绘', icon: '🎭' },
+  { id: 'tts', label: '声音', icon: '🎙️' },
+  { id: 'rvc', label: 'RVC', icon: '🎚️' },
+  { id: 'soul', label: '灵魂', icon: '💎' },
+]
 
 function loadFromStore(): void {
   if (cfg.config) Object.assign(form, JSON.parse(JSON.stringify(cfg.config)))
@@ -489,6 +499,20 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       <DiskUsageDialog v-if="diskUsageOpen" @close="diskUsageOpen = false" />
 
+      <nav class="tabs" role="tablist">
+        <button
+          v-for="t in tabs"
+          :key="t.id"
+          role="tab"
+          :class="['tab', { active: activeTab === t.id }]"
+          @click="activeTab = t.id"
+        >
+          <span class="tab-icon">{{ t.icon }}</span>
+          <span class="tab-label">{{ t.label }}</span>
+        </button>
+      </nav>
+
+      <div v-show="activeTab === 'llm'">
       <section>
         <h3>大脑 (LLM)</h3>
         <label>
@@ -533,6 +557,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </div>
       </section>
 
+      </div>
+
+      <div v-show="activeTab === 'avatar'">
       <section>
         <h3>立绘 (Avatar)</h3>
         <label>
@@ -587,6 +614,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </p>
       </section>
 
+      </div>
+
+      <div v-show="activeTab === 'tts'">
       <section>
         <h3>声音 (TTS)</h3>
         <label>
@@ -608,6 +638,10 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </div>
       </section>
 
+      <section v-show="false"><!-- 节奏 section 已并入 TTS tab，下面那个原 section 也放 TTS tab --></section>
+      </div>
+
+      <div v-show="activeTab === 'rvc'">
       <section>
         <h3>RVC 音色转换（你的真声）</h3>
         <p class="hint">
@@ -702,6 +736,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
       </section>
 
       <!-- v0.11: 底座 TTS 语速/音量/音调（无论是否启用 RVC，都先经过底座 TTS） -->
+      </div>
+
+      <div v-show="activeTab === 'tts'">
       <section>
         <h3>语音节奏（底座 TTS）</h3>
         <p class="hint">不论是否启用 RVC，文字都先经 edge_tts 生成，下面参数控制原始语音的语速、音量、音调。</p>
@@ -748,6 +785,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         <p class="hint">edge_tts 的音调微调。如果启用了 RVC，主要用 RVC 的 ±12 半音；这个微调中和底座女声偏高的问题。</p>
       </section>
 
+      </div>
+
+      <div v-show="activeTab === 'soul'">
       <section>
         <h3>灵魂 (Soul)</h3>
         <p class="hint">{{ cfg.soul?.name }} · 主人「{{ cfg.soul?.master }}」 · 称呼「{{ cfg.soul?.call_master_as }}」</p>
@@ -757,6 +797,8 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           <button class="ghost" @click="openDataDir">打开数据目录</button>
         </div>
       </section>
+
+      </div>
 
       <footer>
         <span v-if="saveStatus" :class="['save-status', saveStatus.ok ? 'ok' : 'bad']">
@@ -844,6 +886,47 @@ header h2 {
 .header-action-btn:hover {
   background: oklch(93% 0.015 25 / 0.85);
   color: var(--color-bubble-text);
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: oklch(96% 0.012 25 / 0.55);
+  border-radius: var(--radius-md);
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  margin: -4px 0 4px;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-muted);
+  background: transparent;
+  transition: all var(--duration-fast);
+}
+.tab:hover {
+  background: oklch(94% 0.015 25 / 0.7);
+  color: var(--color-bubble-text);
+}
+.tab.active {
+  background: var(--color-bubble);
+  color: var(--color-accent);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.06);
+}
+.tab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.tab-label {
+  font-size: 10px;
 }
 section {
   display: flex;
