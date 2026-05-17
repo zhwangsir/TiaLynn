@@ -47,6 +47,7 @@ import { getPaths } from './services/paths'
 import { loadConfig } from './services/config-store'
 import { close as closeHistoryDb } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
+import { initializeLogger } from './services/logger'
 
 // macOS 透明窗口需要硬件加速正确工作
 app.commandLine.appendSwitch('enable-features', 'Metal')
@@ -87,6 +88,9 @@ app.whenReady().then(() => {
 
   // 提前确保数据目录存在
   getPaths()
+
+  // v0.13: 初始化 electron-log，接管 console.* → 写文件到 ~/.tialynn/logs/main.log
+  initializeLogger()
 
   // 注册所有 IPC
   registerWindowControlIpc(getMainWindow)

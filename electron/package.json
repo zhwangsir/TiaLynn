@@ -24,6 +24,7 @@
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.10.0",
     "electron-click-drag-plugin": "^2.0.2",
+    "electron-log": "^5.4.4",
     "js-yaml": "^4.1.0",
     "mitt": "^3.0.1",
     "pinia": "^2.2.6",
@@ -69,14 +70,23 @@
       {
         "from": "../soul",
         "to": "soul",
-        "filter": ["**/*.yaml", "**/*.yml"]
+        "filter": [
+          "**/*.yaml",
+          "**/*.yml"
+        ]
       }
     ],
     "mac": {
       "category": "public.app-category.entertainment",
       "icon": "build/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
@@ -89,14 +99,26 @@
     "win": {
       "icon": "build/icon.png",
       "target": [
-        { "target": "nsis", "arch": ["x64", "arm64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
       "icon": "build/icon.png",
       "category": "Utility",
       "target": [
-        { "target": "AppImage", "arch": ["x64", "arm64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "nsis": {
