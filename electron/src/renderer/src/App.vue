@@ -11,6 +11,7 @@ import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
 import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
+import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
@@ -32,10 +33,16 @@ const pinned = ref(true)
 const menuOpen = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
+const onboardingOpen = ref(false)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
-  () => !settingsOpen.value && !motionFactoryOpen.value && !menuOpen.value && !libraryOpen.value,
+  () =>
+    !settingsOpen.value &&
+    !motionFactoryOpen.value &&
+    !menuOpen.value &&
+    !libraryOpen.value &&
+    !onboardingOpen.value,
 )
 
 const menuItems = computed<MenuItem[]>(() => [
@@ -178,6 +185,11 @@ onMounted(async () => {
   dialog.injectGreeting()
   ready.value = true
 
+  // v0.13 首次启动引导：LLM 未配置就弹出
+  if (!cfg.config?.llm_endpoint || !cfg.config?.llm_model) {
+    onboardingOpen.value = true
+  }
+
   const handler = ({ x, y }: { x: number; y: number }): void => openMenu(x, y)
   bus.on('avatar:contextmenu', handler)
   offCtxMenuFn = () => bus.off('avatar:contextmenu', handler)
@@ -247,6 +259,7 @@ onBeforeUnmount(() => {
       <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
       <MotionFactoryPanel v-if="motionFactoryOpen" @close="motionFactoryOpen = false" />
       <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
+      <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
       <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
