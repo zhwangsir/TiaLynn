@@ -103,6 +103,59 @@ export function listMissing(characterIds: string[]): string[] {
   return characterIds.filter((cid) => !have.has(safeId(cid)))
 }
 
+/**
+ * v0.13 (audit performance ROI 2): 批量获取多个 character_id 的 thumb info。
+ * 把之前 700+ 次独立 IPC 合成 1 次，渲染 ModelLibraryPanel 时性能提升明显。
+ * 单次 readdirSync 拿到所有 .webp，O(N) 哈希表查询，比 N 次 existsSync 快很多。
+ */
+export function getThumbBatch(characterIds: string[]): Record<string, ThumbInfo> {
+  const dir = thumbsDir()
+  // 一次 readdir 建立全部存在的 webp / failed 索引
+  const fileIndex = new Map<string, { kind: 'webp' | 'failed'; mtime: number; size: number }>()
+  try {
+    for (const f of readdirSync(dir)) {
+      const full = join(dir, f)
+      let st
+      try { st = statSync(full) } catch { continue }
+      if (f.endsWith('.webp')) {
+        fileIndex.set(f.slice(0, -5), { kind: 'webp', mtime: st.mtimeMs, size: st.size })
+      } else if (f.endsWith('.failed')) {
+        fileIndex.set(f.slice(0, -7), { kind: 'failed', mtime: st.mtimeMs, size: st.size })
+      }
+    }
+  } catch {
+    /* thumbs dir 不存在或读不到 — 返回全 empty */
+  }
+  const now = Date.now()
+  const result: Record<string, ThumbInfo> = {}
+  for (const cid of characterIds) {
+    const id = safeId(cid)
+    const entry = fileIndex.get(id)
+    if (!entry) {
+      result[cid] = { exists: false }
+      continue
+    }
+    const age = now - entry.mtime
+    if (entry.kind === 'failed') {
+      if (age < MAX_AGE_MS) result[cid] = { exists: false, failed: true }
+      else result[cid] = { exists: false } // 过期 failed，下次会被 getThumb 真实访问时清掉
+      continue
+    }
+    if (age > MAX_AGE_MS) {
+      result[cid] = { exists: false }
+      continue
+    }
+    const webpPath = join(dir, `${id}.webp`)
+    result[cid] = {
+      exists: true,
+      url: `file://${webpPath.replace(/\\/g, '/')}`,
+      size_bytes: entry.size,
+      age_ms: age,
+    }
+  }
+  return result
+}
+
 /** 清整个缓存（用户在设置里点「重新生成所有缩略图」） */
 export function clearAll(): { deleted: number } {
   const dir = thumbsDir()

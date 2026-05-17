@@ -208,6 +208,8 @@ const api: TialynnApi = {
   thumbs: {
     get: (characterId: string) =>
       invoke('thumbs:get', characterId) as ReturnType<TialynnApi['thumbs']['get']>,
+    getBatch: (characterIds: string[]) =>
+      invoke('thumbs:get-batch', characterIds) as ReturnType<TialynnApi['thumbs']['getBatch']>,
     save: (payload: { character_id: string; webp_base64: string }) =>
       invoke('thumbs:save', payload) as ReturnType<TialynnApi['thumbs']['save']>,
     markFailed: (payload: { character_id: string; reason: string }) =>

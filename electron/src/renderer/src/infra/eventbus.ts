@@ -28,6 +28,8 @@ export type BusEventMap = {
   'brain:emotion-changed': { emotion: EmotionId; intensity: number }
   /** v0.8.2: dialog LLM 在 reply 里附带的 actions（瞥屏/换表情/idle 等），让 plan-executor 执行 */
   'brain:reply-actions': { actions: BehaviorAction[] }
+  /** v0.13: 主体性 plan 主动注入 assistant 回合（避免 avatar 域直接 import brain/stores） */
+  'brain:inject-utterance': { text: string; emotion: EmotionId; intensity: number }
   /* 在场 */
   'presence:tts-start': { audio_url: string; emotion: EmotionId }
   'presence:tts-end': void

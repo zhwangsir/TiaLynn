@@ -83,10 +83,15 @@ class PerceptionBus extends EventEmitter {
   }
 }
 
-/** 去掉 PerceptionEvent 中不适合 IPC 传输的大字段（如 image_b64） */
+/**
+ * 去掉 PerceptionEvent 中不适合 IPC 传输的大字段（如 image_b64）。
+ * v0.13: image_b64 是 optional string，直接 omit 即可，无需 type cast。
+ */
 function sanitizeForIpc(event: PerceptionEvent): PerceptionEvent {
   if (event.type === 'screen_snapshot' && event.image_b64) {
-    return { ...event, image_b64: `<${event.image_b64.length} bytes>` as unknown as string }
+    // 把大 base64 去掉，保留摘要信息（receiver 知道有图但不传字节）
+    const { image_b64, ...rest } = event
+    return { ...rest, image_b64_size: image_b64.length } as PerceptionEvent
   }
   return event
 }

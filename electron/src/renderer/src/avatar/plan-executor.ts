@@ -7,7 +7,8 @@ import { ref } from 'vue'
 import type { BehaviorAction, BehaviorPlan } from '@shared/attention'
 import type { Live2DRenderer } from './render/live2d-renderer'
 import { bus } from '../infra/eventbus'
-import { useDialogStore } from '../brain/stores/dialog'
+// v0.13 (audit architecture): avatar 域不再直接 import brain/stores/dialog
+// 改用 bus 'brain:inject-utterance' 事件，dialog store 自己监听
 
 interface ExecOpts {
   renderer: Live2DRenderer
@@ -84,10 +85,14 @@ async function doLookBack(
 }
 
 async function doSpeak(action: Extract<BehaviorAction, { type: 'speak' }>): Promise<void> {
-  // 主动说话 — 注入 assistant turn
-  const dialog = useDialogStore()
-  dialog.injectAssistantUtterance(action.text, action.emotion, action.intensity)
-  // TTS 由 speech store 自动接 reply-end 事件触发，所以也走 emit
+  // v0.13: 主动说话 — 通过 bus 让 brain/stores/dialog 自己注入 assistant turn
+  // 不再直接 import useDialogStore，消除 avatar → brain 跨域硬依赖
+  bus.emit('brain:inject-utterance', {
+    text: action.text,
+    emotion: action.emotion,
+    intensity: action.intensity,
+  })
+  // TTS 由 speech store 自动接 reply-end 事件触发
   bus.emit('brain:reply-end', {
     stream_id: `proactive-${Date.now()}`,
     full_text: action.text,

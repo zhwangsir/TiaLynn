@@ -204,6 +204,14 @@ export interface TialynnApi {
       age_ms?: number
       failed?: boolean
     }>
+    /** v0.13: 批量查询，消除 N+1 IPC（performance audit ROI 2） */
+    getBatch(characterIds: string[]): Promise<Record<string, {
+      exists: boolean
+      url?: string
+      size_bytes?: number
+      age_ms?: number
+      failed?: boolean
+    }>>
     save(payload: {
       character_id: string
       webp_base64: string

@@ -33,7 +33,8 @@ export function registerPerceptionIpc(): void {
 
 function sanitizeForIpc(event: PerceptionEvent): PerceptionEvent {
   if (event.type === 'screen_snapshot' && event.image_b64) {
-    return { ...event, image_b64: `<${event.image_b64.length} bytes>` as unknown as string }
+    const { image_b64, ...rest } = event
+    return { ...rest, image_b64_size: image_b64.length } as PerceptionEvent
   }
   return event
 }

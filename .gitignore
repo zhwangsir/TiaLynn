@@ -10,12 +10,16 @@ electron/out/
 electron/release/
 electron/dist-types/
 
-# --- IDE ---
+# --- IDE / Tooling ---
 .idea/
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+.claude/
+
+# --- 旧素材残留 ---
+sprite_sheet_part*.png
 
 # --- 个人/敏感资产（NOT 入仓） ---
 # Live2D 模型库（受 Live2D 商业授权约束，使用者各自获取）

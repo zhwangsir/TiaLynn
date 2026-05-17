@@ -53,11 +53,21 @@ export const useDialogStore = defineStore('dialog', () => {
   let toolRound = 0
 
   let unsubChunk: (() => void) | null = null
+  let unsubInjectUtterance: (() => void) | null = null
   let pendingResolve: (() => void) | null = null
 
   async function bootstrap(): Promise<void> {
     if (!unsubChunk) {
       unsubChunk = window.api.llm.onChunk((chunk) => handleChunk(chunk))
+    }
+    // v0.13 (audit architecture): 监听 avatar/plan-executor 发的 inject-utterance
+    // 把跨域硬依赖（avatar import dialog store）改成事件驱动
+    if (!unsubInjectUtterance) {
+      const handler = (payload: { text: string; emotion: EmotionId; intensity: number }): void => {
+        injectAssistantUtterance(payload.text, payload.emotion, payload.intensity)
+      }
+      bus.on('brain:inject-utterance', handler)
+      unsubInjectUtterance = () => bus.off('brain:inject-utterance', handler)
     }
     try {
       const rows = await window.api.history.listRecent(50)
@@ -102,6 +112,8 @@ export const useDialogStore = defineStore('dialog', () => {
   function teardown(): void {
     unsubChunk?.()
     unsubChunk = null
+    unsubInjectUtterance?.()
+    unsubInjectUtterance = null
   }
 
   function buildMessages(userText: string): ChatMessage[] {

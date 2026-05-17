@@ -85,13 +85,14 @@ async function abortEnrichment(): Promise<void> {
 }
 
 async function loadCachedThumbs(): Promise<void> {
+  // v0.13 (audit performance ROI 2): 之前 ~700 个并发 IPC invoke 形成尖峰；
+  // 现在改单次 batch 调用，主进程一次 readdir 拿全部缩略图状态
   const ids = [...new Set(cfg.models.map((m) => m.meta?.character_id).filter(Boolean) as string[])]
-  await Promise.all(
-    ids.map(async (cid) => {
-      const r = await window.api.thumbs.get(cid)
-      if (r.exists && r.url) thumbUrls[cid] = r.url
-    }),
-  )
+  if (ids.length === 0) return
+  const batch = await window.api.thumbs.getBatch(ids)
+  for (const [cid, entry] of Object.entries(batch)) {
+    if (entry.exists && entry.url) thumbUrls[cid] = entry.url
+  }
 }
 
 async function generateMissingThumbs(): Promise<void> {

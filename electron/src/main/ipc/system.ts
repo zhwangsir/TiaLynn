@@ -222,6 +222,11 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     const { getThumb } = await import('../services/thumb-store')
     return getThumb(characterId)
   })
+  // v0.13 (audit performance ROI 2): 批量查询，消除 N+1 IPC 风暴
+  ipcMain.handle('thumbs:get-batch', async (_evt, characterIds: string[]) => {
+    const { getThumbBatch } = await import('../services/thumb-store')
+    return getThumbBatch(characterIds)
+  })
   ipcMain.handle(
     'thumbs:save',
     async (_evt, payload: { character_id: string; webp_base64: string }) => {

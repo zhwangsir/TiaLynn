@@ -68,6 +68,15 @@ export function loadConfig(): RuntimeConfig {
 
 export function saveConfig(cfg: RuntimeConfig): RuntimeConfig {
   const merged = { ...loadConfig(), ...cfg }
-  writeFileSync(configPath(), JSON.stringify(merged, null, 2), 'utf-8')
+  // v0.13: writeFileSync 失败（磁盘满/权限/路径无效）必须报上去，
+  // 不然用户改了 endpoint 重启发现配置丢失却没任何提示
+  try {
+    writeFileSync(configPath(), JSON.stringify(merged, null, 2), 'utf-8')
+  } catch (e) {
+    console.error('[config] save failed:', configPath(), e)
+    throw new Error(
+      `保存配置失败 (${configPath()}): ${e instanceof Error ? e.message : String(e)}`,
+    )
+  }
   return merged
 }

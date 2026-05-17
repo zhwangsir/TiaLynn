@@ -82,6 +82,8 @@ export interface ScreenSnapshotEvent extends PerceptionBase {
   reason: 'periodic_glance' | 'mouse_focus' | 'app_changed' | 'user_request' | 'idle_concern'
   /** 是 base64 PNG/JPEG (data URL prefix 已去掉)，仅在 vision-analyzer 内部传，不放总线 */
   image_b64?: string
+  /** v0.13: sanitize for IPC 时把 image_b64 替换成 image_b64_size，receiver 知道图字节数 */
+  image_b64_size?: number
   image_mime?: 'image/png' | 'image/jpeg'
   /** 图像尺寸 */
   width?: number
