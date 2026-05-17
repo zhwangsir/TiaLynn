@@ -1,42 +1,15 @@
 {
-  "name": "tialynn",
+  "name": "tialynn-workspace",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.6.3",
   "type": "module",
-  "description": "TiaLynn — 离线本地的 Live2D 桌面伴侣，专属灵魂、永远只属于 master",
+  "description": "TiaLynn — Electron + Vue 3 桌面 AI 伴侣（Live2D + 本地 LLM + RVC 语音）",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "electron:dev": "pnpm -F tialynn-electron dev",
-    "electron:build": "pnpm -F tialynn-electron build",
-    "electron:typecheck": "pnpm -F tialynn-electron typecheck",
-    "lint": "eslint --ext .vue,.ts,.tsx src",
-    "typecheck": "vue-tsc --noEmit"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2.1.1",
-    "@tauri-apps/plugin-dialog": "^2.0.1",
-    "@tauri-apps/plugin-fs": "^2.0.3",
-    "@tauri-apps/plugin-shell": "^2.0.1",
-    "mitt": "^3.0.1",
-    "pinia": "^2.2.6",
-    "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^6.5.10",
-    "vue": "^3.5.13"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0",
-    "@types/node": "^22.10.1",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.16",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3",
-    "vue-tsc": "^2.1.10"
+    "dev": "pnpm -F tialynn-electron dev",
+    "build": "pnpm -F tialynn-electron build",
+    "typecheck": "pnpm -F tialynn-electron typecheck",
+    "package:mac": "pnpm -F tialynn-electron package:mac",
+    "package:win": "pnpm -F tialynn-electron package:win",
+    "package:linux": "pnpm -F tialynn-electron package:linux"
   }
 }

@@ -34,7 +34,7 @@ import { join } from 'node:path'
 import { createMainWindow } from './windows/main-window'
 import { registerWindowControlIpc } from './ipc/window-control'
 import { registerLlmIpc } from './ipc/llm'
-import { registerSystemIpc } from './ipc/system'
+import { registerSystemIpc, markAttentionRunning } from './ipc/system'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
@@ -61,6 +61,21 @@ let mainWindow: BrowserWindow | null = null
 
 function getMainWindow(): BrowserWindow | null {
   return mainWindow
+}
+
+// v0.13: single-instance lock — 防止双启导致两个透明窗口冲突
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // 第二个实例启动时，把现有窗口拉到前面而不是新开
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
 }
 
 app.whenReady().then(() => {
@@ -97,8 +112,18 @@ app.whenReady().then(() => {
   )
 
   // v0.8.2: 启动主体性循环（Scheduler tick + Planner LLM 调用 + 推 plan 给 renderer 执行）
-  startAttention(getMainWindow, { proactive_monitor_interval_ms: 60_000 })
-  console.log('[attention] started (proactive every 60s, evaluating every 5s)')
+  // v0.13: LLM 未配置时不启动 attention loop — 否则每 60s 撞一次 LLM 调用错误
+  // 用户首次在 Settings 配完 endpoint 后由 IPC 触发 startAttention（见 ipc/llm.ts 的 setConfig）
+  if (cfg.llm_endpoint && cfg.llm_model) {
+    startAttention(getMainWindow, { proactive_monitor_interval_ms: 60_000 })
+    markAttentionRunning(true)
+    console.log('[attention] started (proactive every 60s, evaluating every 5s)')
+  } else {
+    markAttentionRunning(false)
+    console.log(
+      '[attention] skipped — LLM 未配置（llm_endpoint / llm_model 为空），等用户在 Settings 配完后启动',
+    )
+  }
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })

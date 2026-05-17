@@ -8,11 +8,13 @@ import { getPaths } from './paths'
 
 const DEFAULT: RuntimeConfig = {
   llm_provider: 'openai_compat',
-  llm_endpoint: 'http://localhost:1234',
-  llm_model: 'qwen2.5-7b-instruct',
+  // 默认留空 — 首次启动时引导用户填本地 ollama / LM Studio / vLLM endpoint
+  llm_endpoint: '',
+  llm_model: '',
   llm_api_key: '',
   tts_provider: 'sidecar',
-  tts_sidecar_url: 'http://localhost:8765',
+  // 默认留空 — 用户在 Settings 里配（或留空使用 macOS `say` fallback）
+  tts_sidecar_url: '',
   // v0.9: RVC 默认不启用（空 voice）。训练好后在设置里选
   rvc_voice: '',
   rvc_f0_up_key: 0,

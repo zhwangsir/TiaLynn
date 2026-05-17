@@ -65,7 +65,14 @@ import { saveAvatar } from '../services/soul-saver'
 import { loadConfig, saveConfig } from '../services/config-store'
 import { getPaths } from '../services/paths'
 import { appendTurn, clearAll, listRecent, type StoredTurn } from '../services/history-store'
+import { startAttention, stopAttention } from '../services/attention'
 import type { RuntimeConfig, SoulConfig } from '@shared/types'
+
+// v0.13: 跟踪 attention 是否已启动，避免重复 start / 误 stop
+let attentionRunning = false
+export function markAttentionRunning(v: boolean): void {
+  attentionRunning = v
+}
 
 export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('system:version', () => app.getVersion())
@@ -98,6 +105,17 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     const win = getWindow()
     if (win && !win.isDestroyed()) {
       win.webContents.send('config:changed', merged)
+    }
+    // v0.13: LLM 配置状态变化时切换 attention loop
+    const llmReady = !!(merged.llm_endpoint && merged.llm_model)
+    if (llmReady && !attentionRunning) {
+      startAttention(getWindow, { proactive_monitor_interval_ms: 60_000 })
+      attentionRunning = true
+      console.log('[attention] started (LLM 配置完成)')
+    } else if (!llmReady && attentionRunning) {
+      stopAttention()
+      attentionRunning = false
+      console.log('[attention] stopped (LLM 配置被清空)')
     }
     return merged
   })
