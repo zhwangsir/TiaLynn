@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
+import DiskUsageDialog from './DiskUsageDialog.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -47,6 +48,8 @@ const selectedModel = ref<string>('')
 const userEdited = ref(false)
 /** 最近一次保存反馈 */
 const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
+/** v0.13: 磁盘占用统计 dialog */
+const diskUsageOpen = ref(false)
 
 function loadFromStore(): void {
   if (cfg.config) Object.assign(form, JSON.parse(JSON.stringify(cfg.config)))
@@ -474,8 +477,17 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
     <div class="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <header>
         <h2 id="settings-title">设置 · v{{ cfg.version || '0.6' }}</h2>
-        <button class="close" @click="emit('close')" title="关闭设置">×</button>
+        <div class="header-actions">
+          <button
+            class="header-action-btn"
+            title="磁盘占用统计"
+            @click="diskUsageOpen = true"
+          >📊 占用</button>
+          <button class="close" @click="emit('close')" title="关闭设置">×</button>
+        </div>
       </header>
+
+      <DiskUsageDialog v-if="diskUsageOpen" @close="diskUsageOpen = false" />
 
       <section>
         <h3>大脑 (LLM)</h3>
@@ -814,6 +826,23 @@ header h2 {
 }
 .close:hover {
   background: oklch(95% 0.015 25 / 0.6);
+  color: var(--color-bubble-text);
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-action-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  background: oklch(96% 0.012 25 / 0.7);
+  transition: all var(--duration-fast);
+}
+.header-action-btn:hover {
+  background: oklch(93% 0.015 25 / 0.85);
   color: var(--color-bubble-text);
 }
 section {

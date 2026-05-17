@@ -86,6 +86,19 @@ export interface TialynnApi {
     revealDataDir(): Promise<string>
     revealModelsDir(): Promise<string>
     openExternal(url: string): Promise<{ ok: boolean; reason?: string }>
+    diskUsage(force?: boolean): Promise<{
+      entries: Array<{
+        label: string
+        path: string
+        bytes: number
+        exists: boolean
+        hint: string
+        cleanable: boolean
+      }>
+      total_bytes: number
+      computed_at_ms: number
+    }>
+    cleanPath(path: string): Promise<{ ok: boolean; freed_bytes: number; reason?: string }>
   }
   window: {
     startDrag(): Promise<{ ok: boolean; reason?: string }>

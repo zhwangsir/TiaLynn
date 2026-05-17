@@ -85,6 +85,10 @@ const api: TialynnApi = {
     revealModelsDir: () => invoke('system:reveal-models-dir') as Promise<string>,
     openExternal: (url: string) =>
       invoke('system:open-external', url) as Promise<{ ok: boolean; reason?: string }>,
+    diskUsage: (force = false) =>
+      invoke('system:disk-usage', force) as ReturnType<TialynnApi['system']['diskUsage']>,
+    cleanPath: (path: string) =>
+      invoke('system:clean-path', path) as ReturnType<TialynnApi['system']['cleanPath']>,
   },
   window: {
     startDrag: () => invoke('window:start-drag') as Promise<{ ok: boolean; reason?: string }>,

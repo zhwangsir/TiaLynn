@@ -66,6 +66,7 @@ import { loadConfig, saveConfig } from '../services/config-store'
 import { getPaths } from '../services/paths'
 import { appendTurn, clearAll, listRecent, type StoredTurn } from '../services/history-store'
 import { startAttention, stopAttention } from '../services/attention'
+import { computeDiskUsage, cleanPath } from '../services/disk-usage'
 import type { RuntimeConfig, SoulConfig } from '@shared/types'
 
 // v0.13: 跟踪 attention 是否已启动，避免重复 start / 误 stop
@@ -96,6 +97,14 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     if (!/^https?:\/\//i.test(url)) return { ok: false, reason: 'invalid url' }
     await shell.openExternal(url)
     return { ok: true }
+  })
+
+  // v0.13: 磁盘占用统计 + 清理（H1 audit）
+  ipcMain.handle('system:disk-usage', async (_evt, force?: boolean) => {
+    return computeDiskUsage(!!force)
+  })
+  ipcMain.handle('system:clean-path', async (_evt, path: string) => {
+    return cleanPath(path)
   })
 
   ipcMain.handle('config:load', () => loadConfig())
