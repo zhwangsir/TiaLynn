@@ -35,6 +35,7 @@ import { createMainWindow } from './windows/main-window'
 import { registerWindowControlIpc } from './ipc/window-control'
 import { registerLlmIpc } from './ipc/llm'
 import { registerSystemIpc, markAttentionRunning } from './ipc/system'
+import { registerTtsIpc } from './ipc/tts'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
@@ -96,6 +97,7 @@ app.whenReady().then(() => {
   registerWindowControlIpc(getMainWindow)
   registerLlmIpc(getMainWindow)
   registerSystemIpc(getMainWindow)
+  registerTtsIpc()
   registerToolIpc(getMainWindow)
   registerMarketIpc(getMainWindow)
   registerMotionFactoryIpc(getMainWindow)
