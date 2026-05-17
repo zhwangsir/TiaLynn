@@ -27,20 +27,23 @@ let initialized = false
  * NOTE: 这是 best-effort 防御，不是绝对安全。日志文件本身权限 644
  *       (用户级访问)，密钥仍有泄露风险 — 真要彻底安全用 Electron safeStorage。
  */
+// 顺序很重要：最具体的 pattern 必须放前面，否则 sk-* 会先匹配吃掉 sk-proj- / sk-ant- 的前缀
 const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   // JSON / yaml api_key 字段
   [/"api_?key"\s*:\s*"[^"]+"/gi, '"api_key": "[REDACTED]"'],
   [/"x-api-key"\s*:\s*"[^"]+"/gi, '"x-api-key": "[REDACTED]"'],
   // HTTP Authorization header
   [/Bearer\s+[A-Za-z0-9._\-+/]{8,}/g, 'Bearer [REDACTED]'],
-  // OpenAI 风格 sk- token
-  [/sk-[A-Za-z0-9_\-]{16,}/g, 'sk-[REDACTED]'],
-  [/sk-proj-[A-Za-z0-9_\-]{16,}/g, 'sk-proj-[REDACTED]'],
-  // Anthropic 风格 sk-ant token
+  // Anthropic 风格 sk-ant token (最具体)
   [/sk-ant-[A-Za-z0-9_\-]{16,}/g, 'sk-ant-[REDACTED]'],
+  // OpenAI Project 风格 sk-proj-
+  [/sk-proj-[A-Za-z0-9_\-]{16,}/g, 'sk-proj-[REDACTED]'],
+  // OpenAI 风格 sk- token (最宽泛，最后兜底)
+  [/sk-[A-Za-z0-9_\-]{16,}/g, 'sk-[REDACTED]'],
 ]
 
-function redactSensitive(input: unknown): string {
+/** v0.13: 暴露为 export 便于单元测试（也允许其他模块手动 redact 自己的 log） */
+export function redactSensitive(input: unknown): string {
   let s = typeof input === 'string' ? input : String(input)
   for (const [re, replace] of SENSITIVE_PATTERNS) {
     s = s.replace(re, replace)

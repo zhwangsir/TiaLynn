@@ -16,7 +16,10 @@
     "package": "pnpm build && electron-builder --dir",
     "package:mac": "pnpm build && electron-builder --mac",
     "package:win": "pnpm build && electron-builder --win",
-    "package:linux": "pnpm build && electron-builder --linux"
+    "package:linux": "pnpm build && electron-builder --linux",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -40,12 +43,14 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.1",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vitest/coverage-v8": "^2.1.9",
     "@vue/tsconfig": "^0.5.1",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
+    "vitest": "^2.1.9",
     "vue-tsc": "^2.1.10"
   },
   "build": {

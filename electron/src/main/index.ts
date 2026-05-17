@@ -36,6 +36,7 @@ import { registerWindowControlIpc } from './ipc/window-control'
 import { registerLlmIpc } from './ipc/llm'
 import { registerSystemIpc, markAttentionRunning } from './ipc/system'
 import { registerTtsIpc } from './ipc/tts'
+import { registerThumbsIpc } from './ipc/thumbs'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
@@ -98,6 +99,7 @@ app.whenReady().then(() => {
   registerLlmIpc(getMainWindow)
   registerSystemIpc(getMainWindow)
   registerTtsIpc()
+  registerThumbsIpc()
   registerToolIpc(getMainWindow)
   registerMarketIpc(getMainWindow)
   registerMotionFactoryIpc(getMainWindow)
