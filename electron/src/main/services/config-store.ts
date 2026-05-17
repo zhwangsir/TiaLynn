@@ -13,6 +13,20 @@ const DEFAULT: RuntimeConfig = {
   llm_api_key: '',
   tts_provider: 'sidecar',
   tts_sidecar_url: 'http://localhost:8765',
+  // v0.9: RVC 默认不启用（空 voice）。训练好后在设置里选
+  rvc_voice: '',
+  rvc_f0_up_key: 0,
+  rvc_index_rate: 0.75,
+  rvc_f0_method: 'rmvpe' as const,
+  // v0.11: 底座 TTS 语速/音量/音调（edge_tts SSML 格式）
+  tts_rate: '+0%',
+  tts_volume: '+0%',
+  tts_pitch: '+0Hz',
+  // v0.11: RVC 高级参数
+  rvc_protect: 0.33,
+  rvc_filter_radius: 3,
+  rvc_rms_mix_rate: 1.0,
+  rvc_resample_sr: 0,
   idle_min_sec: 60,
   idle_max_sec: 180,
   autocomment_interval_sec: 600,

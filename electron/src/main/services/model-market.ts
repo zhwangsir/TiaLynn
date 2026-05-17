@@ -175,7 +175,7 @@ async function installFromDirectory(srcDir: string): Promise<InstallResult> {
   if (candidates.length === 0) {
     return { ok: false, reason: '目录内未找到 *.model3.json' }
   }
-  const modelFile = candidates[0]
+  const modelFile = candidates[0]!
   const modelDirInSrc = dirname(modelFile)
   const detectedName = modelDirInSrc.split(sep).pop() ?? 'untitled-model'
 
@@ -199,11 +199,12 @@ async function installFromDirectory(srcDir: string): Promise<InstallResult> {
   }
   await copyRec(modelDirInSrc, finalDir)
 
+  const modelFileName = modelFile.split(sep).pop()
   return {
     ok: true,
     installed_to: finalDir,
     detected_name: finalName,
-    model_file: modelFile.split(sep).pop(),
+    ...(modelFileName !== undefined && { model_file: modelFileName }),
   }
 }
 

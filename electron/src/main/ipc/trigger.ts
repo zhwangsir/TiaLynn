@@ -13,8 +13,8 @@ export function registerTriggerIpc(): void {
       payload: { event: TriggerEvent; model_dir?: string; ignore_cooldown?: boolean },
     ): TriggerDecision | null =>
       engine.decide(payload.event, {
-        model_dir: payload.model_dir,
-        ignore_cooldown: payload.ignore_cooldown,
+        ...(payload.model_dir !== undefined && { model_dir: payload.model_dir }),
+        ...(payload.ignore_cooldown !== undefined && { ignore_cooldown: payload.ignore_cooldown }),
       }),
   )
   ipcMain.handle('trigger:list-rules', (): TriggerRule[] => engine.loadRules())

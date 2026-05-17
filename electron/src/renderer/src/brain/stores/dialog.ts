@@ -66,10 +66,10 @@ export const useDialogStore = defineStore('dialog', () => {
           id: r.id,
           role: r.role,
           text: r.text,
-          emotion: (r.emotion ?? undefined) as EmotionId | undefined,
-          intensity: r.intensity ?? undefined,
+          ...(r.emotion != null ? { emotion: r.emotion as EmotionId } : {}),
+          ...(r.intensity != null ? { intensity: r.intensity } : {}),
           ts: r.ts,
-          error: r.error ?? undefined,
+          ...(r.error != null ? { error: r.error } : {}),
         }))
       }
     } catch (e) {
@@ -232,13 +232,13 @@ export const useDialogStore = defineStore('dialog', () => {
       pendingResolve = resolve
     })
 
+    const toolsVal = cfg.config.llm_provider === 'anthropic' ? plain(availableTools.value) : undefined
     const result = await window.api.llm.chatStream({
       streamId,
       messages: plain(messages),
       options: { model: cfg.config.llm_model, temperature: 0.8 },
-      tools:
-        cfg.config.llm_provider === 'anthropic' ? plain(availableTools.value) : undefined,
-      tool_results: toolResults ? plain(toolResults) : undefined,
+      ...(toolsVal !== undefined ? { tools: toolsVal } : {}),
+      ...(toolResults ? { tool_results: plain(toolResults) } : {}),
     })
 
     if (!result.ok) {
@@ -274,6 +274,10 @@ export const useDialogStore = defineStore('dialog', () => {
       intensity: parsed.intensity,
     })
     bus.emit('brain:emotion-changed', { emotion: parsed.emotion, intensity: parsed.intensity })
+    // v0.8.2: LLM 可以在 reply 里附带 actions（瞥屏/换表情/idle），让 plan-executor 跑
+    if (parsed.actions && parsed.actions.length > 0) {
+      bus.emit('brain:reply-actions', { actions: parsed.actions })
+    }
     replying.value = false
     currentStreamId.value = null
     activeAssistantId = null

@@ -398,7 +398,10 @@ function readCdi3(model3Path: string): Map<string, { name?: string; group?: stri
     const json = JSON.parse(readFileSync(join(base, cdiFile), 'utf-8')) as RawCdi3
     const map = new Map<string, { name?: string; group?: string }>()
     for (const p of json.Parameters ?? []) {
-      map.set(p.Id, { name: p.Name, group: p.GroupId })
+      map.set(p.Id, {
+        ...(p.Name !== undefined && { name: p.Name }),
+        ...(p.GroupId !== undefined && { group: p.GroupId }),
+      })
     }
     return map
   } catch {

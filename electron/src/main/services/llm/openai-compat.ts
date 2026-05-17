@@ -46,23 +46,41 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     // 用户可在 settings 关闭（OpenAI 真版本对 system message 支持完美）
     const mergeFromConfig = cfg.openai_compat_merge_system !== false
 
-    // 第一次尝试：根据 config 决定是否合并
-    const success = await this.tryStream(
-      messages,
-      options,
-      onEvent,
-      abortSignal,
-      mergeFromConfig,
-    )
-    if (success) return
-
-    // 第二次尝试：如果第一次出现 jinja 错误且当时未合并，强制合并 retry
-    if (!mergeFromConfig) {
-      const retried = await this.tryStream(messages, options, onEvent, abortSignal, true, true)
-      if (retried) return
+    // v0.8.2: 用 sentinel 保证每次调用恰好发一次 done，不论成功/失败/throw
+    let doneEmitted = false
+    const safeEvent: ChatStreamCallback = (evt) => {
+      if (evt.done) {
+        if (doneEmitted) return
+        doneEmitted = true
+      }
+      onEvent(evt)
+    }
+    const emitDone = (): void => {
+      if (!doneEmitted) {
+        doneEmitted = true
+        onEvent({ done: true })
+      }
     }
 
-    onEvent({ done: true })
+    try {
+      // 第一次尝试：根据 config 决定是否合并
+      const success = await this.tryStream(
+        messages,
+        options,
+        safeEvent,
+        abortSignal,
+        mergeFromConfig,
+      )
+      if (success) return
+
+      // 第二次尝试：第一次出现 jinja 错误且当时未合并 → 强制合并 retry
+      if (!mergeFromConfig) {
+        const retried = await this.tryStream(messages, options, safeEvent, abortSignal, true, true)
+        if (retried) return
+      }
+    } finally {
+      emitDone()
+    }
   }
 
   /**
@@ -79,6 +97,9 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
   ): Promise<boolean> {
     const url = `${this.endpoint.replace(/\/+$/, '')}/v1/chat/completions`
     const normalized = normalizeMessages(messages, mergeSystem)
+    console.log(
+      `[openai-compat] tryStream merge=${mergeSystem} retry=${isRetry} in=${messages.length} out=${normalized.length} roles=[${normalized.map((m) => `${m.role}:${m.content.trim().length}`).join(',')}]`,
+    )
 
     const body = {
       model: options.model,
@@ -97,7 +118,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
           ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}),
         },
         body: JSON.stringify(body),
-        signal: abortSignal,
+        signal: abortSignal ?? null,
       })
     } catch (e) {
       onEvent({ error: String(e) })
@@ -111,6 +132,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
       if (!isRetry && isTemplateError(text)) {
         return false
       }
+      console.error(`[openai-compat] HTTP ${resp.status} body=${text.slice(0, 300)}`)
       onEvent({
         error: `OpenAI-compat ${errorMsg}${
           isRetry ? '（已自动合并 system 重试，仍失败）' : ''
@@ -184,6 +206,8 @@ function isTemplateError(text: string): boolean {
 
 /**
  * 把 messages 数组规范化为模型友好格式：
+ * 0. v0.8.2 sanitize：丢空 content 的 assistant/user 消息，丢 leading assistant 消息
+ *    （Qwen jinja template 见到空 assistant / 首条不是 user 就报 "No user query found"）
  * 1. 若 mergeSystem=true：所有 system 内容拼到第一个 user message 前
  * 2. 确保至少有 1 个 user message（只有 system 时转成 user）
  * 3. 合并相邻 same-role messages（某些模板 chokes on this）
@@ -203,6 +227,9 @@ function normalizeMessages(
     }),
   )
 
+  // 0a. 丢掉 content 为空白的非 system 消息（之前失败留下的空 assistant、误发的空 user）
+  work = work.filter((m) => m.role === 'system' || m.content.trim() !== '')
+
   if (mergeSystem) {
     const systemParts: string[] = []
     const rest: typeof work = []
@@ -214,9 +241,10 @@ function normalizeMessages(
       const systemBlob = systemParts.join('\n\n')
       const firstUserIdx = rest.findIndex((m) => m.role === 'user')
       if (firstUserIdx >= 0) {
+        const firstUser = rest[firstUserIdx]!
         rest[firstUserIdx] = {
           role: 'user',
-          content: `${systemBlob}\n\n---\n\n${rest[firstUserIdx].content}`,
+          content: `${systemBlob}\n\n---\n\n${firstUser.content}`,
         }
       } else {
         // 全是 assistant 或空 — 加一条 user 承载 system
@@ -225,6 +253,11 @@ function normalizeMessages(
     }
     work = rest
   }
+
+  // 0b. mergeSystem 之后再 drop leading assistant（system 被合走后开头可能仍是 assistant）
+  //     Qwen / Llama jinja 要求 messages 以 user (或 system) 开头，
+  //     启动时 BehaviorPlanner 主动注入的开场白 "主人——我在这儿" 会触发 "No user query found"
+  while (work.length > 0 && work[0]!.role === 'assistant') work.shift()
 
   // 确保至少一个 user
   if (!work.some((m) => m.role === 'user')) {

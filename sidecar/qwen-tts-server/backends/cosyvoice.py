@@ -84,9 +84,10 @@ class CosyVoiceBackend:
         from cosyvoice.cli.cosyvoice import CosyVoice2  # type: ignore
 
         log.info(f"loading CosyVoice2 from {model_dir}...")
-        # load_jit/onnx/trt 都关掉先求稳；M3 上 fp16 由 torch 自动决定
+        # 当前 CosyVoice2.__init__ 签名 (model_dir, load_jit, load_trt, load_vllm, fp16, trt_concurrent)
+        # 不再有 load_onnx 参数 (跟随上游 API 演变)
         self._model = CosyVoice2(
-            str(model_dir), load_jit=False, load_onnx=False, load_trt=False
+            str(model_dir), load_jit=False, load_trt=False, load_vllm=False, fp16=False
         )
         self._sample_rate = getattr(self._model, "sample_rate", 24000)
         log.info(f"CosyVoice2 ready. sample_rate={self._sample_rate}")
@@ -99,20 +100,15 @@ class CosyVoiceBackend:
         # 用 instruct 控制风格：CosyVoice2 接受 instruct_text 控制语气
         instruct = _EMOTION_INSTRUCT.get(emotion, _EMOTION_INSTRUCT["neutral"])
 
-        # 取参考音频的 tensor + sr
-        ref_wav, ref_sr = torchaudio.load(ref_audio_path)
-        # CosyVoice 期望 16k 输入
-        if ref_sr != 16000:
-            ref_wav = torchaudio.transforms.Resample(ref_sr, 16000)(ref_wav)
-
-        # zero-shot 推理：CosyVoice2 接受 (prompt_text, prompt_speech_16k)
+        # 当前 CosyVoice2 API 接受 prompt_wav 为「文件路径」(str)，不是 tensor
+        # 内部会自己 load + resample 到 16k
         chunks = []
         try:
-            # 优先用 instruct 接口
+            # 优先用 instruct 接口（情感控制）
             it = self._model.inference_instruct2(
                 tts_text=text,
                 instruct_text=instruct,
-                prompt_speech_16k=ref_wav,
+                prompt_wav=ref_audio_path,
                 stream=False,
             )
         except AttributeError:
@@ -120,7 +116,7 @@ class CosyVoiceBackend:
             it = self._model.inference_zero_shot(
                 tts_text=text,
                 prompt_text=ref_text or instruct,
-                prompt_speech_16k=ref_wav,
+                prompt_wav=ref_audio_path,
                 stream=False,
             )
 

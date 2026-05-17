@@ -64,6 +64,44 @@ watch(passthrough, (on) => {
   interaction?.forceInteractive(!on)
 })
 
+// v0.8.2: 接收强制 reload — 动作工坊保存 / Heal 后用
+const onReloadModel = (): void => {
+  if (renderer) void pickAndLoad()
+}
+bus.on('avatar:reload-model', onReloadModel)
+
+// v0.9: 立绘缩放（dock 上 ⊕⊖ 按钮）+ 节流持久化
+let lastSavedCharId: string | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+const onZoom = (payload: { delta: number; reset?: boolean }): void => {
+  if (!renderer) return
+  let next: number
+  if (payload.reset) {
+    next = 1.0
+  } else {
+    next = renderer.getScaleHint() + payload.delta
+  }
+  renderer.applyScaleHint(next)
+  // 持久化（节流 500ms）
+  const currentDir = cfg.soul?.avatar.model_dir
+  const found = currentDir
+    ? cfg.models.find((m) => m.dir === currentDir)
+    : null
+  const charId = found?.meta?.character_id ?? null
+  if (!charId) return
+  lastSavedCharId = charId
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    if (!renderer || !lastSavedCharId) return
+    void window.api.models.setPreference({
+      character_id: lastSavedCharId,
+      scale: renderer.getScaleHint(),
+      offset_y: 0,
+    })
+  }, 500)
+}
+bus.on('avatar:zoom', onZoom)
+
 async function pickAndLoad(): Promise<void> {
   if (!renderer) return
   status.value = 'loading'
@@ -136,10 +174,19 @@ async function pickAndLoad(): Promise<void> {
       return
     }
 
-    await renderer.loadModel(found.file_url, {
-      scale: cfg.soul?.avatar.scale ?? 0.35,
-      offsetY: cfg.soul?.avatar.offset_y ?? 50,
-    })
+    // v0.9: 优先用 model 的 per-character preference（user 调过的 scale）
+    // 没存过就走 auto-fit (scale=1.0 即完全占满 85% canvas)
+    let userHint = 1.0
+    let offsetY = 0
+    const charId = found.meta?.character_id
+    if (charId) {
+      const pref = await window.api.models.getPreference(charId)
+      if (pref) {
+        userHint = pref.scale
+        offsetY = pref.offset_y
+      }
+    }
+    await renderer.loadModel(found.file_url, { scale: userHint, offsetY })
     status.value = 'ready'
     bus.emit('avatar:model-loaded', {
       model_path: found.absolute_path,
@@ -181,6 +228,9 @@ async function pickAndLoad(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
+  bus.off('avatar:reload-model', onReloadModel)
+  bus.off('avatar:zoom', onZoom)
+  if (saveTimer) clearTimeout(saveTimer)
   interaction?.destroy()
   sampler?.destroy()
   renderer?.destroy()
@@ -213,6 +263,9 @@ onBeforeUnmount(() => {
   height: 100%;
   display: block;
   background: transparent;
+  /* v0.8.2: canvas pointer-events: none，让上层 UI（ControlDock/DialogBubble）能正常 hit-test。
+     立绘鼠标命中由主进程 cursor poll + alpha-hit sampler 处理，不依赖 canvas 自己接事件。 */
+  pointer-events: none;
 }
 .overlay {
   position: absolute;

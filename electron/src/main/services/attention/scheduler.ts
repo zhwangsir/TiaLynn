@@ -37,6 +37,7 @@ export class AttentionScheduler {
     idle_ms: 0,
     time_period: 'morning',
   }
+  private lastProactiveAt = 0
   private config: AttentionConfig = { ...DEFAULT_ATTENTION_CONFIG }
   private timer: ReturnType<typeof setInterval> | null = null
   private unsubscribers: Array<() => void> = []
@@ -50,6 +51,8 @@ export class AttentionScheduler {
   start(): void {
     if (this.timer) return
     this.attachSensors()
+    // 初始化 lastProactiveAt = now，避免启动后第一个 tick 立即触发（应当等满 proactive_interval）
+    this.lastProactiveAt = Date.now()
     this.timer = setInterval(() => this.tick(), this.config.tick_ms)
   }
 
@@ -136,7 +139,7 @@ export class AttentionScheduler {
     this.unsubscribers.push(
       perception.onType('vision_description', (ev) => {
         this.state.last_vision_activity = ev.activity
-        this.state.last_vision_state = ev.user_state_hint
+        if (ev.user_state_hint !== undefined) this.state.last_vision_state = ev.user_state_hint
         // 看到 frustrated → concern 升
         if (ev.user_state_hint === 'frustrated') {
           this.bump('concern_level', 0.3)
@@ -178,6 +181,21 @@ export class AttentionScheduler {
     const now = Date.now()
     const sinceAction = now - this.state.last_action_at
     if (sinceAction < this.config.min_action_interval_ms) return
+
+    // v0.8.2: 主动巡视 — 即使 evaluateTriggers 没出条件也定期触发一次
+    const sinceProactive = now - this.lastProactiveAt
+    if (sinceProactive >= this.config.proactive_monitor_interval_ms) {
+      this.lastProactiveAt = now
+      console.log(
+        `[scheduler] proactive trigger (${Math.round(sinceProactive / 1000)}s since last)`,
+      )
+      this.onTriggerCb({
+        should_act: true,
+        reason: `proactive_monitor (${Math.round(this.config.proactive_monitor_interval_ms / 1000)}s tick)`,
+        snapshot: this.snapshot(),
+      })
+      return
+    }
 
     const decision = this.evaluateTriggers()
     if (decision.should_act) {

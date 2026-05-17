@@ -37,12 +37,55 @@ export interface SystemPaths {
 
 export type ModelInfoExt = ModelInfo & { file_url: string }
 
+/** v0.12: character enrichment 进度 */
+export interface EnrichProgress {
+  total: number
+  done: number
+  failed: number
+  current?: string
+  error?: string
+}
+
+/** v0.12: 在线资源 */
+export type RepoSource = 'huggingface' | 'github' | 'browse_only'
+export interface RecommendedRepo {
+  id: string
+  name: string
+  description: string
+  kind: 'rvc' | 'live2d'
+  source: RepoSource
+  asset_path?: string
+  hint?: string
+  browse_url?: string
+}
+export interface OnlineAsset {
+  type: 'file' | 'directory'
+  path: string
+  size: number
+}
+export interface OnlineInstallProgress {
+  install_id: string
+  asset_path: string
+  stage: 'download' | 'extract' | 'deploy' | 'done' | 'fail'
+  percent: number
+  message?: string
+  bytes_done?: number
+  bytes_total?: number
+}
+export interface OnlineInstallDone {
+  install_id: string
+  ok: boolean
+  voice_id?: string
+  reason?: string
+}
+
 export interface TialynnApi {
   system: {
     version(): Promise<string>
     paths(): Promise<SystemPaths>
     revealDataDir(): Promise<string>
     revealModelsDir(): Promise<string>
+    openExternal(url: string): Promise<{ ok: boolean; reason?: string }>
   }
   window: {
     startDrag(): Promise<{ ok: boolean; reason?: string }>
@@ -66,6 +109,95 @@ export interface TialynnApi {
   }
   models: {
     scan(): Promise<ModelInfoExt[]>
+    heal(payload: { model_json_path: string }): Promise<{
+      ok: boolean
+      reason?: string
+      added: {
+        motions: string[]
+        expressions: string[]
+        bound_orphans: { motions: string[]; expressions: string[] }
+      }
+    }>
+    findDuplicates(): Promise<{
+      total_models: number
+      groups: Array<{
+        group_key: string
+        confidence: 'exact' | 'same_moc' | 'similar_dir'
+        keep: ModelInfoExt
+        others: ModelInfoExt[]
+      }>
+      exact_duplicates: number
+      exact_disk_kb: number
+    }>
+    applyDedup(payload?: { group_keys?: string[]; dry_run?: boolean }): Promise<{
+      ok: boolean
+      deleted: string[]
+      failed: Array<{ path: string; reason: string }>
+      freed_kb: number
+    }>
+    mergeGroups(payload?: { group_keys?: string[] }): Promise<{
+      ok: boolean
+      merged_groups: number
+      added_motions: number
+      added_expressions: number
+      archived_model_jsons: string[]
+      skipped: Array<{ group_key: string; reason: string }>
+    }>
+    describe(payload: {
+      model_dir: string
+      model_json_path: string
+      display: string
+      ip: string
+      motion_count: number
+      expression_count: number
+    }): Promise<{ ok: boolean; text?: string; reason?: string; from_cache?: boolean }>
+    cachedDescriptions(): Promise<Record<string, string>>
+    getPreference(
+      characterId: string,
+    ): Promise<{ scale: number; offset_y: number; last_used_at: number } | null>
+    setPreference(payload: {
+      character_id: string
+      scale: number
+      offset_y: number
+    }): Promise<{ ok: boolean }>
+    // v0.12
+    favorites(): Promise<{
+      favorites: string[]
+      recent: Array<{ dir: string; used_at: number }>
+    }>
+    toggleFavorite(dir: string): Promise<{ is_favorite: boolean }>
+    markRecent(dir: string): Promise<{ ok: boolean }>
+    clearRecent(): Promise<{ ok: boolean }>
+    enrichCached(): Promise<
+      Record<string, {
+        character_id: string
+        chinese_name: string
+        intro_one_line: string
+        tags: string[]
+        source_dir: string
+        enriched_at: number
+      }>
+    >
+    enrichStart(): Promise<{ ok: boolean }>
+    enrichAbort(): Promise<{ ok: boolean }>
+    enrichClear(): Promise<{ ok: boolean }>
+    onEnrichProgress(cb: (p: EnrichProgress) => void): () => void
+  }
+  thumbs: {
+    get(characterId: string): Promise<{
+      exists: boolean
+      url?: string
+      size_bytes?: number
+      age_ms?: number
+      failed?: boolean
+    }>
+    save(payload: {
+      character_id: string
+      webp_base64: string
+    }): Promise<{ ok: boolean; reason?: string }>
+    markFailed(payload: { character_id: string; reason: string }): Promise<{ ok: boolean }>
+    listMissing(characterIds: string[]): Promise<string[]>
+    clearAll(): Promise<{ deleted: number }>
   }
   soul: {
     load(): Promise<{ config: SoulConfig; sources: string[] }>
@@ -285,6 +417,12 @@ export interface TialynnApi {
       reason?: string
     }>
     probe(): Promise<{ ok: boolean; status?: number; reason?: string }>
+    listRvcVoices(): Promise<{
+      ok: boolean
+      voices: string[]
+      reason?: string
+      sidecar?: string
+    }>
   }
   history: {
     listRecent(limit?: number): Promise<
@@ -309,5 +447,27 @@ export interface TialynnApi {
       error: string | null
     }): Promise<{ ok: boolean }>
     clear(): Promise<{ deleted: number }>
+  }
+  online: {
+    listRecommended(): Promise<RecommendedRepo[]>
+    listAssets(payload: { repo_id: string; sub_path?: string }): Promise<OnlineAsset[]>
+    checkInstalled(payload: {
+      kind: 'rvc' | 'live2d'
+      voice_id?: string
+      repo_slug?: string
+      asset_name?: string
+    }): Promise<{ installed: boolean }>
+    install(payload: {
+      repo_id: string
+      asset_path: string
+      kind: 'rvc' | 'live2d'
+    }): Promise<{ ok: boolean; install_id: string }>
+    cancelInstall(installId: string): Promise<{ ok: boolean }>
+    installCustom(payload: {
+      url: string
+      kind: 'rvc' | 'live2d'
+    }): Promise<{ ok: boolean; install_id: string }>
+    onInstallProgress(cb: (p: OnlineInstallProgress) => void): () => void
+    onInstallDone(cb: (p: OnlineInstallDone) => void): () => void
   }
 }

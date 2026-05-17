@@ -19,8 +19,7 @@ export async function playWithLipsync(b64: string, mime: string): Promise<Lipsyn
   audio.crossOrigin = 'anonymous'
   audio.preload = 'auto'
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const AC = window.AudioContext ?? (window as any).webkitAudioContext
+  const AC = window.AudioContext ?? window.webkitAudioContext
   const ctx: AudioContext = new AC()
   const src = ctx.createMediaElementSource(audio)
   const analyser = ctx.createAnalyser()
@@ -38,7 +37,7 @@ export async function playWithLipsync(b64: string, mime: string): Promise<Lipsyn
     analyser.getByteTimeDomainData(buf)
     let sum = 0
     for (let i = 0; i < buf.length; i++) {
-      const v = (buf[i] - 128) / 128
+      const v = ((buf[i] ?? 128) - 128) / 128
       sum += v * v
     }
     const rms = Math.sqrt(sum / buf.length)

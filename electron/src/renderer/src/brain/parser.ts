@@ -7,6 +7,7 @@
  *   4. 完全不遵守协议（fallback：把整段当 text，emotion=neutral）
  */
 import type { EmotionId } from '@shared/types'
+import type { BehaviorAction } from '@shared/attention'
 import type { ParsedReply } from './types'
 
 const EMOTIONS: EmotionId[] = [
@@ -21,19 +22,81 @@ const EMOTIONS: EmotionId[] = [
 ]
 
 export function parseReply(raw: string): ParsedReply {
-  const fallback: ParsedReply = { text: raw.trim(), emotion: 'neutral', intensity: 0.5 }
+  const fallback: ParsedReply = {
+    text: stripInlineDescriptions(raw.trim()),
+    emotion: 'neutral',
+    intensity: 0.5,
+  }
   const cleaned = stripFence(raw).trim()
   const objs = extractJsonObjects(cleaned)
   for (const obj of objs) {
     if (typeof obj.text === 'string') {
+      // text 字段也清掉 LLM 漏写的 (动作描述) *微笑* 【】等
+      const cleanText = stripInlineDescriptions(obj.text)
+      const actions = parseActionsArray(obj.actions)
       return {
-        text: obj.text,
+        text: cleanText,
         emotion: normalizeEmotion(obj.emotion),
         intensity: clamp01(typeof obj.intensity === 'number' ? obj.intensity : 0.5),
+        ...(actions.length > 0 ? { actions } : {}),
       }
     }
   }
   return fallback
+}
+
+/** 删除 text 内部出现的「(动作描述)」「*emote*」「【】」等不该被 TTS 念出来的标注 */
+function stripInlineDescriptions(s: string): string {
+  return s
+    .replace(/[（(][^）)\n]{1,30}[）)]/g, '')
+    .replace(/[【\[][^】\]\n]{1,30}[】\]]/g, '')
+    .replace(/\*[^*\n]{1,30}\*/g, '')
+    .replace(/~[^~\n]{1,20}~/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 校验 LLM 输出的 actions 数组，丢掉不识别的 type / 无效字段 */
+function parseActionsArray(raw: unknown): BehaviorAction[] {
+  if (!Array.isArray(raw)) return []
+  const out: BehaviorAction[] = []
+  for (const a of raw.slice(0, 3)) {
+    if (!a || typeof a !== 'object') continue
+    const r = a as Record<string, unknown>
+    switch (String(r.type)) {
+      case 'change_emotion':
+        out.push({
+          type: 'change_emotion',
+          emotion: normalizeEmotion(r.emotion),
+          intensity: clamp01(Number(r.intensity ?? 0.5)),
+        })
+        break
+      case 'glance_at_screen':
+        if (typeof r.screen_x === 'number' && typeof r.screen_y === 'number') {
+          out.push({
+            type: 'glance_at_screen',
+            screen_x: r.screen_x,
+            screen_y: r.screen_y,
+            duration_ms: Math.min(8000, Math.max(500, Number(r.duration_ms ?? 2000))),
+            reason: typeof r.reason === 'string' ? r.reason : 'reply-action',
+          })
+        }
+        break
+      case 'look_back_to_master':
+        out.push({
+          type: 'look_back_to_master',
+          duration_ms: Math.min(5000, Math.max(500, Number(r.duration_ms ?? 1500))),
+        })
+        break
+      case 'idle_subtle':
+        out.push({
+          type: 'idle_subtle',
+          duration_ms: Math.min(10000, Math.max(1000, Number(r.duration_ms ?? 3000))),
+        })
+        break
+    }
+  }
+  return out
 }
 
 /** 解析流式增量中可能的部分 JSON：用「最大已知前缀」抽取 text 字段 */
@@ -41,7 +104,7 @@ export function parsePartialText(buffer: string): string {
   // 简单做法：找 "text":" 后的字符串，到下一个未转义 "
   const m = buffer.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)/)
   if (!m) return ''
-  return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+  return (m[1] ?? '').replace(/\\n/g, '\n').replace(/\\"/g, '"')
 }
 
 function stripFence(s: string): string {

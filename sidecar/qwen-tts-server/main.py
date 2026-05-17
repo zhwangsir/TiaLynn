@@ -107,7 +107,15 @@ class EdgeTtsBackend(Backend):
 
     name = "edge_tts"
 
-    async def synthesize(self, text: str, voice: VoiceEntry) -> bytes:
+    async def synthesize(
+        self,
+        text: str,
+        voice: VoiceEntry,
+        *,
+        rate: Optional[str] = None,
+        volume: Optional[str] = None,
+        pitch: Optional[str] = None,
+    ) -> bytes:
         try:
             import edge_tts  # type: ignore
         except ImportError as e:
@@ -118,7 +126,15 @@ class EdgeTtsBackend(Backend):
         edge_voice = (
             voice.edge_voice if voice.kind == "edge" and voice.edge_voice else "zh-CN-XiaoxiaoNeural"
         )
-        communicate = edge_tts.Communicate(text, voice=edge_voice)
+        # edge-tts SSML 参数：rate/volume 形如 "+20%" "-10%"; pitch 形如 "+5Hz" "-50Hz"
+        kwargs: dict = {"voice": edge_voice}
+        if rate:
+            kwargs["rate"] = rate
+        if volume:
+            kwargs["volume"] = volume
+        if pitch:
+            kwargs["pitch"] = pitch
+        communicate = edge_tts.Communicate(text, **kwargs)
         buf = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -188,20 +204,78 @@ class CosyVoiceWrapper(Backend):
         )
 
 
+class F5TtsWrapper(Backend):
+    """F5-TTS 2024 SOTA zero-shot voice clone (Apache 2.0, Windows 友好)."""
+
+    name = "f5tts"
+
+    def __init__(self) -> None:
+        self._impl = None
+
+    async def synthesize(self, text: str, voice: VoiceEntry, emotion: str = "neutral") -> bytes:
+        if voice.kind != "sample" or not voice.sample_path:
+            raise RuntimeError("f5tts 需要 sample 类型的音色（含参考音频路径）")
+        if self._impl is None:
+            try:
+                from backends.f5tts import F5TTSBackend  # type: ignore
+
+                self._impl = F5TTSBackend()
+            except Exception as e:
+                raise RuntimeError(f"F5-TTS backend 不可用: {e}")
+        # F5TTSBackend.synthesize 是 async — 自己内部跑 executor
+        return await self._impl.synthesize(text, voice, emotion)  # type: ignore[arg-type]
+
+
 BACKENDS: Dict[str, Backend] = {
     "edge_tts": EdgeTtsBackend(),
     "openai_compat": OpenAiCompatBackend(),
     "cosyvoice": CosyVoiceWrapper(),
+    "f5tts": F5TtsWrapper(),
 }
+
+
+# ---------- RVC pipeline ----------
+# RVC 是 voice conversion，不是 voice synthesis。当用户选 engine=rvc 时：
+#   1. 先用某个底座 TTS 生成 wav (默认 edge_tts，因为快 + 稳定)
+#   2. 再把 wav 喂给 RvcBackend 转音色
+# 全局只 init 一次，避免冷启动开销
+_RVC_BACKEND = None
+_RVC_AVAILABLE: Optional[bool] = None
+
+
+def _get_rvc() -> Optional[object]:
+    """延迟初始化 RVC backend。第一次失败后缓存 None，不再重试（避免每次请求都炸）。"""
+    global _RVC_BACKEND, _RVC_AVAILABLE
+    if _RVC_AVAILABLE is False:
+        return None
+    if _RVC_BACKEND is not None:
+        return _RVC_BACKEND
+    try:
+        from backends.rvc import RvcBackend  # type: ignore
+
+        _RVC_BACKEND = RvcBackend()
+        _RVC_AVAILABLE = True
+        log.info("RVC backend available")
+        return _RVC_BACKEND
+    except Exception as e:
+        _RVC_AVAILABLE = False
+        log.warning("RVC backend 不可用: %s — 后续 voice clone 请求会 fallback 到底座 TTS", e)
+        return None
+
+
+# RVC 用的底座 TTS — 把文字变成 wav 之后让 RVC 转音色
+RVC_BASE_TTS = os.environ.get("RVC_BASE_TTS", "edge_tts")  # 推荐 edge_tts（快）
 
 
 def _pick_backend(name: Optional[str], voice: VoiceEntry) -> Backend:
     # voice.kind=edge 强制走 edge_tts
     if voice.kind == "edge":
         return BACKENDS["edge_tts"]
-    # voice.kind=sample 默认走 cosyvoice（zero-shot voice clone）
+    # voice.kind=sample → 根据 DEFAULT_BACKEND 选 voice-clone 后端（cosyvoice or f5tts）
     if voice.kind == "sample":
-        return BACKENDS["cosyvoice"]
+        if DEFAULT_BACKEND in ("f5tts", "cosyvoice"):
+            return BACKENDS[DEFAULT_BACKEND]
+        return BACKENDS["f5tts"]  # 默认 voice clone 走 f5tts (workstation 推荐)
     if name and name in BACKENDS:
         return BACKENDS[name]
     return BACKENDS[DEFAULT_BACKEND]
@@ -215,6 +289,20 @@ class SpeakRequest(BaseModel):
     voice: str = "edge_xiaoxiao"
     emotion: str = "neutral"
     backend: Optional[str] = None
+    # v0.3: RVC 选项 — 当 rvc_voice 非空时，先用 backend 生成 wav，再喂给 RVC 转音色
+    rvc_voice: Optional[str] = None  # 训练好的 RVC voice_id，对应 assets/weights/<id>.pth
+    rvc_f0_up_key: int = 0  # 半音偏移，男→女 +12，女→男 -12
+    rvc_index_rate: float = 0.75  # 0~1 索引权重
+    rvc_f0_method: str = "rmvpe"  # rmvpe / harvest / pm
+    # v0.11: RVC 高级参数
+    rvc_protect: float = 0.33  # 清音/呼吸保护 0~0.5
+    rvc_filter_radius: int = 3  # F0 中值滤波半径 0~7
+    rvc_rms_mix_rate: float = 1.0  # 音量包络混合 0~1
+    rvc_resample_sr: int = 0  # 输出采样率，0=保持
+    # v0.11: 底座 TTS (edge_tts) 语速/音量/音调（SSML 格式）
+    rate: Optional[str] = None  # e.g. "+20%" / "-10%"
+    volume: Optional[str] = None  # e.g. "+0%"
+    pitch: Optional[str] = None  # e.g. "+5Hz"
 
 
 @app.get("/healthz")
@@ -245,11 +333,67 @@ async def speak(req: SpeakRequest) -> Response:
             id="default", kind="edge", edge_voice="zh-CN-XiaoxiaoNeural"
         )
 
+    # v0.3: RVC pipeline — 先生成中性 wav，再转音色
+    if req.rvc_voice:
+        rvc = _get_rvc()
+        if rvc is None:
+            log.warning("RVC 请求但 backend 不可用 — fallback 到底座 TTS（无音色转换）")
+        else:
+            # 1) 强制用底座 TTS（edge_tts 最快最稳）— 不论 voice.kind 是什么
+            base_backend = BACKENDS.get(RVC_BASE_TTS) or BACKENDS["edge_tts"]
+            # edge_tts 需要 voice 有 edge_voice 字段；强行临时构一个默认中性 voice
+            base_voice = REGISTRY.get("edge_xiaoxiao") or VoiceEntry(
+                id="_rvc_base", kind="edge", edge_voice="zh-CN-XiaoxiaoNeural"
+            )
+            try:
+                # edge_tts 返回 mp3，RVC 要 wav — 先转 wav；底座 TTS 也吃 rate/volume/pitch
+                if base_backend.name == "edge_tts":
+                    base_audio = await base_backend.synthesize(  # type: ignore[call-arg]
+                        req.text, base_voice,
+                        rate=req.rate, volume=req.volume, pitch=req.pitch,
+                    )
+                else:
+                    base_audio = await base_backend.synthesize(req.text, base_voice)
+                wav_bytes = _to_wav(base_audio, source_type=base_backend.name)
+                # 2) RVC 转音色（同步推理，跑 executor 不阻塞）
+                converted = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: rvc.convert(  # type: ignore[union-attr]
+                        wav_bytes,
+                        req.rvc_voice,
+                        f0_up_key=req.rvc_f0_up_key,
+                        index_rate=req.rvc_index_rate,
+                        f0_method=req.rvc_f0_method,
+                        protect=req.rvc_protect,
+                        filter_radius=req.rvc_filter_radius,
+                        rms_mix_rate=req.rvc_rms_mix_rate,
+                        resample_sr=req.rvc_resample_sr,
+                    ),
+                )
+                return Response(content=converted, media_type="audio/wav")
+            except FileNotFoundError as e:
+                # 没训练好的模型 — 透传原 wav 不要 500
+                log.warning("RVC 模型未找到: %s — fallback 到底座 TTS", e)
+                wav_bytes = _to_wav(base_audio, source_type=base_backend.name)
+                return Response(content=wav_bytes, media_type="audio/wav")
+            except Exception as e:
+                log.error("RVC 转换失败: %s — fallback 到底座 TTS", e)
+                # 不抛 500，给前端原始 wav
+                return Response(
+                    content=_to_wav(base_audio, source_type=base_backend.name),
+                    media_type="audio/wav",
+                )
+
     backend = _pick_backend(req.backend, voice)
     try:
-        # CosyVoice 接受 emotion 第三参；其他 backend 忽略
+        # CosyVoice 接受 emotion 第三参；edge_tts 接 rate/volume/pitch；其他忽略
         if backend.name == "cosyvoice":
             audio = await backend.synthesize(req.text, voice, req.emotion)  # type: ignore[call-arg]
+        elif backend.name == "edge_tts":
+            audio = await backend.synthesize(  # type: ignore[call-arg]
+                req.text, voice,
+                rate=req.rate, volume=req.volume, pitch=req.pitch,
+            )
         else:
             audio = await backend.synthesize(req.text, voice)
         media_type = "audio/mpeg" if backend.name in ("edge_tts", "openai_compat") else "audio/wav"
@@ -257,6 +401,39 @@ async def speak(req: SpeakRequest) -> Response:
     except Exception as e:
         log.error(f"synthesize failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/rvc/voices")
+def rvc_voices() -> dict:
+    """列出 workstation 上已训练好的 RVC 音色（assets/weights/*.pth）。"""
+    rvc = _get_rvc()
+    if rvc is None:
+        return {"available": False, "voices": [], "reason": "RVC backend 不可用"}
+    return {"available": True, "voices": rvc.health()["trained_voices"], "health": rvc.health()}  # type: ignore[union-attr]
+
+
+def _to_wav(audio_bytes: bytes, source_type: str) -> bytes:
+    """edge_tts/openai_compat 返回 mp3，RVC 要 wav。用 soundfile 转。"""
+    if source_type not in ("edge_tts", "openai_compat"):
+        return audio_bytes  # 已是 wav
+    try:
+        import soundfile as sf  # 已是 sidecar 依赖
+        import io as _io
+
+        # mp3 → ndarray → wav；soundfile 不直接读 mp3 — 用 audioread
+        try:
+            data, sr = sf.read(_io.BytesIO(audio_bytes), dtype="float32", always_2d=False)
+        except Exception:
+            # mp3 — 用 librosa（已被 RVC 拉进来作为依赖）
+            import librosa  # type: ignore
+
+            data, sr = librosa.load(_io.BytesIO(audio_bytes), sr=None, mono=True)
+        buf = _io.BytesIO()
+        sf.write(buf, data, sr, format="WAV", subtype="PCM_16")
+        return buf.getvalue()
+    except Exception as e:
+        log.warning("mp3→wav 转换失败: %s — 把 mp3 原样传给 RVC（可能 RVC 也能读）", e)
+        return audio_bytes
 
 
 @app.post("/v1/audio/clone")

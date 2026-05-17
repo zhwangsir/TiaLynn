@@ -5,6 +5,8 @@ import DialogBubble from './infra/ui/DialogBubble.vue'
 import InputBar from './infra/ui/InputBar.vue'
 import ContextMenu, { type MenuItem } from './infra/ui/ContextMenu.vue'
 import SettingsPanel from './infra/ui/SettingsPanel.vue'
+import ControlDock from './infra/ui/ControlDock.vue'
+import ResourceStorePanel from './infra/ui/ResourceStorePanel.vue'
 import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
 import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
@@ -24,6 +26,7 @@ const approval = useApprovalStore()
 const ready = ref(false)
 const settingsOpen = ref(false)
 const motionFactoryOpen = ref(false)
+const libraryOpen = ref(false)
 const inputOpen = ref(false)
 const pinned = ref(true)
 const menuOpen = ref(false)
@@ -32,12 +35,13 @@ const menuY = ref(0)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
-  () => !settingsOpen.value && !motionFactoryOpen.value && !menuOpen.value,
+  () => !settingsOpen.value && !motionFactoryOpen.value && !menuOpen.value && !libraryOpen.value,
 )
 
 const menuItems = computed<MenuItem[]>(() => [
   { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '打开对话', icon: iconChat, shortcut: '↵' },
   { id: 'motion-factory', label: '🎬 动作工坊', icon: iconChat },
+  { id: 'library', label: '🎁 资源商店', icon: iconChat },
   { id: 'settings', label: '设置', icon: iconGear },
   { id: 'reload', label: '重载模型 / 灵魂', icon: iconReload },
   { id: 'sep1', label: '', separator: true },
@@ -66,6 +70,9 @@ async function onMenuSelect(id: string): Promise<void> {
       break
     case 'motion-factory':
       motionFactoryOpen.value = true
+      break
+    case 'library':
+      libraryOpen.value = true
       break
     case 'reload':
       await cfg.rescanModels()
@@ -106,6 +113,12 @@ async function executePlanForCurrentStage(
   bus.emit('attention:execute-plan', { plan })
 }
 
+async function onReloadModelClick(): Promise<void> {
+  await cfg.rescanModels()
+  bus.emit('avatar:reload-model')
+  bus.emit('ui:toast', { kind: 'success', message: '模型已重载', ttl_ms: 2000 })
+}
+
 function onDragOver(e: DragEvent): void {
   e.preventDefault()
   e.stopPropagation()
@@ -126,8 +139,7 @@ async function onDrop(e: DragEvent): Promise<void> {
   // 用 webUtils.getPathForFile (Electron 32+) 或 fallback File.name
   const paths: string[] = []
   for (const f of files) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p = (f as any).path as string | undefined
+    const p = f.path
     if (p) paths.push(p)
   }
   if (paths.length === 0) {
@@ -184,6 +196,20 @@ onMounted(async () => {
   offAttentionPlanFn = window.api.attention.onPlan((plan) => {
     void executePlanForCurrentStage(plan)
   })
+
+  // v0.8.2: dialog LLM 的 reply 也可能带 actions（同 BehaviorAction shape），让 plan-executor 跑
+  const onReplyActions = (
+    payload: { actions: import('@shared/attention').BehaviorAction[] },
+  ): void => {
+    void executePlanForCurrentStage({
+      t: Date.now(),
+      trigger: 'reply-actions',
+      actions: payload.actions,
+      reasoning: 'inline from dialog reply',
+      llm_generated: true,
+    })
+  }
+  bus.on('brain:reply-actions', onReplyActions)
 })
 
 onBeforeUnmount(() => {
@@ -203,6 +229,11 @@ onBeforeUnmount(() => {
       @drop="onDrop"
     >
       <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
+      <ControlDock
+        v-if="ready"
+        @open-settings="settingsOpen = true"
+        @reload-model="onReloadModelClick"
+      />
       <DialogBubble v-if="ready" />
       <InputBar v-if="ready && inputOpen" @close="closeInput" />
       <ContextMenu
@@ -215,6 +246,7 @@ onBeforeUnmount(() => {
       />
       <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
       <MotionFactoryPanel v-if="motionFactoryOpen" @close="motionFactoryOpen = false" />
+      <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
       <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>

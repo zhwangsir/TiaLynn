@@ -88,6 +88,13 @@ interface ModelMeta {
   complete: boolean
   recommended: boolean
   reason?: string
+  health_score?: number
+  grade?: 'A' | 'B' | 'C' | 'D'
+  healable?: boolean
+  heal_hints?: string[]
+  dedup_key?: string
+  character_id?: string
+  view_label?: string
 }
 
 /** 过滤阈值：低于这些值通常是占位/不完整模型 */
@@ -102,6 +109,62 @@ const MIN_MOTIONS = 1
  *
  * 检测引用字符串本身是否含这些字符（路径里有空格、中文 OK；只防 # 和 ?）。
  */
+/**
+ * 从 model3.json 路径推 character_id + view_label。
+ * Live2D 业界惯例：同角色多 view 各自独立 model3.json，view 通过 dir 名后缀区分。
+ * 例：BanG Dream!/Hina/Hina_normal/Hina_normal.model3.json
+ *     BanG Dream!/Hina/Hina_skin1/Hina_skin1.model3.json
+ * 都是 Hina 角色，view 是 normal / skin1。
+ *
+ * character_id = parent_ip_dir + character_base_name + moc3_size_kb (帮助消歧不同角色重名)
+ */
+/**
+ * 同角色聚类（修订版）：
+ *   主键 = mocBytes（同 Live2D 编译产物必然同角色，避开 dir 名 regex 不全的坑）
+ *   次键 = parent dir 名（用来在 mocBytes 相同的不同角色之间消歧，虽然概率极低）
+ *
+ * view_label：尽量从 dir 名抽出（去掉跟 parent dir 名重叠的前缀，剩下的就是 view 标记）。
+ * 不再依赖枚举所有可能后缀（之前漏 _00 / _base / _live / _alt 等）。
+ */
+function extractCharacterIdAndView(
+  modelPath: string,
+  mocBytes: number,
+  skeletonFingerprint: string,
+): { characterId: string; viewLabel: string } {
+  const dir = dirname(modelPath)
+  const dirName = basename(dir)
+  const parentDir = dirname(dir)
+  const parentName = basename(parentDir)
+
+  // viewLabel：dirName 去掉跟 parentName 重叠前缀
+  let viewLabel = ''
+  if (parentName && dirName.toLowerCase().startsWith(parentName.toLowerCase())) {
+    viewLabel = dirName.slice(parentName.length).replace(/^[_\-\s]+/, '').trim()
+  }
+
+  // character_id v2 = sha1(mocBytes + skeletonFingerprint + grandParent)
+  //   mocBytes：基础信号
+  //   skeletonFingerprint：Groups+HitAreas 列表 — 同角色多 view 必然一致
+  //   grandParent：通常是 IP 名 — 防止不同 IP 同字节巧合
+  // 三个全一致才同 character → cluster 精度大幅提升
+  const grandParent = basename(dirname(parentDir))
+  let characterId: string
+  if (mocBytes > 0) {
+    const seed = `${mocBytes}|${skeletonFingerprint}|${grandParent || 'root'}`
+    characterId = `char:${sha1Short(seed)}`
+  } else {
+    characterId = `dir:${dir}`
+  }
+  return { characterId, viewLabel }
+}
+
+/** 8-char sha1 — 用作 character_id 短哈希，避免 model3.json 内容长无意义 */
+function sha1Short(input: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const crypto = require('node:crypto') as typeof import('node:crypto')
+  return crypto.createHash('sha1').update(input).digest('hex').slice(0, 12)
+}
+
 function isUrlSafe(ref: string): boolean {
   return !ref.includes('#') && !ref.includes('?')
 }
@@ -123,8 +186,29 @@ function probeModel3(modelPath: string): ModelMeta {
         Expressions?: Array<{ File?: string }>
         Physics?: string
       }
+      Groups?: Array<{ Target?: string; Name?: string; Ids?: string[] }>
+      HitAreas?: Array<{ Id?: string; Name?: string }>
     }
     const refs = json.FileReferences ?? {}
+    // 骨骼指纹：Groups 的 Ids（EyeBlink/LipSync 用到的参数）+ HitAreas Name 列表
+    // 同角色多 view 必然共享同一骨骼 → 这俩字段完全一致；不同角色巧合一致概率 ≈ 0
+    const groupIds: string[] = []
+    if (Array.isArray(json.Groups)) {
+      for (const g of json.Groups) {
+        if (Array.isArray(g.Ids)) groupIds.push(...g.Ids)
+      }
+    }
+    const hitAreaNames: string[] = []
+    if (Array.isArray(json.HitAreas)) {
+      for (const h of json.HitAreas) {
+        if (h.Name) hitAreaNames.push(h.Name)
+      }
+    }
+    const skeletonFingerprint = [
+      ...groupIds.sort(),
+      '|',
+      ...hitAreaNames.sort(),
+    ].join(',')
     const mocPath = refs.Moc ? resolve(base, refs.Moc) : null
     const mocOk = !!mocPath && existsSync(mocPath) && (refs.Moc ? isUrlSafe(refs.Moc) : false)
     if (!mocOk) {
@@ -132,7 +216,8 @@ function probeModel3(modelPath: string): ModelMeta {
       else reasons.push('moc3 缺失')
     }
 
-    const mocKb = mocPath && existsSync(mocPath) ? Math.round(statSync(mocPath).size / 1024) : 0
+    const mocBytes = mocPath && existsSync(mocPath) ? statSync(mocPath).size : 0
+    const mocKb = Math.round(mocBytes / 1024)
 
     const textures = Array.isArray(refs.Textures) ? refs.Textures : []
     const hasAnyTexture = textures.length > 0 && textures.some((t) => existsSync(resolve(base, t)))
@@ -142,10 +227,25 @@ function probeModel3(modelPath: string): ModelMeta {
     else if (!allTexturesUrlSafe) reasons.push('texture 文件名含 # 或 ?')
 
     let textureKb = 0
+    let textureBytesSum = 0
     for (const t of textures) {
       const tp = resolve(base, t)
-      if (existsSync(tp)) textureKb += Math.round(statSync(tp).size / 1024)
+      if (existsSync(tp)) {
+        const sz = statSync(tp).size
+        textureBytesSum += sz
+        textureKb += Math.round(sz / 1024)
+      }
     }
+    // v0.8.2: 内容指纹 — 精确字节级 size，两个模型相同 = 同一文件
+    const dedupKey = mocBytes > 0 ? `${mocBytes}:${textureBytesSum}:${textures.length}` : ''
+    // v0.8.2: character_id —— 同角色多 view 聚类
+    // 信号 1: moc3 字节相同（同一 Live2D 编译产物，必然同角色）
+    // 信号 2: 角色基础名（dir 名去掉 view 后缀）
+    const { characterId, viewLabel } = extractCharacterIdAndView(
+      modelPath,
+      mocBytes,
+      skeletonFingerprint,
+    )
 
     let motionCount = 0
     let motionsAllUrlSafe = true
@@ -181,6 +281,46 @@ function probeModel3(modelPath: string): ModelMeta {
     const hasMotions = motionCount >= MIN_MOTIONS && motionsAllUrlSafe
     const sizesOk = mocKb >= MIN_MOC_KB && textureKb >= MIN_TEXTURE_KB
     const complete = hasCore && hasMotions && sizesOk
+
+    // v0.8.2 (rewrite v2): 评级直接按动作数量 — 主人原则「动作多 = 质量高」
+    //   A: motion >= 15  (顶级丰富，专业模型)
+    //   B: motion >= 8   (动作很多，质量高)
+    //   C: motion >= 3   (基础动作齐全)
+    //   D: motion < 3 or 缺核心 (几乎静态)
+    let grade: 'A' | 'B' | 'C' | 'D'
+    if (!hasCore) {
+      grade = 'D'
+    } else if (motionCount >= 15) {
+      grade = 'A'
+    } else if (motionCount >= 8) {
+      grade = 'B'
+    } else if (motionCount >= 3) {
+      grade = 'C'
+    } else {
+      grade = 'D'
+    }
+    // score = motion_count 直接做主排序键（动作多绝对在前），其他属性当尾注微调
+    const score =
+      Math.min(100, motionCount * 4) + // 动作核心权重
+      Math.min(10, expressionCount) + // 表情微加
+      (hasPhysics ? 5 : 0) + // 物理微加
+      (sizesOk ? 3 : 0) +
+      (hasCore ? 2 : 0)
+
+    // healable: 必须有 moc + 至少 1 texture（heal 只能补 motion/expression，补不了核心）
+    const healable = mocOk && hasAnyTexture
+    const healHints: string[] = []
+    if (healable) {
+      if (motionCount === 0) healHints.push('完全静态 — Heal 可生成 3 个 idle motion 让它动起来')
+      else if (motionCount < 4) healHints.push(`仅 ${motionCount} 个动作 — Heal 可补到 4 个`)
+      if (expressionCount < 3) healHints.push(`仅 ${expressionCount} 个表情 — Heal 可补 4 个`)
+      if (!hasPhysics) healHints.push('无物理 — 头发/裙摆不会飘')
+    } else if (!mocOk) {
+      healHints.push('moc3 缺失/损坏 — 无法修复，建议删除或换模型')
+    } else if (!hasAnyTexture) {
+      healHints.push('texture 全部缺失 — 无法修复，建议删除或换模型')
+    }
+
     return {
       has_core: hasCore,
       has_motions: hasMotions,
@@ -192,7 +332,14 @@ function probeModel3(modelPath: string): ModelMeta {
       texture_kb: textureKb,
       complete,
       recommended: false, // 由 scanModels() 根据 source 标
-      reason: reasons.length > 0 ? reasons.join('；') : undefined,
+      ...(reasons.length > 0 && { reason: reasons.join('；') }),
+      health_score: score,
+      grade,
+      healable,
+      heal_hints: healHints,
+      dedup_key: dedupKey,
+      character_id: characterId,
+      view_label: viewLabel,
     }
   } catch (e) {
     return {

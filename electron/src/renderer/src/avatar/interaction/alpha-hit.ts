@@ -57,7 +57,7 @@ export class AlphaSampler {
     const sx = Math.floor((x / winW) * this.sw)
     const sy = Math.floor((y / winH) * this.sh)
     if (sx < 0 || sy < 0 || sx >= this.sw || sy >= this.sh) return false
-    return this.mask[sy * this.sw + sx] >= this.threshold
+    return (this.mask[sy * this.sw + sx] ?? 0) >= this.threshold
   }
 
   /** 暴露状态供诊断 */
@@ -85,7 +85,7 @@ export class AlphaSampler {
       const data = this.ctx.getImageData(0, 0, this.sw, this.sh).data
       let anyOpaque = false
       for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-        const a = data[i + 3]
+        const a = data[i + 3] ?? 0
         this.mask[j] = a
         if (a >= this.threshold) anyOpaque = true
       }

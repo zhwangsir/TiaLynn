@@ -32,7 +32,7 @@ export class OllamaProvider implements LlmProviderImpl {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-        signal: abortSignal,
+        signal: abortSignal ?? null,
       })
     } catch (e) {
       onEvent({ error: String(e) })

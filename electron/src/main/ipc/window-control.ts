@@ -10,8 +10,11 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import { platform } from '../windows/shared'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let clickDragPlugin: any = null
+interface ClickDragPlugin {
+  startDrag(handle: Buffer): void
+}
+
+let clickDragPlugin: ClickDragPlugin | null = null
 
 async function loadClickDragPlugin(): Promise<unknown> {
   if (clickDragPlugin) return clickDragPlugin
@@ -19,7 +22,7 @@ async function loadClickDragPlugin(): Promise<unknown> {
     // 仅 macOS / Windows 可用；Linux 上 fallback 到原生 window.startDrag
     if (!platform.isMacOS && !platform.isWindows) return null
     const mod = await import('electron-click-drag-plugin')
-    clickDragPlugin = (mod as { default?: unknown }).default ?? mod
+    clickDragPlugin = ((mod as { default?: unknown }).default ?? mod) as ClickDragPlugin
     return clickDragPlugin
   } catch (e) {
     console.warn('[window-control] electron-click-drag-plugin not available:', e)
@@ -39,8 +42,7 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
     }
     try {
       const handle = win.getNativeWindowHandle()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(plugin as any).startDrag(handle)
+      ;(plugin as ClickDragPlugin).startDrag(handle)
       return { ok: true }
     } catch (e) {
       return { ok: false, reason: String(e) }

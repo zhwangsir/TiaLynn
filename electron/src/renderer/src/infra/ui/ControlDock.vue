@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { bus } from '../eventbus'
 
 const emit = defineEmits<{
   (e: 'open-settings'): void
@@ -20,6 +21,17 @@ async function close(): Promise<void> {
 async function minimize(): Promise<void> {
   await window.api.window.minimize()
 }
+
+// v0.9: 立绘缩放控制 — Live2DStage 监听这两个事件应用并持久化
+function zoomIn(): void {
+  bus.emit('avatar:zoom', { delta: 0.15 })
+}
+function zoomOut(): void {
+  bus.emit('avatar:zoom', { delta: -0.15 })
+}
+function zoomReset(): void {
+  bus.emit('avatar:zoom', { delta: 0, reset: true })
+}
 </script>
 
 <template>
@@ -29,6 +41,30 @@ async function minimize(): Promise<void> {
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3" />
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </button>
+    <!-- v0.9: 立绘缩放 -->
+    <button class="dock-btn" title="放大立绘 (+)" @click="zoomIn">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+        stroke-width="2.5" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M11 8v6M8 11h6" />
+        <path d="m20 20-4-4" />
+      </svg>
+    </button>
+    <button class="dock-btn" title="缩小立绘 (-)" @click="zoomOut">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+        stroke-width="2.5" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M8 11h6" />
+        <path d="m20 20-4-4" />
+      </svg>
+    </button>
+    <button class="dock-btn" title="复原大小（auto-fit）" @click="zoomReset">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <path d="M9 9h6v6H9z" />
       </svg>
     </button>
     <button class="dock-btn" title="重载模型" @click="emit('reload-model')">
@@ -75,16 +111,17 @@ async function minimize(): Promise<void> {
   position: absolute;
   top: 14px;
   right: 14px;
+  z-index: 2000;
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--color-bubble);
-  border: 1px solid var(--color-bubble-border);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-md);
+  gap: 6px;
+  padding: 6px;
+  background: oklch(98% 0.005 25 / 0.92);
+  border: 1px solid oklch(85% 0.02 25 / 0.6);
+  border-radius: 999px;
+  box-shadow: 0 4px 20px oklch(0% 0 0 / 0.15);
   pointer-events: auto;
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
 }
 .dock-btn {
   display: inline-flex;

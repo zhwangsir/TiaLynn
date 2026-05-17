@@ -62,7 +62,7 @@ export function validateDraft(raw: unknown, summary: ModelMotionSummary): Motion
     loop,
     fps,
     tracks,
-    description: r.description ? String(r.description) : undefined,
+    ...(r.description != null ? { description: String(r.description) } : {}),
   }
 }
 

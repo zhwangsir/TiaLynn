@@ -91,8 +91,8 @@ function pickFromRule(rule: TriggerRule, opts: DecideOptions): TriggerDecision |
         })
     if (candidates.length === 0) return null
     const picked = rule.pick.randomize
-      ? candidates[Math.floor(Math.random() * candidates.length)]
-      : candidates[0]
+      ? candidates[Math.floor(Math.random() * candidates.length)]!
+      : candidates[0]!
     return {
       rule_id: rule.id,
       motion_entry_id: picked.id,
@@ -101,7 +101,7 @@ function pickFromRule(rule: TriggerRule, opts: DecideOptions): TriggerDecision |
   } else if (rule.pick.source === 'library') {
     const ids = rule.pick.template_ids ?? []
     if (ids.length === 0) return null
-    const picked = rule.pick.randomize ? ids[Math.floor(Math.random() * ids.length)] : ids[0]
+    const picked = rule.pick.randomize ? ids[Math.floor(Math.random() * ids.length)]! : ids[0]!
     return {
       rule_id: rule.id,
       template_id: picked,

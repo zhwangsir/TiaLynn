@@ -6,10 +6,11 @@
  *   2. 模型存在 (GET /v1/models 看清单)
  *   3. 基础 chat 非流式 (拿到 content)
  *   4. Streaming (delta 流到位)
- *   5. (可选) Vision 支持检测 (发 1x1 PNG)
+ *   5. (可选) Vision 支持检测 (发 16x16 PNG — 1x1 会触发 llama.cpp 的 GGML_ASSERT)
  *
  * 输出按测试逐条报告，用于在 UI 上展示给用户。
  */
+import { deflateSync } from 'node:zlib'
 import type { LlmProvider, RuntimeConfig } from '@shared/types'
 
 export interface HealthCheckResult {
@@ -32,8 +33,55 @@ export interface FullHealthReport {
   recommendations: string[]
 }
 
-const TINY_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+// llama.cpp vision projector 内部 GGML_ASSERT 要求图像 >= 2x2，1x1 PNG 会让模型 abort。
+// 动态生成 16x16 纯色 PNG 用作 vision 探测（base64 ~80 字节）。
+const TEST_PNG_BASE64 = makeTinyPngBase64(16, 16)
+
+function makeTinyPngBase64(w: number, h: number): string {
+  const crc32 = (buf: Buffer): number => {
+    let c: number
+    const table: number[] = []
+    for (let n = 0; n < 256; n++) {
+      c = n
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+      table[n] = c >>> 0
+    }
+    let crc = 0xffffffff
+    for (const b of buf) crc = (table[(crc ^ b) & 0xff]! ^ (crc >>> 8)) >>> 0
+    return (crc ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length, 0)
+    const t = Buffer.from(type, 'ascii')
+    const crcBuf = Buffer.alloc(4)
+    crcBuf.writeUInt32BE(crc32(Buffer.concat([t, data])), 0)
+    return Buffer.concat([len, t, data, crcBuf])
+  }
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0)
+  ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 2 // color type RGB
+  ihdr[10] = 0
+  ihdr[11] = 0
+  ihdr[12] = 0
+  const stride = 1 + w * 3
+  const raw = Buffer.alloc(h * stride)
+  for (let y = 0; y < h; y++) {
+    raw[y * stride] = 0 // filter: None
+    for (let x = 0; x < w; x++) {
+      const off = y * stride + 1 + x * 3
+      raw[off] = 128
+      raw[off + 1] = 128
+      raw[off + 2] = 128
+    }
+  }
+  const idat = deflateSync(raw)
+  const png = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))])
+  return png.toString('base64')
+}
 
 export async function runHealthCheck(
   cfg: Pick<RuntimeConfig, 'llm_provider' | 'llm_endpoint' | 'llm_model' | 'llm_api_key'>,
@@ -44,7 +92,7 @@ export async function runHealthCheck(
 
   // 1. 连通
   results.push(await testConnectivity(cfg))
-  if (!results[0].ok) {
+  if (!results[0]!.ok) {
     return buildReport(cfg, results, recommendations, [
       'endpoint 不可达，检查 LM Studio 是否在跑 / 防火墙 / IP+端口正确',
     ])
@@ -52,7 +100,7 @@ export async function runHealthCheck(
 
   // 2. 模型存在
   results.push(await testModelExists(cfg))
-  if (!results[1].ok) {
+  if (!results[1]!.ok) {
     recommendations.push('模型未在 LM Studio 加载 — 在 LM Studio 内 Load 此模型')
   }
 
@@ -348,7 +396,7 @@ async function testVision(
               { type: 'text', text: 'what color' },
               {
                 type: 'image_url',
-                image_url: { url: `data:image/png;base64,${TINY_PNG_BASE64}` },
+                image_url: { url: `data:image/png;base64,${TEST_PNG_BASE64}` },
               },
             ],
           },

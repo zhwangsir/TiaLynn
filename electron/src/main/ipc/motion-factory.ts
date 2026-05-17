@@ -55,9 +55,9 @@ export function registerMotionFactoryIpc(getWindow: () => BrowserWindow | null):
         const draft = await generateMotion({
           summary,
           description: payload.description,
-          style: payload.style,
-          examples: payload.examples,
-          strategy: payload.strategy,
+          ...(payload.style !== undefined && { style: payload.style }),
+          ...(payload.examples !== undefined && { examples: payload.examples }),
+          ...(payload.strategy !== undefined && { strategy: payload.strategy }),
         })
         return { ok: true, draft, strategy_used: payload.strategy ?? 'direct_llm' }
       } catch (e) {
@@ -110,9 +110,9 @@ export function registerMotionFactoryIpc(getWindow: () => BrowserWindow | null):
       const tmpl = library.get(payload.template_id)
       if (!tmpl) return { ok: false, reason: `模板未找到：${payload.template_id}` }
       return renderTemplateToDraft(tmpl, payload.model_dir, {
-        speed_scale: payload.speed_scale,
-        intensity_scale: payload.intensity_scale,
-        name_suffix: payload.name_suffix,
+        ...(payload.speed_scale !== undefined && { speed_scale: payload.speed_scale }),
+        ...(payload.intensity_scale !== undefined && { intensity_scale: payload.intensity_scale }),
+        ...(payload.name_suffix !== undefined && { name_suffix: payload.name_suffix }),
       })
     },
   )

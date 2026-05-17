@@ -56,16 +56,19 @@ export function playDraft(renderer: Live2DRenderer, draft: MotionDraft): PlayHan
 /** 线性插值采样 */
 function sample(kf: Array<[number, number]>, t: number): number | null {
   if (kf.length === 0) return null
-  if (t <= kf[0][0]) return kf[0][1]
-  if (t >= kf[kf.length - 1][0]) return kf[kf.length - 1][1]
+  const first = kf[0]!
+  const last = kf[kf.length - 1]!
+  if (t <= first[0]) return first[1]
+  if (t >= last[0]) return last[1]
   for (let i = 1; i < kf.length; i++) {
-    if (t <= kf[i][0]) {
-      const [t0, v0] = kf[i - 1]
-      const [t1, v1] = kf[i]
+    const cur = kf[i]!
+    if (t <= cur[0]) {
+      const [t0, v0] = kf[i - 1]!
+      const [t1, v1] = cur
       const dt = t1 - t0
       if (dt <= 0) return v1
       return v0 + (v1 - v0) * ((t - t0) / dt)
     }
   }
-  return kf[kf.length - 1][1]
+  return last[1]
 }

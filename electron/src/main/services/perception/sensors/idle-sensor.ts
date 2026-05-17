@@ -68,7 +68,7 @@ export class IdleSensor {
     // 仍在 idle → 按 threshold 升级触发
     if (idleMs > 5000) {
       for (let i = this.state.emitted_threshold_idx + 1; i < IDLE_THRESHOLDS_MS.length; i++) {
-        if (idleMs >= IDLE_THRESHOLDS_MS[i]) {
+        if (idleMs >= IDLE_THRESHOLDS_MS[i]!) {
           perception.publish({ type: 'user_idle', t: now, idle_ms: idleMs })
           this.state.emitted_threshold_idx = i
         }

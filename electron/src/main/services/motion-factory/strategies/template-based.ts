@@ -63,12 +63,12 @@ export const templateBasedStrategy: IGenerationStrategy = {
     // 提取 template_id
     const m = buffer.match(/"template_id"\s*:\s*"([^"]+)"/)
     if (!m) throw new Error(`未能从 LLM 输出解析 template_id:\n${buffer.slice(0, 200)}`)
-    const tmplId = m[1]
+    const tmplId = m[1]!
 
     const speedMatch = buffer.match(/"speed_scale"\s*:\s*([\d.]+)/)
     const intensityMatch = buffer.match(/"intensity_scale"\s*:\s*([\d.]+)/)
-    const speed = clamp(speedMatch ? parseFloat(speedMatch[1]) : 1, 0.5, 2)
-    const intensity = clamp(intensityMatch ? parseFloat(intensityMatch[1]) : 1, 0.3, 1.5)
+    const speed = clamp(speedMatch ? parseFloat(speedMatch[1]!) : 1, 0.5, 2)
+    const intensity = clamp(intensityMatch ? parseFloat(intensityMatch[1]!) : 1, 0.3, 1.5)
 
     const template = library.get(tmplId)
     if (!template) {

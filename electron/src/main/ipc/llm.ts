@@ -36,8 +36,14 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       const impl = buildProvider(provider, endpoint, apiKey)
       const abort = new AbortController()
       aborts.set(payload.streamId, abort)
+      console.log(
+        `[llm] chat-stream start streamId=${payload.streamId} provider=${provider} endpoint=${endpoint} model=${model} msgs=${payload.messages.length} hasTools=${!!payload.tools?.length}`,
+      )
+      const t0 = Date.now()
 
       let fullText = ''
+      let firstChunkAt = 0
+      let chunkCount = 0
       const send = (msg: IpcStreamChunk): void => {
         const win = getWindow()
         if (!win || win.isDestroyed()) return
@@ -50,11 +56,16 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
           {
             model,
             temperature: payload.options?.temperature ?? 0.7,
-            max_tokens: payload.options?.max_tokens,
+            ...(payload.options?.max_tokens !== undefined && { max_tokens: payload.options.max_tokens }),
           },
           (evt) => {
             if (evt.delta) {
               fullText += evt.delta
+              chunkCount++
+              if (!firstChunkAt) {
+                firstChunkAt = Date.now() - t0
+                console.log(`[llm] first delta @ ${firstChunkAt}ms streamId=${payload.streamId}`)
+              }
               send({ streamId: payload.streamId, delta: evt.delta })
             }
             if (evt.tool_use) {
@@ -64,14 +75,21 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
               send({ streamId: payload.streamId, needs_tools: true })
             }
             if (evt.error) {
+              console.error(`[llm] error streamId=${payload.streamId}: ${evt.error}`)
               send({ streamId: payload.streamId, error: evt.error })
             }
             if (evt.done) {
+              console.log(
+                `[llm] done streamId=${payload.streamId} total=${Date.now() - t0}ms chunks=${chunkCount} len=${fullText.length}`,
+              )
               send({ streamId: payload.streamId, done: true, full_text: fullText })
             }
           },
           abort.signal,
-          { tools: payload.tools, tool_results: payload.tool_results },
+          {
+            ...(payload.tools !== undefined && { tools: payload.tools }),
+            ...(payload.tool_results !== undefined && { tool_results: payload.tool_results }),
+          },
         )
         return { ok: true }
       } catch (e) {

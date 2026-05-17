@@ -77,8 +77,8 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
         summary: p.summary,
         semantics,
         description: p.description,
-        style: p.style,
-        examples: p.examples,
+        ...(p.style !== undefined && { style: p.style }),
+        ...(p.examples !== undefined && { examples: p.examples }),
       })
     }
   }
@@ -90,8 +90,8 @@ export async function generateMotion(p: GenerateParams): Promise<MotionDraft> {
       summary: p.summary,
       semantics,
       description: p.description,
-      style: p.style,
-      examples: p.examples,
+      ...(p.style !== undefined && { style: p.style }),
+      ...(p.examples !== undefined && { examples: p.examples }),
     })
   }
 
@@ -251,7 +251,7 @@ function validateDraft(raw: unknown, summary: ModelMotionSummary): MotionDraft {
     loop,
     fps,
     tracks,
-    description: r.description ? String(r.description) : undefined,
+    ...(r.description != null ? { description: String(r.description) } : {}),
   }
   void knownParams // 暂未使用
 }

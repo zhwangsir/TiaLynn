@@ -90,10 +90,11 @@ async function generate(): Promise<void> {
     const opt = modelOptions.value.find((o) => o.value === selectedDir.value)
     if (!opt) throw new Error('模型未选')
     const modelDirAbs = opt.absolute.replace(/\/[^/]+\.model3\.json$/i, '')
+    const styleVal = style.value.trim() || undefined
     const r = await window.api.motion.generate({
       model_dir: modelDirAbs,
       description: description.value.trim(),
-      style: style.value.trim() || undefined,
+      ...(styleVal !== undefined ? { style: styleVal } : {}),
       examples: 2,
     })
     if (!r.ok || !r.draft) {
@@ -117,15 +118,17 @@ async function saveDraft(): Promise<void> {
   try {
     const opt = modelOptions.value.find((o) => o.value === selectedDir.value)
     if (!opt) return
+    // v0.8.2: draft.value 是 Vue reactive Proxy，IPC structuredClone 不能直接传
+    // 用 JSON 一次转成纯 plain object
     const r = await window.api.motion.write({
       model_json_path: opt.absolute,
-      draft: draft.value,
+      draft: JSON.parse(JSON.stringify(draft.value)),
       group: 'Generated',
     })
     if (r.ok) {
       bus.emit('ui:toast', {
         kind: 'success',
-        message: `已写入：${r.motion_path?.split('/').pop()}（重载模型后可触发）`,
+        message: `已写入：${r.motion_path?.split('/').pop()}（已自动重载模型）`,
         ttl_ms: 5000,
       })
       // 重新汇总
@@ -135,6 +138,9 @@ async function saveDraft(): Promise<void> {
       }
       draft.value = null
       draftRaw.value = ''
+      // v0.8.2: 自动重载 Live2D 模型让新 motion 立刻生效
+      await cfg.rescanModels()
+      bus.emit('avatar:reload-model')
     } else {
       bus.emit('ui:toast', { kind: 'error', message: r.reason ?? '写入失败', ttl_ms: 8000 })
     }

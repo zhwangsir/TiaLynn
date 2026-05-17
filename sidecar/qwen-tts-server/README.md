@@ -65,6 +65,34 @@ curl -X POST http://127.0.0.1:5050/v1/audio/register-batch \
 | `TIALYNN_TTS_BACKEND` | `edge_tts` | 默认 backend |
 | `TIALYNN_TTS_OPENAI_ENDPOINT` | `http://127.0.0.1:8080/v1/audio/speech` | `openai_compat` 转发端点 |
 | `TIALYNN_TTS_OPENAI_MODEL` | `tts-1` | `openai_compat` 模型名 |
+| `RVC_HOME` | `C:\TiaLynn-rvc` | RVC 仓库根目录（v0.9） |
+| `RVC_BASE_TTS` | `edge_tts` | RVC 流水线的底座 TTS（先生成中性 wav 再喂给 RVC） |
+| `RVC_DEVICE` | `cuda:0` if avail | RVC 推理设备 |
+| `RVC_INDEX_RATE` | `0.75` | 索引检索权重默认 |
+| `RVC_F0_METHOD` | `rmvpe` | F0 提取算法 |
+
+## RVC voice conversion (v0.9)
+
+**RVC 是音色转换不是 TTS**。流水线：
+
+```
+text → edge_tts/f5tts (中性女声 wav) → RVC.convert(wav, voice_id) → 你的音色 wav
+```
+
+### endpoint
+- `GET  /v1/rvc/voices` — 列 workstation 上已训练的音色（`assets/weights/*.pth`）
+- `POST /v1/audio/speech` — 增加可选字段：
+  - `rvc_voice`: 训练好的 voice_id（=`<id>.pth` 文件名去后缀）
+  - `rvc_f0_up_key`: 音调偏移半音，男→女 +12，女→男 -12
+  - `rvc_index_rate`: 0~1
+  - `rvc_f0_method`: `rmvpe`/`harvest`/`pm`
+
+不带 `rvc_voice` = 走原 TTS。带了但模型不存在 = graceful fallback 返回底座 TTS 的 wav，不报 500。
+
+### 训 RVC 模型（workstation）
+1. 准备纯人声样本放 `<RVC_HOME>/dataset/<voice_id>/*.wav`（16k/单声道，5-10 分钟）
+2. 跑训练脚本：`python rvc_train2.py`（preprocess → F0 → hubert feature → faiss index → train 100 epoch → extract small model 到 `assets/weights/<voice_id>.pth`）
+3. sidecar 重启或调 `/v1/rvc/voices` 触发刷新
 
 ## 数据位置
 

@@ -7,6 +7,27 @@
  *   - LLM provider 转发（避免 renderer 直接持密钥）
  *   - 文件系统访问（soul / models / config / TTS sidecar）
  */
+// v0.11: 通过 pnpm dev 启动后，shell pipe 关闭时 console.log 会触发 EPIPE
+// 把整个 main process kill 掉（AttentionScheduler 周期性 log 首先撞上）。
+// 捕获 EPIPE 让 app 自己活下去。
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') return
+  throw err
+})
+process.stderr.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') return
+  throw err
+})
+process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') return
+  try {
+    // eslint-disable-next-line no-console
+    console.error('[main] uncaughtException:', err)
+  } catch {
+    /* skip — 防 log 再炸 */
+  }
+})
+
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { join } from 'node:path'
@@ -21,7 +42,9 @@ import { registerMotionEngineIpc } from './ipc/motion-engine'
 import { registerTriggerIpc } from './ipc/trigger'
 import { registerPerceptionIpc } from './ipc/perception'
 import { startPerception, stopPerception } from './services/perception'
+import { startAttention, stopAttention } from './services/attention'
 import { getPaths } from './services/paths'
+import { loadConfig } from './services/config-store'
 import { close as closeHistoryDb } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
 
@@ -62,7 +85,20 @@ app.whenReady().then(() => {
   registerPerceptionIpc()
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
-  startPerception(getMainWindow)
+  // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）
+  const cfg = loadConfig()
+  startPerception(getMainWindow, {
+    vision_enabled: cfg.vision_enabled ?? false,
+    vision_endpoint: cfg.vision_endpoint ?? '',
+    vision_model: cfg.vision_model ?? '',
+  })
+  console.log(
+    `[perception] vision_enabled=${cfg.vision_enabled ?? false} endpoint=${cfg.vision_endpoint || '(none)'} model=${cfg.vision_model || '(none)'}`,
+  )
+
+  // v0.8.2: 启动主体性循环（Scheduler tick + Planner LLM 调用 + 推 plan 给 renderer 执行）
+  startAttention(getMainWindow, { proactive_monitor_interval_ms: 60_000 })
+  console.log('[attention] started (proactive every 60s, evaluating every 5s)')
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })
@@ -88,5 +124,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   closeHistoryDb()
   closeMotionEngineDb()
+  stopAttention()
   stopPerception()
 })

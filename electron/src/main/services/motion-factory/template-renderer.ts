@@ -118,7 +118,7 @@ function pickBestForSemantic(
 ): ParameterSemantics | null {
   const list = semantics.by_semantic[sem]
   if (!list || list.length === 0) return null
-  return list[0] // 已按 confidence 排序
+  return list[0] ?? null // 已按 confidence 排序
 }
 
 /** 把模板的语义 keyframes 数值 → 目标参数实际值（应用 scale/offset/clamp） */

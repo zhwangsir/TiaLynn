@@ -117,18 +117,22 @@ function validateTrack(
   // 平滑度（相邻段速度变化）
   const velocities: number[] = []
   for (let i = 1; i < kf.length; i++) {
-    const dt = kf[i][0] - kf[i - 1][0]
-    if (dt > 0) velocities.push(Math.abs((kf[i][1] - kf[i - 1][1]) / dt))
+    const cur = kf[i]
+    const prev = kf[i - 1]
+    if (!cur || !prev) continue
+    const dt = cur[0] - prev[0]
+    if (dt > 0) velocities.push(Math.abs((cur[1] - prev[1]) / dt))
   }
   if (velocities.length >= 2) {
     const avg = velocities.reduce((s, v) => s + v, 0) / velocities.length
     for (let i = 0; i < velocities.length; i++) {
-      if (velocities[i] > avg * SMOOTHNESS_MAX_VELOCITY_RATIO && avg > 0.1) {
+      const v = velocities[i]
+      if (v !== undefined && v > avg * SMOOTHNESS_MAX_VELOCITY_RATIO && avg > 0.1) {
         out.push({
           level: 'warning',
           category: 'smoothness',
           track: track.param,
-          message: `段 ${i + 1} 速度突变 ${velocities[i].toFixed(1)}/s (平均 ${avg.toFixed(1)})，可能颤抖`,
+          message: `段 ${i + 1} 速度突变 ${v.toFixed(1)}/s (平均 ${avg.toFixed(1)})，可能颤抖`,
         })
         break
       }
@@ -137,8 +141,11 @@ function validateTrack(
 
   // Loop 跳变
   if (draft.loop && known) {
-    const first = kf[0][1]
-    const last = kf[kf.length - 1][1]
+    const firstKf = kf[0]
+    const lastKf = kf[kf.length - 1]
+    if (!firstKf || !lastKf) return out
+    const first = firstKf[1]
+    const last = lastKf[1]
     const range = Math.max(0.01, Math.abs(known.max - known.min))
     const jumpRatio = Math.abs(last - first) / range
     if (jumpRatio > LOOP_JUMP_THRESHOLD_RATIO) {

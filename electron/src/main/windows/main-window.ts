@@ -26,7 +26,7 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
     minWidth: 240,
     minHeight: 360,
     // macOS NSPanel 模式：不抢焦点 + 跨 space
-    type: platform.isMacOS ? 'panel' : undefined,
+    ...(platform.isMacOS && { type: 'panel' as const }),
     alwaysOnTop: state.alwaysOnTop,
     resizable: true, // v0.6.3：允许调整立绘窗口大小
     show: false,
@@ -65,9 +65,11 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
     saveNow({ bounds: win.getBounds(), alwaysOnTop: win.isAlwaysOnTop() })
   })
 
-  // 默认就是穿透状态（透明区不响应鼠标），但保留 forward 让 webview 仍能收到
-  // mousemove 以便切回非穿透模式。这正是 Tauri 缺的关键能力。
-  win.setIgnoreMouseEvents(true, { forward: true })
+  // v0.8.2: 默认 ignore=false，确保启动后 UI 按钮（设置/关闭/缩放）立刻可点。
+  // cursor poll (50ms tick) 启动后会自动接管：鼠标在透明区 → 切 true 实现穿透；
+  // 在 UI 或立绘 alpha 命中 → 切回 false。
+  // 旧方案默认 true，启动头 500ms cursor poll 还没启时所有按钮都点不到，所以反过来。
+  win.setIgnoreMouseEvents(false)
 
   win.once('ready-to-show', () => {
     win.show()

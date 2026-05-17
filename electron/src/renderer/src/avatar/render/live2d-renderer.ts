@@ -12,6 +12,7 @@
  */
 import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
+import type { ExtLive2DModel } from './live2d-types'
 
 Live2DModel.registerTicker(PIXI.Ticker)
 
@@ -68,7 +69,8 @@ export class Live2DRenderer {
     // 3. 加载完成时如果不是最新请求，立即销毁这个 zombie，不挂上 stage
     if (this.destroyed || mySeq !== this.loadSeq) {
       try {
-        model.destroy({ children: true, texture: true, baseTexture: true })
+        // 同 disposeAllStageModels：不销毁 texture/baseTexture，避免污染 PIXI cache
+        model.destroy({ children: true, texture: false, baseTexture: false })
       } catch {
         /* ignore */
       }
@@ -80,17 +82,14 @@ export class Live2DRenderer {
     this.model = model
     this.app.stage.addChild(model)
 
-    const scale = opts.scale ?? 0.35
-    model.scale.set(scale)
     model.anchor.set(0.5, 0.5)
-    model.x = this.app.renderer.width / (2 * (window.devicePixelRatio || 1))
-    model.y =
-      this.app.renderer.height / (2 * (window.devicePixelRatio || 1)) + (opts.offsetY ?? 50)
+    // v0.9: 默认 auto-fit canvas 85%，opts.scale 当作「user hint」（1.0 = 完全 auto-fit）
+    // 调用者（Live2DStage）已经从 preferences 拿 user hint 写进 opts.scale
+    this.fitModelToCanvas(opts.scale ?? 1.0, opts.offsetY ?? 0)
 
     // 调慢默认眨眼到 4500~7500 ms（默认是 4000 ms，那个频率太频繁）
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const eyeBlink = (model as any).internalModel?.eyeBlink
+      const eyeBlink = (model as ExtLive2DModel).internalModel?.eyeBlink
       if (eyeBlink && typeof eyeBlink.setBlinkingInterval === 'function') {
         // 把整个眨眼周期拉长
         eyeBlink.setBlinkingInterval(6000)
@@ -98,6 +97,78 @@ export class Live2DRenderer {
     } catch (e) {
       console.warn('[live2d] tune eyeBlink failed', e)
     }
+
+    // v0.8.2: 启动 idle motion — pixi-live2d-display 不自动播放 idle group，
+    // 必须显式 motion()。扫描 motion groups 选第一个非空 group 触发循环。
+    this.startIdleMotion()
+  }
+
+  private idleGroup = ''
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * 启动 idle 循环 motion。
+   * 修订（v0.8.2）：放弃依赖未文档化的 isFinished API（不同 SDK 版本可能不存在或行为不同）。
+   * 改为基于 setTimeout 的「自驱动调度」：触发 motion → 等估算 duration → 再触发下一个。
+   * priority=2 IDLE 不会打断 NORMAL/FORCE motion，所以即使 NORMAL motion 正在播，
+   * IDLE 也只是被 SDK 自动排队，不会造成视觉打断。
+   */
+  private startIdleMotion(): void {
+    if (!this.model) return
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    try {
+      const m = this.model as ExtLive2DModel
+      const settings = m.internalModel?.settings
+      const motions: Record<string, unknown[]> =
+        settings?.motions ?? settings?.json?.FileReferences?.Motions ?? {}
+      const groupNames = Object.keys(motions).filter(
+        (g) => Array.isArray(motions[g]) && motions[g].length > 0,
+      )
+      if (groupNames.length === 0) {
+        console.warn('[live2d] no motion groups — model is static. 用 Heal 按钮补 idle motion')
+        return
+      }
+      const priority = ['Idle', 'idle', '', 'Recovered', 'Generated']
+      this.idleGroup =
+        priority.find((g) => motions[g] && (motions[g] as unknown[]).length > 0) || groupNames[0]!
+
+      console.log(
+        `[live2d] start idle: group="${this.idleGroup}" (${(motions[this.idleGroup] as unknown[]).length} motions)`,
+      )
+
+      this.scheduleNextIdle(50)
+    } catch (e) {
+      console.warn('[live2d] startIdleMotion failed', e)
+    }
+  }
+
+  /**
+   * 调度下一个 idle motion。setTimeout(estimated_duration + safety)，到时 trigger。
+   * 不依赖 isFinished 这种未文档化 API；纯基于估算的 motion duration 推进。
+   * 默认 4.5 秒（多数 Live2D idle motion 3-6 秒），priority=2 不会打断 NORMAL/FORCE。
+   */
+  private scheduleNextIdle(delayMs: number): void {
+    if (this.destroyed) return
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null
+      if (!this.model || !this.idleGroup) return
+      try {
+        const m = this.model as ExtLive2DModel
+        // priority=2 (Cubism IDLE) — 自动排队不打断 NORMAL/FORCE
+        m.motion?.(this.idleGroup, undefined, 2)
+      } catch (e) {
+        console.warn('[live2d] idle motion trigger failed', e)
+      }
+      // 4.5 秒后再调度下一个（覆盖大多数 idle motion duration）
+      this.scheduleNextIdle(4500)
+    }, delayMs)
   }
 
   /** 视线目标：相对于 canvas 的本地坐标。SDK 自动转换到 stage 坐标。 */
@@ -125,8 +196,7 @@ export class Live2DRenderer {
   applyParam(id: string, value: number): void {
     if (!this.model) return
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cm = (this.model as any).internalModel?.coreModel
+      const cm = (this.model as ExtLive2DModel).internalModel?.coreModel
       if (cm && typeof cm.setParameterValueById === 'function') {
         cm.setParameterValueById(id, value)
       }
@@ -143,15 +213,167 @@ export class Live2DRenderer {
   /** 重设大小（窗口 resize） */
   resize(w: number, h: number): void {
     this.app.renderer.resize(w, h)
-    if (this.model) {
-      this.model.x = w / 2
-      this.model.y = h / 2 + 50
+    if (this.model) this.applyTransform()
+  }
+
+  /**
+   * v0.9: 默认 auto-fit canvas 85% + 优先用 preferences 里 user 调过的 scale。
+   * 没 preferences 就基于 internalModel.originalWidth/Height 等比 fit。
+   * userScaleHint 是「user 想要的相对系数」（默认 1.0 = 完全 auto-fit；0.5 = 半大；2 = 双倍）。
+   * 实际 model.scale = fitScale * userScaleHint。
+   */
+  private userScaleHint = 1.0
+  private userOffsetY = 0
+  /** 第一次 fit 时算出的 base scale（model logical → canvas 85%） */
+  private autoFitBase = 0.001
+  private applyTransform(): void {
+    if (!this.model) return
+    const dpr = window.devicePixelRatio || 1
+    const canvasW = this.app.renderer.width / dpr
+    const canvasH = this.app.renderer.height / dpr
+    const finalScale = this.autoFitBase * this.userScaleHint
+    this.model.scale.set(finalScale)
+    this.model.x = canvasW / 2
+    this.model.y = canvasH / 2 + this.userOffsetY
+  }
+
+  /** 给外部（zoom 按钮）调用：增量改 userScaleHint，立刻 re-apply */
+  applyScaleHint(scaleHint: number): void {
+    this.userScaleHint = Math.max(0.1, Math.min(5, scaleHint))
+    this.applyTransform()
+  }
+  /** 当前的 userScaleHint（dock 上 +/- 按钮要看当前值再增减） */
+  getScaleHint(): number {
+    return this.userScaleHint
+  }
+
+  /** v0.9 复活：基于 model 实际尺寸自动算 autoFitBase，让 model 占 canvas 85% */
+  fitModelToCanvas(userScale: number, offsetY: number): void {
+    if (!this.model) return
+    this.userScaleHint = userScale
+    this.userOffsetY = offsetY
+    const dpr = window.devicePixelRatio || 1
+    const canvasW = this.app.renderer.width / dpr
+    const canvasH = this.app.renderer.height / dpr
+    const FILL_RATIO = 0.85
+    const targetW = canvasW * FILL_RATIO
+    const targetH = canvasH * FILL_RATIO
+
+    let modelW = 0
+    let modelH = 0
+    const internal = (this.model as ExtLive2DModel).internalModel
+    if (internal) {
+      modelW = Number(internal.originalWidth) || 0
+      modelH = Number(internal.originalHeight) || 0
+    }
+    if (modelW <= 0 || modelH <= 0) {
+      try {
+        this.model.scale.set(1)
+        const bounds = this.model.getLocalBounds()
+        if (bounds.width > 0) modelW = bounds.width
+        if (bounds.height > 0) modelH = bounds.height
+      } catch {
+        /* skip */
+      }
+    }
+    if (modelW <= 0) modelW = 2048
+    if (modelH <= 0) modelH = 2048
+
+    // autoFitBase = 让 model 等比放到 canvas 85% 所需的 scale
+    this.autoFitBase = Math.min(targetW / modelW, targetH / modelH)
+    this.applyTransform()
+    console.log(
+      `[live2d] fit canvas=${canvasW.toFixed(0)}x${canvasH.toFixed(0)} model=${modelW.toFixed(0)}x${modelH.toFixed(0)} base=${this.autoFitBase.toFixed(4)} userHint=${userScale}`,
+    )
+  }
+
+  /** legacy 保留 — 未使用 */
+  private _legacyFit(userScale: number, offsetY: number): void {
+    if (!this.model) return
+    this.userScaleHint = userScale
+    this.userOffsetY = offsetY
+    const dpr = window.devicePixelRatio || 1
+    const canvasW = this.app.renderer.width / dpr
+    const canvasH = this.app.renderer.height / dpr
+
+    // 目标占比：填充 canvas 85%（留 padding 避免头/边被裁）
+    const FILL_RATIO = 0.85
+    const targetW = canvasW * FILL_RATIO
+    const targetH = canvasH * FILL_RATIO
+
+    // 优先：用 Cubism internalModel 的 originalWidth/Height（logical canvas size）
+    // 这是模型设计时的舞台尺寸，最权威反映模型「应该」多大
+    let modelW = 0
+    let modelH = 0
+    const internal = (this.model as ExtLive2DModel).internalModel
+    if (internal) {
+      modelW = Number(internal.originalWidth) || 0
+      modelH = Number(internal.originalHeight) || 0
+    }
+
+    // Fallback：scale=1 下取 getLocalBounds（实际渲染包围盒）
+    if (modelW <= 0 || modelH <= 0) {
+      try {
+        this.model.scale.set(1)
+        const bounds = this.model.getLocalBounds()
+        if (bounds.width > 0) modelW = bounds.width
+        if (bounds.height > 0) modelH = bounds.height
+      } catch {
+        /* skip */
+      }
+    }
+
+    // 终极 fallback：用经验值 2048（多数 Cubism 4 模型的 canvas）
+    if (modelW <= 0) modelW = 2048
+    if (modelH <= 0) modelH = 2048
+
+    // 等比 fit
+    const fitScale = Math.min(targetW / modelW, targetH / modelH) * userScale
+    this.model.scale.set(fitScale)
+
+    this.model.x = canvasW / 2
+    this.model.y = canvasH / 2 + offsetY
+
+    console.log(
+      `[live2d] fit canvas=${canvasW.toFixed(0)}x${canvasH.toFixed(0)} model=${modelW.toFixed(0)}x${modelH.toFixed(0)} scale=${fitScale.toFixed(3)}`,
+    )
+  }
+
+  /** v0.8.2: 隐藏模型自带的背景 part（id 含 bg/background/back） */
+  private hideBackgroundParts(model: ExtLive2DModel): void {
+    try {
+      const coreModel = model.internalModel?.coreModel
+      if (!coreModel) return
+      const partCount =
+        typeof coreModel.getPartCount === 'function' ? coreModel.getPartCount() : 0
+      const hidden: string[] = []
+      for (let i = 0; i < partCount; i++) {
+        const id = String(coreModel.getPartId?.(i) ?? '').toLowerCase()
+        if (/^(bg|background|back|backdrop|stage_bg|haikei)\b/.test(id) || id.includes('background')) {
+          if (typeof coreModel.setPartOpacityByIndex === 'function') {
+            coreModel.setPartOpacityByIndex(i, 0)
+            hidden.push(id)
+          } else if (typeof coreModel.setPartOpacity === 'function') {
+            coreModel.setPartOpacity(coreModel.getPartId?.(i) ?? '', 0)
+            hidden.push(id)
+          }
+        }
+      }
+      if (hidden.length) {
+        console.log(`[live2d] hide bg parts: ${hidden.join(', ')}`)
+      }
+    } catch (e) {
+      console.warn('[live2d] hideBackgroundParts failed', e)
     }
   }
 
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
     this.app.ticker.remove(this.tick, this)
     this.disposeAllStageModels()
     this.model = null
@@ -172,7 +394,11 @@ export class Live2DRenderer {
     for (const v of victims) {
       try {
         stage.removeChild(v)
-        ;(v as Live2DModel).destroy({ children: true, texture: true, baseTexture: true })
+        // 关键：texture/baseTexture 不能销毁 —— PIXI 全局 cache 里同一 baseTexture
+        // 被多个 model 实例共享。重载同一 model3.json 时新 model 拿到的是 cache 里
+        // 「已销毁的 baseTexture」→ 纹理失效 → 渲染纯黑剪影。
+        // 只销毁 mesh/geometry，让 PIXI/Live2D 的 cache 自然管理纹理生命周期。
+        ;(v as Live2DModel).destroy({ children: true, texture: false, baseTexture: false })
       } catch (e) {
         console.warn('[live2d] dispose stage model failed', e)
       }
@@ -184,8 +410,7 @@ export class Live2DRenderer {
     if (this.destroyed || !this.model) return
     // 我们只覆盖嘴型 —— 其它参数（眨眼、视线、姿态）走 SDK 默认链路
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cm = (this.model as any).internalModel?.coreModel
+      const cm = (this.model as ExtLive2DModel).internalModel?.coreModel
       if (cm && typeof cm.setParameterValueById === 'function') {
         cm.setParameterValueById('ParamMouthOpenY', this.lipsyncValue)
       }

@@ -33,12 +33,42 @@ function deepPlain<T>(v: T): T {
   try {
     return structuredClone(v)
   } catch {
-    try {
-      return JSON.parse(JSON.stringify(v)) as T
-    } catch {
-      return v
-    }
+    /* fallback */
   }
+  try {
+    return JSON.parse(JSON.stringify(v)) as T
+  } catch {
+    /* fallback */
+  }
+  // 最后兜底：手动递归 unwrap Vue Proxy
+  return manualClone(v) as T
+}
+
+function manualClone(v: unknown): unknown {
+  if (v === null || v === undefined) return v
+  const t = typeof v
+  if (t === 'string' || t === 'number' || t === 'boolean') return v
+  if (t === 'function' || t === 'symbol') return undefined
+  if (Array.isArray(v)) return v.map(manualClone)
+  if (t === 'object') {
+    // ArrayBuffer / typed array 直接 copy
+    if (v instanceof ArrayBuffer) return v.slice(0)
+    if (ArrayBuffer.isView(v)) {
+      const ctor = v.constructor as new (buf: ArrayBuffer) => unknown
+      return new ctor(((v as { buffer: ArrayBuffer }).buffer).slice(0))
+    }
+    const rec = v as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const k of Object.keys(rec)) {
+      try {
+        out[k] = manualClone(rec[k])
+      } catch {
+        out[k] = null
+      }
+    }
+    return out
+  }
+  return undefined
 }
 
 const invoke = (channel: string, ...args: unknown[]): Promise<unknown> =>
@@ -53,6 +83,8 @@ const api: TialynnApi = {
     paths: () => invoke('system:paths') as ReturnType<TialynnApi['system']['paths']>,
     revealDataDir: () => invoke('system:reveal-data-dir') as Promise<string>,
     revealModelsDir: () => invoke('system:reveal-models-dir') as Promise<string>,
+    openExternal: (url: string) =>
+      invoke('system:open-external', url) as Promise<{ ok: boolean; reason?: string }>,
   },
   window: {
     startDrag: () => invoke('window:start-drag') as Promise<{ ok: boolean; reason?: string }>,
@@ -89,6 +121,96 @@ const api: TialynnApi = {
   },
   models: {
     scan: () => invoke('models:scan') as ReturnType<TialynnApi['models']['scan']>,
+    heal: (payload: { model_json_path: string }) =>
+      invoke('models:heal', payload) as ReturnType<TialynnApi['models']['heal']>,
+    findDuplicates: () =>
+      invoke('models:find-duplicates') as ReturnType<TialynnApi['models']['findDuplicates']>,
+    applyDedup: (payload?: { group_keys?: string[]; dry_run?: boolean }) =>
+      invoke('models:apply-dedup', payload) as ReturnType<TialynnApi['models']['applyDedup']>,
+    mergeGroups: (payload?: { group_keys?: string[] }) =>
+      invoke('models:merge-groups', payload) as ReturnType<TialynnApi['models']['mergeGroups']>,
+    describe: (payload: {
+      model_dir: string
+      model_json_path: string
+      display: string
+      ip: string
+      motion_count: number
+      expression_count: number
+    }) => invoke('models:describe', payload) as ReturnType<TialynnApi['models']['describe']>,
+    cachedDescriptions: () =>
+      invoke('models:cached-descriptions') as ReturnType<TialynnApi['models']['cachedDescriptions']>,
+    getPreference: (characterId: string) =>
+      invoke('models:get-preference', characterId) as ReturnType<TialynnApi['models']['getPreference']>,
+    setPreference: (payload: { character_id: string; scale: number; offset_y: number }) =>
+      invoke('models:set-preference', payload) as ReturnType<TialynnApi['models']['setPreference']>,
+    // v0.12: 收藏 + 最近
+    favorites: () => invoke('models:favorites') as ReturnType<TialynnApi['models']['favorites']>,
+    toggleFavorite: (dir: string) =>
+      invoke('models:toggle-favorite', dir) as ReturnType<TialynnApi['models']['toggleFavorite']>,
+    markRecent: (dir: string) =>
+      invoke('models:mark-recent', dir) as ReturnType<TialynnApi['models']['markRecent']>,
+    clearRecent: () => invoke('models:clear-recent') as ReturnType<TialynnApi['models']['clearRecent']>,
+    // v0.12: character enrichment
+    enrichCached: () =>
+      invoke('models:enrich-cached') as ReturnType<TialynnApi['models']['enrichCached']>,
+    enrichStart: () => invoke('models:enrich-start') as ReturnType<TialynnApi['models']['enrichStart']>,
+    enrichAbort: () => invoke('models:enrich-abort') as ReturnType<TialynnApi['models']['enrichAbort']>,
+    enrichClear: () => invoke('models:enrich-clear') as ReturnType<TialynnApi['models']['enrichClear']>,
+    onEnrichProgress: (cb: (p: import('@shared/api').EnrichProgress) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, p: import('@shared/api').EnrichProgress): void =>
+        cb(p)
+      ipcRenderer.on('models:enrich-progress', handler)
+      return () => ipcRenderer.off('models:enrich-progress', handler)
+    },
+  },
+  online: {
+    listRecommended: () =>
+      invoke('online:list-recommended') as ReturnType<TialynnApi['online']['listRecommended']>,
+    listAssets: (payload: { repo_id: string; sub_path?: string }) =>
+      invoke('online:list-assets', payload) as ReturnType<TialynnApi['online']['listAssets']>,
+    checkInstalled: (payload: {
+      kind: 'rvc' | 'live2d'
+      voice_id?: string
+      repo_slug?: string
+      asset_name?: string
+    }) => invoke('online:check-installed', payload) as ReturnType<TialynnApi['online']['checkInstalled']>,
+    install: (payload: { repo_id: string; asset_path: string; kind: 'rvc' | 'live2d' }) =>
+      invoke('online:install', payload) as ReturnType<TialynnApi['online']['install']>,
+    cancelInstall: (installId: string) =>
+      invoke('online:cancel-install', installId) as ReturnType<TialynnApi['online']['cancelInstall']>,
+    installCustom: (payload: { url: string; kind: 'rvc' | 'live2d' }) =>
+      invoke('online:install-custom', payload) as ReturnType<TialynnApi['online']['installCustom']>,
+    onInstallProgress: (
+      cb: (p: import('@shared/api').OnlineInstallProgress) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: import('@shared/api').OnlineInstallProgress,
+      ): void => cb(p)
+      ipcRenderer.on('online:install-progress', handler)
+      return () => ipcRenderer.off('online:install-progress', handler)
+    },
+    onInstallDone: (
+      cb: (p: import('@shared/api').OnlineInstallDone) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: import('@shared/api').OnlineInstallDone,
+      ): void => cb(p)
+      ipcRenderer.on('online:install-done', handler)
+      return () => ipcRenderer.off('online:install-done', handler)
+    },
+  },
+  thumbs: {
+    get: (characterId: string) =>
+      invoke('thumbs:get', characterId) as ReturnType<TialynnApi['thumbs']['get']>,
+    save: (payload: { character_id: string; webp_base64: string }) =>
+      invoke('thumbs:save', payload) as ReturnType<TialynnApi['thumbs']['save']>,
+    markFailed: (payload: { character_id: string; reason: string }) =>
+      invoke('thumbs:mark-failed', payload) as ReturnType<TialynnApi['thumbs']['markFailed']>,
+    listMissing: (characterIds: string[]) =>
+      invoke('thumbs:list-missing', characterIds) as ReturnType<TialynnApi['thumbs']['listMissing']>,
+    clearAll: () => invoke('thumbs:clear-all') as ReturnType<TialynnApi['thumbs']['clearAll']>,
   },
   soul: {
     load: () => invoke('soul:load') as ReturnType<TialynnApi['soul']['load']>,
@@ -126,6 +248,13 @@ const api: TialynnApi = {
       }>,
     probe: () =>
       invoke('tts:probe') as Promise<{ ok: boolean; status?: number; reason?: string }>,
+    listRvcVoices: () =>
+      invoke('tts:list-rvc-voices') as Promise<{
+        ok: boolean
+        voices: string[]
+        reason?: string
+        sidecar?: string
+      }>,
   },
   history: {
     listRecent: (limit) =>
@@ -287,6 +416,5 @@ if (process.contextIsolated) {
   }
 } else {
   // contextIsolation 关闭时直接挂全局（不推荐，仅做兜底）
-  // @ts-expect-error 全局桥接 fallback
   window.api = api
 }

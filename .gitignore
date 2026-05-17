@@ -24,7 +24,8 @@ target/
 Thumbs.db
 
 # --- 个人/敏感资产（NOT 入仓） ---
-# Live2D 模型（受 Live2D 商业授权约束，使用者各自获取）
+# Live2D 模型库（17GB，受 Live2D 商业授权约束，使用者各自获取）
+electron/models-library/
 HuTao-Live2D/
 # 用户私人录音样本
 example_voice/

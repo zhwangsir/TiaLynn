@@ -105,6 +105,8 @@ export interface AttentionConfig {
   use_llm_planner: boolean
   /** Planner LLM 调用频率上限（每分钟次数） */
   llm_planner_max_per_minute: number
+  /** v0.8.2: 主动巡视间隔 — 每隔 N ms 无条件触发一次「看屏 + planner」（即使 attention 没触发） */
+  proactive_monitor_interval_ms: number
 }
 
 export const DEFAULT_ATTENTION_CONFIG: AttentionConfig = {
@@ -114,4 +116,5 @@ export const DEFAULT_ATTENTION_CONFIG: AttentionConfig = {
   min_speak_interval_ms: 90_000,
   use_llm_planner: true,
   llm_planner_max_per_minute: 4,
+  proactive_monitor_interval_ms: 30_000,
 }

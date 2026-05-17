@@ -24,7 +24,7 @@ export const platform = { isMacOS, isWindows, isLinux }
 export function transparentWindowConfig(): BrowserWindowConstructorOptions {
   return {
     frame: false,
-    titleBarStyle: isMacOS ? 'hidden' : undefined,
+    ...(isMacOS && { titleBarStyle: 'hidden' as const }),
     transparent: true,
     hasShadow: false,
     resizable: false,

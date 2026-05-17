@@ -29,7 +29,11 @@ export class WindowSensor {
 
   start(): void {
     if (this.timer) return
-    this.timer = setInterval(() => void this.tick(), POLL_INTERVAL_MS)
+    this.timer = setInterval(() => {
+      this.tick().catch(() => {
+        /* sensor 失败不应影响主循环 */
+      })
+    }, POLL_INTERVAL_MS)
   }
 
   stop(): void {
@@ -66,15 +70,16 @@ export class WindowSensor {
   private async getActiveWindow(): Promise<{ app: string; title: string } | null> {
     try {
       if (process.platform === 'darwin') {
-        return this.getMac()
+        return await this.getMac()
       }
       if (process.platform === 'win32') {
-        return this.getWin()
+        return await this.getWin()
       }
       // Linux 或其他 — 暂不支持
       return null
-    } catch (e) {
-      // 失败不要噪音 — 用户可能没装 osascript / 没权限
+    } catch {
+      // 失败不要噪音 — macOS 26 需要 System Events 的 Automation 权限，
+      // 用户没批准时 osascript 每次都 fail，但不应污染日志或抛 UnhandledRejection
       return null
     }
   }

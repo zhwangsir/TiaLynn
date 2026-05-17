@@ -16,6 +16,19 @@ function blankConfig(): RuntimeConfig {
     llm_api_key: '',
     tts_provider: 'sidecar',
     tts_sidecar_url: '',
+    rvc_voice: '',
+    rvc_f0_up_key: 0,
+    rvc_index_rate: 0.75,
+    rvc_f0_method: 'rmvpe',
+    // v0.11: 底座 TTS 语速/音量/音调
+    tts_rate: '+0%',
+    tts_volume: '+0%',
+    tts_pitch: '+0Hz',
+    // v0.11: RVC 高级参数
+    rvc_protect: 0.33,
+    rvc_filter_radius: 3,
+    rvc_rms_mix_rate: 1.0,
+    rvc_resample_sr: 0,
     idle_min_sec: 60,
     idle_max_sec: 180,
     autocomment_interval_sec: 600,
@@ -82,12 +95,53 @@ async function probeTts(): Promise<void> {
   ttsHealth.value = await window.api.tts.probe()
 }
 
+// v0.9: RVC 训练好的音色列表 + 加载状态
+const rvcVoices = ref<string[]>([])
+const rvcStatus = ref<string>('')
+// v0.11: TTS 节奏参数 — 字符串 "+20%" / "+5Hz" 跟 slider int 互转
+function parseTtsRate(s: string | undefined): number {
+  if (!s) return 0
+  const m = s.match(/(-?\d+)/)
+  return m ? parseInt(m[1] ?? '0', 10) : 0
+}
+function parseTtsPitch(s: string | undefined): number {
+  return parseTtsRate(s)
+}
+function formatPct(e: Event): string {
+  const v = parseInt((e.target as HTMLInputElement).value, 10)
+  return v >= 0 ? `+${v}%` : `${v}%`
+}
+function formatHz(e: Event): string {
+  const v = parseInt((e.target as HTMLInputElement).value, 10)
+  return v >= 0 ? `+${v}Hz` : `${v}Hz`
+}
+
+async function refreshRvcVoices(): Promise<void> {
+  rvcStatus.value = '加载中…'
+  try {
+    const r = await window.api.tts.listRvcVoices()
+    if (r.ok) {
+      rvcVoices.value = r.voices
+      rvcStatus.value = r.voices.length > 0
+        ? `✓ ${r.voices.length} 个已训练音色 @ ${r.sidecar ?? ''}`
+        : '✓ RVC 可用，但还没训练任何音色（先在 workstation 上跑训练）'
+    } else {
+      rvcVoices.value = []
+      rvcStatus.value = `✗ ${r.reason ?? 'RVC 不可用'}`
+    }
+  } catch (e) {
+    rvcStatus.value = `✗ ${String(e).slice(0, 80)}`
+  }
+}
+
 const dataDir = ref<string>('')
 async function bootstrapMeta(): Promise<void> {
   const paths = await window.api.system.paths()
   dataDir.value = paths.userDataDir
 }
 bootstrapMeta()
+// 打开 Settings 时静默拉一次 RVC voices（不阻塞 UI）
+void refreshRvcVoices()
 
 /**
  * 一键保存：先存 RuntimeConfig，再（如需）存 avatar。
@@ -147,6 +201,138 @@ async function testLlm(): Promise<void> {
 async function rescan(): Promise<void> {
   await cfg.rescanModels()
   bus.emit('ui:toast', { kind: 'info', message: `已扫描，${cfg.models.length} 个模型`, ttl_ms: 2500 })
+}
+
+const healing = ref(false)
+const dedupChecking = ref(false)
+const dedupReport = ref<Awaited<ReturnType<typeof window.api.models.findDuplicates>> | null>(null)
+
+async function checkDuplicates(): Promise<void> {
+  dedupChecking.value = true
+  try {
+    dedupReport.value = await window.api.models.findDuplicates()
+    const r = dedupReport.value
+    const exact = r.groups.filter((g) => g.confidence === 'exact').length
+    const sameMoc = r.groups.filter((g) => g.confidence === 'same_moc').length
+    const similar = r.groups.filter((g) => g.confidence === 'similar_dir').length
+    const parts = [
+      exact > 0 ? `${exact} 组真重复` : '',
+      sameMoc > 0 ? `${sameMoc} 组同模型不同形态` : '',
+      similar > 0 ? `${similar} 组名字相近` : '',
+    ].filter(Boolean)
+    bus.emit('ui:toast', {
+      kind: parts.length > 0 ? 'info' : 'success',
+      message:
+        parts.length === 0
+          ? `扫描完成：${r.total_models} 个模型，无任何同组关系`
+          : `发现：${parts.join('，')}${r.exact_duplicates > 0 ? `（${r.exact_duplicates} 个真冗余可安全删，占 ${Math.round(r.exact_disk_kb / 1024)} MB）` : ''}`,
+      ttl_ms: 10000,
+    })
+  } finally {
+    dedupChecking.value = false
+  }
+}
+
+async function mergeGroups(): Promise<void> {
+  if (!dedupReport.value) return
+  const exactCount = dedupReport.value.groups.filter((g) => g.confidence === 'exact').length
+  if (exactCount === 0) {
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message: '没有可合并的 group（只 exact group 能合并 — same_moc / similar_dir 是不同 texture / 不同 moc 技术上不能合）',
+      ttl_ms: 8000,
+    })
+    return
+  }
+  const ok = window.confirm(
+    `将合并 ${exactCount} 个 exact group：把同组里分散的 motion/expression 引用并入主 model3.json，归档次要 model3.json 为 .merged.bak（不删 motion/exp 文件，可恢复）。继续？`,
+  )
+  if (!ok) return
+  dedupChecking.value = true
+  try {
+    const r = await window.api.models.mergeGroups({})
+    const parts = [
+      `合并 ${r.merged_groups} 组`,
+      r.added_motions > 0 ? `新增 ${r.added_motions} 动作引用` : '',
+      r.added_expressions > 0 ? `新增 ${r.added_expressions} 表情引用` : '',
+      r.skipped.length > 0 ? `跳过 ${r.skipped.length} 组（不能合并）` : '',
+    ].filter(Boolean)
+    bus.emit('ui:toast', {
+      kind: r.ok ? 'success' : 'warn',
+      message: parts.join('，'),
+      ttl_ms: 8000,
+    })
+    await cfg.rescanModels()
+    bus.emit('avatar:reload-model')
+    dedupReport.value = null
+  } finally {
+    dedupChecking.value = false
+  }
+}
+
+async function applyDedup(): Promise<void> {
+  if (!dedupReport.value || dedupReport.value.exact_duplicates === 0) return
+  const ok = window.confirm(
+    `安全 Archive：把 ${dedupReport.value.exact_duplicates} 个字节级重复的 model3.json 改名为 .dedup.bak。\n\n` +
+      `✓ 不删 moc / texture / motion / expression 任何文件\n` +
+      `✓ 同目录其他模型完全不动\n` +
+      `✓ 可手动把 .dedup.bak 改回 .model3.json 恢复\n\n继续？`,
+  )
+  if (!ok) return
+  dedupChecking.value = true
+  try {
+    const r = await window.api.models.applyDedup({})
+    bus.emit('ui:toast', {
+      kind: r.ok ? 'success' : 'warn',
+      message: `Archive ${r.deleted.length} 个 model3.json${r.failed.length ? `；${r.failed.length} 个失败` : ''}`,
+      ttl_ms: 6000,
+    })
+    await cfg.rescanModels()
+    dedupReport.value = null
+  } finally {
+    dedupChecking.value = false
+  }
+}
+
+async function healSelected(): Promise<void> {
+  if (!selectedModel.value) {
+    bus.emit('ui:toast', { kind: 'warn', message: '先选一个模型', ttl_ms: 3000 })
+    return
+  }
+  const target = cfg.models.find((m) => m.dir === selectedModel.value)
+  if (!target) return
+  if (!target.meta?.healable) {
+    const hints = (target.meta?.heal_hints ?? []).join('；') || '该模型无法 auto-heal'
+    bus.emit('ui:toast', { kind: 'warn', message: hints, ttl_ms: 8000 })
+    return
+  }
+  healing.value = true
+  try {
+    const r = await window.api.models.heal({ model_json_path: target.absolute_path })
+    if (!r.ok) {
+      bus.emit('ui:toast', { kind: 'error', message: `Heal 失败：${r.reason}`, ttl_ms: 8000 })
+      return
+    }
+    const parts: string[] = []
+    if (r.added.motions.length) parts.push(`生成 ${r.added.motions.length} 动作`)
+    if (r.added.expressions.length) parts.push(`生成 ${r.added.expressions.length} 表情`)
+    if (r.added.bound_orphans.motions.length)
+      parts.push(`绑定 ${r.added.bound_orphans.motions.length} 个 orphan motion`)
+    if (r.added.bound_orphans.expressions.length)
+      parts.push(`绑定 ${r.added.bound_orphans.expressions.length} 个 orphan expression`)
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: parts.length ? `Heal 完成：${parts.join('，')}（重载模型生效）` : 'Heal 完成（无需补）',
+      ttl_ms: 6000,
+    })
+    await cfg.rescanModels()
+    // v0.8.2: heal 完成后强制重载 Live2D 模型让新 motion/expression 立刻生效
+    if (parts.length > 0 && cfg.soul?.avatar.model_dir === target.dir) {
+      bus.emit('avatar:reload-model')
+    }
+  } finally {
+    healing.value = false
+  }
 }
 
 const zipUrl = ref('')
@@ -224,14 +410,19 @@ const showIncomplete = ref(false)
 const modelOptions = computed(() => {
   const list = [...cfg.models]
   list.sort((a, b) => {
-    // 完整 cubism4 优先 → 不完整 cubism4 → cubism2
-    const score = (m: typeof a): number => {
-      if (m.cubism !== 'cubism4') return 2
-      return m.meta?.complete ? 0 : 1
-    }
-    const sa = score(a)
-    const sb = score(b)
-    if (sa !== sb) return sa - sb
+    // v0.8.2: 主排序键 = motion_count 降序（动作多 = 质量高）
+    // cubism2 永远最后（暂不支持）
+    if (a.cubism !== 'cubism4' && b.cubism === 'cubism4') return 1
+    if (a.cubism === 'cubism4' && b.cubism !== 'cubism4') return -1
+    const am = a.meta?.motion_count ?? 0
+    const bm = b.meta?.motion_count ?? 0
+    if (am !== bm) return bm - am // 动作多在前
+    // 同动作数 → 表情多在前
+    const ae = a.meta?.expression_count ?? 0
+    const be = b.meta?.expression_count ?? 0
+    if (ae !== be) return be - ae
+    // 都同 → physics 优先
+    if (a.meta?.has_physics !== b.meta?.has_physics) return a.meta?.has_physics ? -1 : 1
     return a.display.localeCompare(b.display)
   })
 
@@ -248,6 +439,9 @@ const modelOptions = computed(() => {
       let suffix = ''
       let disabled = false
       if (m.meta?.recommended) prefix = '⭐ '
+      // v0.8.2: 健康评分 grade 显示在最前
+      const grade = m.meta?.grade
+      if (grade) prefix = `[${grade}] ` + prefix
       if (isCubism2) {
         suffix = '（Cubism 2，暂不支持）'
         disabled = true
@@ -346,6 +540,12 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           <button class="ghost" @click="installFromZipFile" :disabled="installing">
             {{ installing ? '安装中…' : '从目录安装' }}
           </button>
+          <button class="ghost" @click="healSelected" :disabled="healing">
+            {{ healing ? '修复中…' : '🩹 Heal 当前模型' }}
+          </button>
+          <!-- v0.8.2 移除：合并/删除/查重按钮（之前误判同角色多 outfit 为重复，造成数据丢失）。
+               同角色多 view 是 Live2D 标准做法，在「🎭 模型库」按 character cluster 展示。 -->
+          <span class="hint-text">同角色多 outfit 浏览 →「🎭 模型库」（右键人物菜单）</span>
           <label class="inline-toggle" :title="`总共扫到 ${totalCount}，可用 ${usableCount}`">
             <input type="checkbox" v-model="showIncomplete" />
             显示不完整模型
@@ -394,6 +594,146 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
             {{ ttsHealth.ok ? `✓ ${ttsHealth.status}` : `✗ ${ttsHealth.reason ?? ttsHealth.status}` }}
           </span>
         </div>
+      </section>
+
+      <section>
+        <h3>RVC 音色转换（你的真声）</h3>
+        <p class="hint">
+          流程：text → 底座 TTS 生成中性 wav → RVC 转你训练好的音色 → 最终 wav。
+          需要先在 workstation 上用 <code>C:\TiaLynn-rvc</code> 训练 .pth 模型。
+        </p>
+        <label>
+          <span>RVC 音色</span>
+          <div class="row" style="flex: 1; gap: 6px">
+            <select v-model="form.rvc_voice" @change="markDirty" style="flex: 1">
+              <option value="">— 不启用 RVC，用底座 TTS 原声 —</option>
+              <option v-for="v in rvcVoices" :key="v" :value="v">{{ v }}</option>
+            </select>
+            <button class="ghost" @click="refreshRvcVoices">↻ 刷新</button>
+          </div>
+        </label>
+        <p v-if="rvcStatus" class="hint" :class="rvcStatus.startsWith('✗') ? 'bad' : 'ok'">
+          {{ rvcStatus }}
+        </p>
+        <label v-if="form.rvc_voice">
+          <span>音调偏移（半音）</span>
+          <div class="row" style="flex: 1; gap: 8px; align-items: center">
+            <input type="range" min="-12" max="12" step="1"
+              v-model.number="form.rvc_f0_up_key" @change="markDirty" style="flex: 1" />
+            <span style="min-width: 40px; text-align: right">{{ form.rvc_f0_up_key }}</span>
+          </div>
+        </label>
+        <p v-if="form.rvc_voice" class="hint">男→女 +12，女→男 -12，同性 0。底座 TTS 是女声时，转你声 -12 试试。</p>
+        <label v-if="form.rvc_voice">
+          <span>索引权重</span>
+          <div class="row" style="flex: 1; gap: 8px; align-items: center">
+            <input type="range" min="0" max="1" step="0.05"
+              v-model.number="form.rvc_index_rate" @change="markDirty" style="flex: 1" />
+            <span style="min-width: 40px; text-align: right">{{ Number(form.rvc_index_rate ?? 0).toFixed(2) }}</span>
+          </div>
+        </label>
+        <p v-if="form.rvc_voice" class="hint">0 = 纯模型，1 = 全用索引检索。0.75 推荐，越高越像但伪影也多。</p>
+        <label v-if="form.rvc_voice">
+          <span>F0 算法</span>
+          <select v-model="form.rvc_f0_method" @change="markDirty">
+            <option value="rmvpe">rmvpe（推荐 · 快 + 准）</option>
+            <option value="harvest">harvest（最准 · 慢）</option>
+            <option value="pm">pm（最快 · 易抖）</option>
+          </select>
+        </label>
+
+        <!-- v0.11: RVC 高级参数（折叠区） -->
+        <details v-if="form.rvc_voice" class="advanced">
+          <summary>🔧 高级参数（声音质感微调）</summary>
+          <label>
+            <span>清音保护 (protect)</span>
+            <div class="row" style="flex: 1; gap: 8px; align-items: center">
+              <input type="range" min="0" max="0.5" step="0.01"
+                v-model.number="form.rvc_protect" @change="markDirty" style="flex: 1" />
+              <span style="min-width: 50px; text-align: right">{{ Number(form.rvc_protect ?? 0.33).toFixed(2) }}</span>
+            </div>
+          </label>
+          <p class="hint">越高越保护辅音/呼吸的清晰度。0.33 推荐。太低会变机器声。</p>
+
+          <label>
+            <span>F0 平滑 (filter_radius)</span>
+            <div class="row" style="flex: 1; gap: 8px; align-items: center">
+              <input type="range" min="0" max="7" step="1"
+                v-model.number="form.rvc_filter_radius" @change="markDirty" style="flex: 1" />
+              <span style="min-width: 50px; text-align: right">{{ form.rvc_filter_radius }}</span>
+            </div>
+          </label>
+          <p class="hint">F0 中值滤波半径。≥3 去 harvest 算法的呼吸杂音；rmvpe 用 0 也可以。</p>
+
+          <label>
+            <span>音量包络 (rms_mix_rate)</span>
+            <div class="row" style="flex: 1; gap: 8px; align-items: center">
+              <input type="range" min="0" max="1" step="0.05"
+                v-model.number="form.rvc_rms_mix_rate" @change="markDirty" style="flex: 1" />
+              <span style="min-width: 50px; text-align: right">{{ Number(form.rvc_rms_mix_rate ?? 1).toFixed(2) }}</span>
+            </div>
+          </label>
+          <p class="hint">1 = 完全用源音量曲线，0 = 用目标音色固有音量。1 保持戏剧化语气，0 更接近角色平均音量。</p>
+
+          <label>
+            <span>输出采样率 (Hz)</span>
+            <select v-model.number="form.rvc_resample_sr" @change="markDirty">
+              <option :value="0">保持源采样率（推荐）</option>
+              <option :value="16000">16000 (极省带宽)</option>
+              <option :value="32000">32000</option>
+              <option :value="40000">40000</option>
+              <option :value="48000">48000 (高保真)</option>
+            </select>
+          </label>
+          <p class="hint">0 = 不重采样。多数 RVC 模型本身就是 40k/48k。</p>
+        </details>
+      </section>
+
+      <!-- v0.11: 底座 TTS 语速/音量/音调（无论是否启用 RVC，都先经过底座 TTS） -->
+      <section>
+        <h3>语音节奏（底座 TTS）</h3>
+        <p class="hint">不论是否启用 RVC，文字都先经 edge_tts 生成，下面参数控制原始语音的语速、音量、音调。</p>
+        <label>
+          <span>语速</span>
+          <div class="row" style="flex: 1; gap: 8px; align-items: center">
+            <input type="range" min="-50" max="50" step="5"
+              :value="parseTtsRate(form.tts_rate)"
+              @input="form.tts_rate = formatPct($event); markDirty()"
+              style="flex: 1" />
+            <span style="min-width: 60px; text-align: right; font-family: monospace">
+              {{ form.tts_rate || '+0%' }}
+            </span>
+          </div>
+        </label>
+        <p class="hint">负值变慢、正值变快。±50% 范围效果明显，超出会变奇怪。</p>
+
+        <label>
+          <span>音量</span>
+          <div class="row" style="flex: 1; gap: 8px; align-items: center">
+            <input type="range" min="-50" max="50" step="5"
+              :value="parseTtsRate(form.tts_volume)"
+              @input="form.tts_volume = formatPct($event); markDirty()"
+              style="flex: 1" />
+            <span style="min-width: 60px; text-align: right; font-family: monospace">
+              {{ form.tts_volume || '+0%' }}
+            </span>
+          </div>
+        </label>
+        <p class="hint">底座 TTS 输出音量。RVC 转换后会被 RMS 包络再次影响。</p>
+
+        <label>
+          <span>音调 (Hz)</span>
+          <div class="row" style="flex: 1; gap: 8px; align-items: center">
+            <input type="range" min="-50" max="50" step="5"
+              :value="parseTtsPitch(form.tts_pitch)"
+              @input="form.tts_pitch = formatHz($event); markDirty()"
+              style="flex: 1" />
+            <span style="min-width: 60px; text-align: right; font-family: monospace">
+              {{ form.tts_pitch || '+0Hz' }}
+            </span>
+          </div>
+        </label>
+        <p class="hint">edge_tts 的音调微调。如果启用了 RVC，主要用 RVC 的 ±12 半音；这个微调中和底座女声偏高的问题。</p>
       </section>
 
       <section>
@@ -638,4 +978,27 @@ footer {
   background: oklch(95% 0.05 80 / 0.6);
   color: oklch(45% 0.12 80);
 }
+
+/* v0.11: 高级参数折叠区 */
+.advanced {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: oklch(96% 0.015 250 / 0.4);
+  border-radius: 10px;
+  border: 1px solid oklch(88% 0.02 250 / 0.4);
+}
+.advanced summary {
+  font-weight: 600;
+  font-size: 13px;
+  color: oklch(35% 0.08 250);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.advanced[open] summary {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid oklch(88% 0.02 250 / 0.4);
+}
+.advanced label { margin-top: 8px; }
 </style>

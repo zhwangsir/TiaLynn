@@ -21,10 +21,12 @@ export const ensembleStrategy: IGenerationStrategy = {
       templateBasedStrategy.generate(ctx),
     ])
 
+    const STRATEGY_NAMES = ['direct_llm', 'plan_refine', 'template_based'] as const
     const drafts: Array<{ draft: MotionDraft; from: string; score: number }> = []
     for (let i = 0; i < results.length; i++) {
       const r = results[i]
-      const from = ['direct_llm', 'plan_refine', 'template_based'][i]
+      const from = STRATEGY_NAMES[i] ?? `strategy_${i}`
+      if (!r) continue
       if (r.status === 'fulfilled') {
         const scoring = scoreMotion(r.value, ctx.summary)
         drafts.push({ draft: r.value, from, score: scoring.total })
@@ -36,8 +38,8 @@ export const ensembleStrategy: IGenerationStrategy = {
     if (drafts.length === 0) {
       const reasons = results
         .map((r, i) =>
-          r.status === 'rejected'
-            ? `${['direct_llm', 'plan_refine', 'template_based'][i]}: ${r.reason}`
+          r && r.status === 'rejected'
+            ? `${STRATEGY_NAMES[i] ?? `strategy_${i}`}: ${r.reason}`
             : '',
         )
         .filter(Boolean)
@@ -47,6 +49,7 @@ export const ensembleStrategy: IGenerationStrategy = {
 
     drafts.sort((a, b) => b.score - a.score)
     const best = drafts[0]
+    if (!best) throw new Error('ensemble: drafts 非空但 [0] 取空 — 不可能')
     if (!best.draft.description) {
       best.draft.description = `${best.draft.name} (ensemble winner from ${best.from}, score=${best.score.toFixed(2)})`
     } else {

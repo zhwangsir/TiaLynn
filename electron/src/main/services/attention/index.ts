@@ -5,6 +5,7 @@ import type { BrowserWindow } from 'electron'
 import type { AttentionConfig, BehaviorPlan, SchedulerDecision } from '@shared/attention'
 import { scheduler } from './scheduler'
 import { planner } from '../planner'
+import { triggerScreenSnapshot } from '../perception'
 
 let getWindow: (() => BrowserWindow | null) | null = null
 
@@ -16,8 +17,19 @@ export function startAttention(
   scheduler.updateConfig(initialConfig)
   scheduler.onTrigger(async (decision: SchedulerDecision) => {
     try {
+      console.log(`[attention] trigger: ${decision.reason}`)
+      // v0.8.2: proactive trigger 时先抓一张屏给 planner 看
+      if (decision.reason.startsWith('proactive_monitor')) {
+        await triggerScreenSnapshot('user_request').catch(() => {
+          /* vision 失败不阻塞 planner */
+        })
+      }
       const plan = await planner.plan(decision)
+      console.log(
+        `[attention] plan reason="${plan.reasoning ?? ''}" actions=${plan.actions.map((a) => a.type).join(',')}`,
+      )
       scheduler.markActionTaken()
+      recordPlan(plan)
       const win = getWindow?.()
       if (win && !win.isDestroyed()) {
         win.webContents.send('attention:plan', plan)
@@ -51,12 +63,6 @@ export { scheduler, planner }
 /** 用于诊断：拿最近 N 个 plan（主进程内存） */
 const planHistory: BehaviorPlan[] = []
 const PLAN_HISTORY_LIMIT = 30
-
-scheduler.onTrigger(async (_decision) => {
-  // 这个 listener 只用来记录历史（实际执行在上面那个）
-  // noop here — 实际记录在 startAttention 的 callback 中
-  void _decision
-})
 
 export function recordPlan(plan: BehaviorPlan): void {
   planHistory.push(plan)

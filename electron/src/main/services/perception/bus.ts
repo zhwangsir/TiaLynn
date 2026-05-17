@@ -62,7 +62,7 @@ class PerceptionBus extends EventEmitter {
     type: T,
   ): Extract<PerceptionEvent, { type: T }> | undefined {
     for (let i = this.history.length - 1; i >= 0; i--) {
-      const ev = this.history[i]
+      const ev = this.history[i]!
       if (ev.type === type) return ev as Extract<PerceptionEvent, { type: T }>
     }
     return undefined

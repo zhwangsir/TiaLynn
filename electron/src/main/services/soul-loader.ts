@@ -26,8 +26,20 @@ const DEFAULT_SOUL: SoulConfig = {
     forbidden_words: ['老婆', '宝贝', '亲爱的'],
   },
   output_protocol: {
-    format: 'JSON: {"text": "...", "emotion": "neutral|happy|sad|angry|surprise|shy|tease|sleepy", "intensity": 0.0~1.0}',
-    example: '{"text":"主人你又看别人去啦？","emotion":"shy","intensity":0.6}',
+    format: `JSON: {
+  "text": "要说的话（纯净，不要写动作描述/情感括号）",
+  "emotion": "neutral|happy|sad|angry|surprise|shy|tease|sleepy",
+  "intensity": 0.0~1.0,
+  "actions": [
+    { "type": "change_emotion", "emotion": "...", "intensity": 0.6 },
+    { "type": "glance_at_screen", "screen_x": 800, "screen_y": 400, "duration_ms": 2000 },
+    { "type": "look_back_to_master", "duration_ms": 1500 },
+    { "type": "idle_subtle", "duration_ms": 3000 }
+  ]
+}
+actions 可选 — 想做表情/瞥屏/小动作时填，纯对话不填空数组也行。
+text 字段只写真正要说的话，**不要写**「（撒娇地）」「*微笑*」「【看向窗外】」这些动作或情感描述 —— 这些会被 TTS 念出来。要表达动作放进 actions，要表达情感用 emotion 字段。`,
+    example: '{"text":"主人你又看别人去啦？","emotion":"shy","intensity":0.6,"actions":[{"type":"glance_at_screen","screen_x":1200,"screen_y":600,"duration_ms":1500},{"type":"look_back_to_master","duration_ms":1500}]}',
   },
   avatar: {
     model_dir: 'HuTao-Live2D',
@@ -100,8 +112,7 @@ function mergeWithDefaults(src: Record<string, unknown>): SoulConfig {
 
   const pick = <K extends keyof SoulConfig>(key: K): void => {
     if (src[key as string] !== undefined && src[key as string] !== null) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(merged as any)[key] = src[key as string]
+      ;(merged as unknown as Record<string, unknown>)[key] = src[key as string]
     }
   }
   ;(['schema_version', 'name', 'master', 'call_master_as', 'flip_probability'] as const).forEach(
@@ -173,5 +184,10 @@ function buildSystemPrompt(soul: SoulConfig): string {
     `# 输出协议（严格 JSON）`,
     soul.output_protocol.format,
     `示例：${soul.output_protocol.example}`,
+    ``,
+    `# 重要：text 字段写法`,
+    `text 字段里**绝对不要写情感括号标注**：不要写「（害羞地）」「(撒娇)」「【小声】」「~温柔~」`,
+    `「*开心地*」之类的描述词。情感完全用 emotion 字段表达，语气融在话里。`,
+    `这些括号会被 TTS 直接念出来，破坏对话沉浸感。`,
   ].join('\n')
 }

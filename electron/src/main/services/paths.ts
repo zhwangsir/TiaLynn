@@ -48,10 +48,19 @@ export function getPaths(): TialynnPaths {
     join(projectRoot, 'soul'),
     join(projectRoot, '..', 'soul'),
   ]
-  const soulDir = candidateSoul.find((p) => existsSync(p)) ?? candidateSoul[0]
+  const soulDir = candidateSoul.find((p) => existsSync(p)) ?? candidateSoul[0]!
 
-  // 模型搜索路径：项目根 + electron 父级（仓库根）+ ~/.tialynn/models + 默认 Live2d-model-master
+  // 模型搜索路径优先级：
+  //   1. 项目内 models-library（v0.9: 17GB 已复制进来作为内置资源）
+  //   2. 项目根、仓库根（兜底 demo 模型）
+  //   3. ~/.tialynn/models（用户私有）
+  //   4. ~/Documents/Live2d-model-master（旧路径，向后兼容）
+  // models-library 作为独立 root → IP 在 depth=1, character_dir 在 depth=2，恰好符合 MAX_DEPTH=3
+  const modelsLibrary = app.isPackaged
+    ? join(projectRoot, 'models-library') // 打包后跟 resources 同级
+    : resolve(projectRoot, 'models-library') // dev: electron/models-library
   const modelSearchPaths = uniq([
+    modelsLibrary,
     projectRoot,
     resolve(projectRoot, '..'),
     join(userDataDir, 'models'),
@@ -65,7 +74,7 @@ export function getPaths(): TialynnPaths {
     modelSearchPaths,
     historyDbPath: join(userDataDir, 'history.sqlite'),
   }
-  return cached
+  return cached!
 }
 
 function ensureDir(p: string): string {

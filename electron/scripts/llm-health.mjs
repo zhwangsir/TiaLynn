@@ -10,6 +10,9 @@
  *   node scripts/llm-health.mjs http://192.168.71.100:1234 qwen3.5-397b-a17b --vision
  */
 
+import { deflateSync } from 'node:zlib'
+import { Buffer } from 'node:buffer'
+
 const args = process.argv.slice(2)
 const endpoint = args[0] || 'http://localhost:1234'
 const model = args[1] || ''
@@ -20,8 +23,43 @@ if (!model) {
   process.exit(1)
 }
 
-const TINY_PNG =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+// llama.cpp vision projector 要求图像 >= 2x2 (GGML_ASSERT)。
+// 1x1 PNG 会让模型 abort → LM Studio reload → API 报 "Model reloaded"。
+// 生成 16x16 灰色 PNG。
+function makeTinyPngBase64(w, h) {
+  const tab = []
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    tab[n] = c >>> 0
+  }
+  const crc32 = (buf) => {
+    let c = 0xffffffff
+    for (const b of buf) c = (tab[(c ^ b) & 0xff] ^ (c >>> 8)) >>> 0
+    return (c ^ 0xffffffff) >>> 0
+  }
+  const chunk = (t, d) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(d.length, 0)
+    const ty = Buffer.from(t, 'ascii')
+    const cr = Buffer.alloc(4); cr.writeUInt32BE(crc32(Buffer.concat([ty, d])), 0)
+    return Buffer.concat([len, ty, d, cr])
+  }
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 8; ihdr[9] = 2
+  const stride = 1 + w * 3
+  const raw = Buffer.alloc(h * stride)
+  for (let y = 0; y < h; y++) {
+    raw[y * stride] = 0
+    for (let x = 0; x < w; x++) {
+      const o = y * stride + 1 + x * 3
+      raw[o] = 128; raw[o + 1] = 128; raw[o + 2] = 128
+    }
+  }
+  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64')
+}
+const TINY_PNG = makeTinyPngBase64(16, 16)
 
 const c = {
   reset: '\x1b[0m',
@@ -205,7 +243,7 @@ try {
 
 // ============ 5. Vision (可选) ============
 if (testVision) {
-  header('5. Vision 支持 (1x1 PNG)')
+  header('5. Vision 支持 (16x16 PNG)')
   try {
     const t0 = Date.now()
     const r = await fetch(`${endpoint}/v1/chat/completions`, {

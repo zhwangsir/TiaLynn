@@ -89,7 +89,7 @@ export class AnthropicProvider implements LlmProviderImpl {
           'anthropic-version': this.anthropicVersion,
         },
         body: JSON.stringify(body),
-        signal: abortSignal,
+        signal: abortSignal ?? null,
       })
     } catch (e) {
       onEvent({ error: String(e) })

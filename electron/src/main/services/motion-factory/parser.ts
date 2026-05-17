@@ -23,6 +23,11 @@ interface RawMotion3 {
     Fps: number
     Loop: boolean
     CurveCount?: number
+    AreBeziersRestricted?: boolean
+    TotalSegmentCount?: number
+    TotalPointCount?: number
+    UserDataCount?: number
+    TotalUserDataSize?: number
   }
   Curves: Array<{
     Target: 'Parameter' | 'PartOpacity' | 'Model'
@@ -70,15 +75,10 @@ export function draftToMotion3Json(draft: MotionDraft): string {
       ? { UserData: [{ Time: 0, Value: draft.description }] }
       : {}),
   }
-  // @ts-expect-error 补充 Meta 额外字段
   data.Meta.AreBeziersRestricted = true
-  // @ts-expect-error
   data.Meta.TotalSegmentCount = totalSegmentCount
-  // @ts-expect-error
   data.Meta.TotalPointCount = totalPointCount
-  // @ts-expect-error
   data.Meta.UserDataCount = draft.description ? 1 : 0
-  // @ts-expect-error
   data.Meta.TotalUserDataSize = draft.description?.length ?? 0
 
   return JSON.stringify(data, null, 2)
@@ -94,10 +94,14 @@ function trackToSegments(t: KeyframeTrack): {
     return { segments: [0, 0], segmentCount: 0, pointCount: 1 }
   }
   const sorted = [...t.keyframes].sort((a, b) => a[0] - b[0])
-  const out: number[] = [sorted[0][0], sorted[0][1]]
+  const first = sorted[0]
+  if (!first) return { segments: [0, 0], segmentCount: 0, pointCount: 1 }
+  const out: number[] = [first[0], first[1]]
   let segCount = 0
   for (let i = 1; i < sorted.length; i++) {
-    out.push(0, sorted[i][0], sorted[i][1]) // type=0 Linear
+    const kf = sorted[i]
+    if (!kf) continue
+    out.push(0, kf[0], kf[1]) // type=0 Linear
     segCount++
   }
   return { segments: out, segmentCount: segCount, pointCount: sorted.length }
@@ -122,18 +126,20 @@ export function parseMotion3(filePath: string): {
     const seg = curve.Segments
     // 遍历所有 (time, value) 对取 value 极值
     // 起始点
-    if (seg.length >= 2) updateParam(params, curve.Id, seg[1])
+    if (seg.length >= 2 && seg[1] !== undefined) updateParam(params, curve.Id, seg[1])
     // 之后每段
     let i = 2
     while (i < seg.length) {
       const type = seg[i]
       if (type === 0 || type === 2 || type === 3) {
         // 2 数 [t, v]
-        if (i + 2 < seg.length) updateParam(params, curve.Id, seg[i + 2])
+        const v = seg[i + 2]
+        if (v !== undefined) updateParam(params, curve.Id, v)
         i += 3
       } else if (type === 1) {
         // 6 数 [c1t, c1v, c2t, c2v, et, ev]
-        if (i + 6 < seg.length) updateParam(params, curve.Id, seg[i + 6])
+        const v = seg[i + 6]
+        if (v !== undefined) updateParam(params, curve.Id, v)
         i += 7
       } else {
         i++

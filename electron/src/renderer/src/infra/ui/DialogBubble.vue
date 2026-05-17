@@ -9,7 +9,7 @@ const dialog = useDialogStore()
 const latest = computed(() => {
   const list = dialog.turns
   for (let i = list.length - 1; i >= 0; i--) {
-    if (list[i].role === 'assistant') return list[i]
+    if (list[i]!.role === 'assistant') return list[i]!
   }
   return null
 })
@@ -78,37 +78,58 @@ const emotionTint: Record<string, string> = {
 </template>
 
 <style scoped>
+/* v0.8.2+: 浮在窗口底部偏右；bottom 与 right 都用 clamp 自适应窗口大小 — */
+/* 大窗时往下沉，小窗时上抬，避免遮挡 InputBar / 角色脸 */
 .bubble {
   position: absolute;
-  top: 18px;
-  left: 18px;
-  right: 18px;
-  padding: 14px 18px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-bubble-border);
+  bottom: clamp(72px, 12vh, 140px);
+  right: clamp(8px, 2vw, 24px);
+  left: auto;
+  top: auto;
+  max-width: min(360px, 70vw);
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid oklch(85% 0.02 25 / 0.5);
   color: var(--color-bubble-text);
   font-size: var(--text-base);
   line-height: 1.55;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 32px oklch(0% 0 0 / 0.2), 0 2px 8px oklch(0% 0 0 / 0.1);
   display: flex;
   align-items: flex-start;
   gap: 10px;
   pointer-events: auto;
-  max-height: 38vh;
+  max-height: min(40vh, 320px);
   overflow-y: auto;
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  z-index: 1500;
 }
+
+/* 极小窗（< 320px 宽 或 < 480px 高）— 改为顶部居中显示，气泡更小 */
+@media (max-height: 480px), (max-width: 320px) {
+  .bubble {
+    bottom: auto;
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    max-width: none;
+    max-height: 30vh;
+    padding: 8px 12px;
+    font-size: var(--text-sm, 13px);
+  }
+  .bubble::after { display: none; }
+}
+/* 箭头指向左侧（人物方向） */
 .bubble::after {
   content: '';
   position: absolute;
-  bottom: -8px;
-  left: 30px;
-  width: 16px;
-  height: 16px;
+  left: -7px;
+  top: 24px;
+  width: 14px;
+  height: 14px;
   background: inherit;
-  border-right: 1px solid var(--color-bubble-border);
-  border-bottom: 1px solid var(--color-bubble-border);
+  border-left: 1px solid oklch(85% 0.02 25 / 0.5);
+  border-bottom: 1px solid oklch(85% 0.02 25 / 0.5);
   transform: rotate(45deg);
 }
 .text {

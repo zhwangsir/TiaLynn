@@ -84,11 +84,15 @@ function trackSmoothness(t: KeyframeTrack): number | null {
   // 二阶差分：speed 变化（加速度）
   const accs: number[] = []
   for (let i = 2; i < kf.length; i++) {
-    const dt1 = kf[i - 1][0] - kf[i - 2][0]
-    const dt2 = kf[i][0] - kf[i - 1][0]
+    const a = kf[i - 2]
+    const b = kf[i - 1]
+    const c = kf[i]
+    if (!a || !b || !c) continue
+    const dt1 = b[0] - a[0]
+    const dt2 = c[0] - b[0]
     if (dt1 <= 0 || dt2 <= 0) continue
-    const v1 = (kf[i - 1][1] - kf[i - 2][1]) / dt1
-    const v2 = (kf[i][1] - kf[i - 1][1]) / dt2
+    const v1 = (b[1] - a[1]) / dt1
+    const v2 = (c[1] - b[1]) / dt2
     accs.push(Math.abs(v2 - v1))
   }
   if (accs.length === 0) return 0.5
@@ -141,8 +145,11 @@ function scoreLoopCompatibility(draft: MotionDraft, summary: ModelMotionSummary)
   let minJump = 1
   for (const t of draft.tracks) {
     if (t.keyframes.length < 2) continue
-    const first = t.keyframes[0][1]
-    const last = t.keyframes[t.keyframes.length - 1][1]
+    const firstKf = t.keyframes[0]
+    const lastKf = t.keyframes[t.keyframes.length - 1]
+    if (!firstKf || !lastKf) continue
+    const first = firstKf[1]
+    const last = lastKf[1]
     const p = summary.params.find((x) => x.id === t.param)
     const range = p ? Math.max(0.01, Math.abs(p.max - p.min)) : 1
     const ratio = Math.abs(last - first) / range
