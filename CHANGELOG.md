@@ -4,12 +4,102 @@
 
 ## [Unreleased]
 
-### 路线
-- M2 (v0.6.x)：能听能说（CosyVoice + whisper.cpp + 嘴型同步）
-- M3 (v0.7.x)：能记（ChromaDB + 共同回忆导入）
-- M4 (v0.8.x)：能干活（MCP 工具调用，**项目灵魂**）
-- M5 (v0.9.x)：能主动（屏幕感知 + 主动开口）
-- M6：能进化（习惯学习 + 记忆衰减）
+### 路线（实际状况，2026-05-18）
+- ✅ M0 v0.4 Constitutional Rewrite
+- ✅ M1 v0.5 多 LLM Provider + 多文件灵魂加载
+- ✅ M2 v0.6 Electron 重生 + 五大能力域重构
+- ✅ M3 v0.7 动作工业链（Motion factory + Engine）
+- ✅ M4 v0.8 主体性 AI（PerceptionBus + Attention + Planner）
+- ✅ M5 v0.9-v0.10 模型库 + 收藏 + 角色增强
+- ✅ M6 v0.11 RVC 47 voice + 流式 TTS
+- ✅ M7 v0.12 资源商店 + 在线 repo 浏览
+- ✅ M8 v0.13 TS Tier 3 严格化 + audit 修复批
+- ⏳ v0.14+：长期向量记忆 + MCP 工具调用 + RPA 自动化
+
+---
+
+## [0.13.0] — 2026-05-18 — Audit Hardening
+
+### Added
+- TypeScript Tier 3 严格化 (RFC 0001) — noUncheckedIndexedAccess + exactOptionalPropertyTypes + noImplicitReturns + noImplicitOverride，0 `any` / 0 `@ts-ignore`
+- 首次启动引导浮窗（OnboardingDialog）— 3 步配 LLM + TTS sidecar
+- 磁盘占用面板（DiskUsageDialog）+ 可清理项「释放」按钮
+- electron-log 接管 console，文件写入 `~/.tialynn/logs/main.log`
+- single-instance lock — 第二个实例拉前现有窗口
+- history.sqlite 保留策略 — pruneOlderThan(days) + VACUUM
+- SettingsPanel 拆 5 tab（🧠 大脑 / 🎭 立绘 / 🎙️ 声音 / 🎚️ RVC / 💎 灵魂）
+- INSTALL.md 非开发者 dmg 安装指南
+- docs/STATUS.md 文档现状索引
+
+### Changed
+- 根 `package.json` 瘦身 — 删 4 个 Tauri deps + 3 个 CSS devDeps
+- 默认 `llm_endpoint` / `llm_model` 改空字符串，未配置时不启动 attention loop
+- `pnpm-workspace.yaml` 删根 `.` member
+- README 重写 — Electron + v0.6.3 真实现状
+
+### Removed
+- `src-tauri/` (5.4 GB Rust target + 配置) — v0.1 Tauri 死代码
+- `src/` (144 KB v0.1 Vue renderer 副本)
+- 根 `index.html` / `vite.config.ts` / `tailwind.config.js` / `postcss.config.js`
+
+### Output
+- `electron/release/0.6.3/TiaLynn-0.6.3-arm64.dmg` (108 MB, unsigned)
+- `electron/release/0.6.3/TiaLynn-0.6.3.dmg` (113 MB, x64, unsigned)
+
+---
+
+## [0.12.0] — 2026-05-17 — 资源商店 + 在线 repo
+
+- 资源商店 (ResourceStorePanel) 3 tab：立绘 / 音色 / 在线
+- OnlineStoreTab — 浏览 HuggingFace + GitHub 真实 repo（curl 验证 7 HF + 4 GitHub）
+- 自定义 URL 安装 — installCustomZip
+- system:open-external IPC
+
+## [0.11.0] — 2026-05-17 — RVC + 流式 TTS
+
+- F5-TTS + CosyVoice + RVC 47 voice sidecar
+- 流式 TTS 双队列 + EPIPE 守卫
+- RVC 9 项高级参数（f0 / index_rate / protect / filter_radius / rms_mix_rate / resample_sr）
+- 设置面板 RVC tab
+- backends/rvc.py: 修一连串依赖（ffmpeg-python / faiss / parselmouth / pyworld / torchcrepe）+ sys.argv 清理 + chdir + weight_root env
+
+## [0.10.0] — 2026-05-17 — 模型质量工业链
+
+- model-describer / model-dedup / model-healer / model-scanner 完整闭环
+- 1389 模型缩略图 PIXI off-screen 渲染 + thumb-store 持久化
+- character-enricher LLM 给 ~1400 角色补中文名 + 1 行简介
+- ip-knowledge 已知 IP 列表
+- ModelLibraryPanel: viewMode (all / favorites / recent) + 未识别 IP 归「📦 其他」桶
+
+## [0.9.0] — 2026-05-16 — 模型库改造
+
+- model-preferences / model-favorites 持久化（~/.tialynn/）
+- live2d-renderer: idle motion auto-pick + auto-fit + hideBackgroundParts
+
+## [0.8.0] — 2026-05-16 — 主体性 AI
+
+- Phase A: PerceptionBus 主体性架构基建
+- Phase B: 视觉感知（截屏 + LM Studio vision LLM 分析）
+- Phase C+D+E: Attention Scheduler + Planner + Plan 执行
+- v0.8.1: LLM 健康自检 IPC + 独立 CLI 脚本 + thinking 模型 reasoning_content + 大 max_tokens
+- v0.8.2: 视觉三件套从 RuntimeConfig 透传
+
+## [0.7.0] — 2026-05-16 — 动作工业链
+
+- v0.7.0: 模型市场 — 拖放/ZIP/URL 一键安装
+- v0.7.1: AI 动作工坊 MVP — Claude 学已有模型风格生成 motion3.json
+- v0.7.2: ParameterIntrospector 语义识别基建
+- v0.7.3: MotionLibrary + MotionEngine
+- v0.7.4: 完整工业链 — Phase 1.D + 2 + 4 + MotionPlayer + UI
+- v0.7.5: LM Studio / Qwen MoE jinja template 兼容
+
+## [0.6.0] — 2026-05-15 — Electron 重生 ★ 五大能力域
+
+- 从 Tauri 转 Electron + 吸收 airi 成熟做法
+- 五大能力域结构：avatar / brain / hands / presence / attention（infra 横切）
+- v0.6.0-v0.6.11: Live2D race condition / 切模型 cubism2→cubism4 自动回退 /
+  含 # 或 ? 文件名 Texture loading / 黑屏占位模型 3 层防御 / preload IPC deepPlain 等
+- v0.6.1: 设置按钮 setIgnoreMouseEvents 默认 false（穿透卡死修复）
 
 ---
 
