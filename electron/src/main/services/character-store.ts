@@ -136,6 +136,40 @@ export function createCharacter(input: CreateCharacterInput): Character {
   return c
 }
 
+/** v0.14 T8: 读 character 灵魂目录下指定 yaml 文件 */
+export function readCharacterSoulFile(id: string, filename: string): { ok: boolean; content?: string; reason?: string } {
+  // 安全: 防 path traversal
+  if (!/^[a-zA-Z0-9_-]+\.ya?ml$/.test(filename)) {
+    return { ok: false, reason: '非法文件名（只允许 [a-zA-Z0-9_-]+.yaml）' }
+  }
+  const c = getCharacter(id)
+  if (!c) return { ok: false, reason: 'character not found' }
+  const p = join(characterSoulDir(id), filename)
+  if (!existsSync(p)) return { ok: true, content: '' }
+  try {
+    return { ok: true, content: readFileSync(p, 'utf-8') }
+  } catch (e) {
+    return { ok: false, reason: String(e).slice(0, 200) }
+  }
+}
+
+export function writeCharacterSoulFile(id: string, filename: string, content: string): { ok: boolean; reason?: string } {
+  if (!/^[a-zA-Z0-9_-]+\.ya?ml$/.test(filename)) {
+    return { ok: false, reason: '非法文件名' }
+  }
+  const c = getCharacter(id)
+  if (!c) return { ok: false, reason: 'character not found' }
+  if (content.length > 100_000) return { ok: false, reason: '内容超过 100KB 上限' }
+  const dir = characterSoulDir(id)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  try {
+    writeFileSync(join(dir, filename), content, 'utf-8')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: String(e).slice(0, 200) }
+  }
+}
+
 export function deleteCharacter(id: string): { ok: boolean; reason?: string } {
   const c = getCharacter(id)
   if (!c) return { ok: false, reason: 'not_found' }

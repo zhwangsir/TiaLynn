@@ -227,6 +227,8 @@ const api: TialynnApi = {
     delete: (id) => invoke('characters:delete', id) as ReturnType<TialynnApi['characters']['delete']>,
     switch: (id) => invoke('characters:switch', id) as ReturnType<TialynnApi['characters']['switch']>,
     recordChat: () => invoke('characters:record-chat') as ReturnType<TialynnApi['characters']['recordChat']>,
+    readSoulFile: (payload) => invoke('characters:read-soul-file', payload) as ReturnType<TialynnApi['characters']['readSoulFile']>,
+    writeSoulFile: (payload) => invoke('characters:write-soul-file', payload) as ReturnType<TialynnApi['characters']['writeSoulFile']>,
     onSwitched: (cb) => {
       const handler = (_: unknown, character: unknown): void => cb(character as Parameters<typeof cb>[0])
       ipcRenderer.on('character:switched', handler)

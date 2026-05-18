@@ -8,9 +8,11 @@ import {
   getActiveCharacter,
   getCharacter,
   listCharacters,
+  readCharacterSoulFile,
   recordChatInteraction,
   setActiveCharacterId,
   updateCharacter,
+  writeCharacterSoulFile,
 } from '../services/character-store'
 import { reopenForActiveCharacter } from '../services/history-store'
 import type { Character, CreateCharacterInput } from '@shared/character'
@@ -35,6 +37,23 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
   })
 
   ipcMain.handle('characters:delete', (_evt, id: string) => deleteCharacter(id))
+
+  /** v0.14 T8: 读 character 灵魂目录的 yaml 文件 */
+  ipcMain.handle('characters:read-soul-file', (_evt, payload: { id: string; filename: string }) => {
+    return readCharacterSoulFile(payload.id, payload.filename)
+  })
+  ipcMain.handle(
+    'characters:write-soul-file',
+    (_evt, payload: { id: string; filename: string; content: string }) => {
+      const r = writeCharacterSoulFile(payload.id, payload.filename, payload.content)
+      // 写完通知 renderer 重新 reload soul
+      const win = getWindow()
+      if (r.ok && win && !win.isDestroyed()) {
+        win.webContents.send('soul:changed')
+      }
+      return r
+    },
+  )
 
   /** v0.14 T5: 每轮对话完成后调用，更新 last_chat_at + total_chats + intimacy 成长 */
   ipcMain.handle('characters:record-chat', () => {

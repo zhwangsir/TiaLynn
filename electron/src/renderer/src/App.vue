@@ -15,6 +15,7 @@ import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
+import SoulEditor from './infra/ui/SoulEditor.vue'
 import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
@@ -41,6 +42,7 @@ const menuY = ref(0)
 const onboardingOpen = ref(false)
 const characterPickerOpen = ref(false)
 const characterCreatorOpen = ref(false)
+const soulEditorOpen = ref(false)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
@@ -51,7 +53,8 @@ const passthroughEnabled = computed(
     !libraryOpen.value &&
     !onboardingOpen.value &&
     !characterPickerOpen.value &&
-    !characterCreatorOpen.value,
+    !characterCreatorOpen.value &&
+    !soulEditorOpen.value,
 )
 
 const menuItems = computed<MenuItem[]>(() => [
@@ -267,6 +270,7 @@ onBeforeUnmount(() => {
         v-if="ready"
         @open-settings="settingsOpen = true"
         @open-picker="characterPickerOpen = true"
+        @open-soul-editor="soulEditorOpen = true"
         @reload-model="onReloadModelClick"
       />
       <DialogBubble v-if="ready" />
@@ -291,6 +295,10 @@ onBeforeUnmount(() => {
       <CharacterCreator
         v-if="characterCreatorOpen"
         @close="characterCreatorOpen = false"
+      />
+      <SoulEditor
+        v-if="soulEditorOpen"
+        @close="soulEditorOpen = false"
       />
       <ApprovalDialog />
       <ToastStack />

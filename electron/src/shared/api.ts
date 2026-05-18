@@ -235,6 +235,9 @@ export interface TialynnApi {
     switch(id: string): Promise<{ ok: boolean; character?: Character; reason?: string }>
     /** v0.14 T5: 对话完成时调用，更新亲密度 */
     recordChat(): Promise<{ ok: boolean; character?: Character | null; reason?: string }>
+    /** v0.14 T8: 读 character 灵魂目录的 yaml 文件（filename 限 [a-zA-Z0-9_-]+.yaml） */
+    readSoulFile(payload: { id: string; filename: string }): Promise<{ ok: boolean; content?: string; reason?: string }>
+    writeSoulFile(payload: { id: string; filename: string; content: string }): Promise<{ ok: boolean; reason?: string }>
     onSwitched(cb: (character: Character) => void): () => void
   }
   soul: {

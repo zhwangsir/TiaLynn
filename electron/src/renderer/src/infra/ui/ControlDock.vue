@@ -5,6 +5,7 @@ import { bus } from '../eventbus'
 const emit = defineEmits<{
   (e: 'open-settings'): void
   (e: 'open-picker'): void
+  (e: 'open-soul-editor'): void
   (e: 'reload-model'): void
 }>()
 
@@ -45,6 +46,14 @@ function zoomReset(): void {
         <path d="M5 21a4 4 0 0 1 4-4h0a4 4 0 0 1 4 4" />
         <path d="m17 4 3 3-3 3" />
         <path d="M14 7h6" />
+      </svg>
+    </button>
+    <button class="dock-btn" title="编辑灵魂" @click="emit('open-soul-editor')">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 3h12l4 6-10 12L2 9z" />
+        <path d="M11 3 8 9l4 12 4-12-3-6" />
+        <path d="M2 9h20" />
       </svg>
     </button>
     <button class="dock-btn" title="设置" @click="emit('open-settings')">
