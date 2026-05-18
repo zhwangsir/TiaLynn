@@ -27,6 +27,16 @@ export function registerToolIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('tools:list', () => listTools())
 
+  // v0.15 D1+D2: MCP 内置工具
+  ipcMain.handle('mcp:list', async () => {
+    const { listMCPTools } = await import('../services/mcp-registry')
+    return listMCPTools()
+  })
+  ipcMain.handle('mcp:run', async (_evt, payload: { name: string; input: Record<string, unknown> }) => {
+    const { runMCPTool } = await import('../services/mcp-registry')
+    return runMCPTool(payload.name, payload.input)
+  })
+
   ipcMain.handle('tools:policy-get', () => policy.load())
   ipcMain.handle(
     'tools:policy-set',

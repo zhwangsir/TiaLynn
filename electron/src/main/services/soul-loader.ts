@@ -214,5 +214,19 @@ function buildSystemPrompt(soul: SoulConfig): string {
     parts.push(`记住：上面只是示范，不是模板。要自然变化，但保持这种**语气和性格**。`)
   }
 
+  // v0.15 D2: 注入 MCP tools 描述
+  try {
+    // 用 require 延迟加载防循环依赖（mcp-registry → memory-store → 可能反向）
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const mcp = require('./mcp-registry') as { buildMCPToolsPrompt: () => string }
+    const toolsPrompt = mcp.buildMCPToolsPrompt()
+    if (toolsPrompt) {
+      parts.push(``)
+      parts.push(toolsPrompt)
+    }
+  } catch {
+    /* mcp-registry 加载失败不影响主流程 */
+  }
+
   return parts.join('\n')
 }
