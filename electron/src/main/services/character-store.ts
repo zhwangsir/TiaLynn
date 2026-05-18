@@ -170,6 +170,42 @@ export function writeCharacterSoulFile(id: string, filename: string, content: st
   }
 }
 
+/** v0.15 B3: 克隆角色 — 完整 copy 灵魂目录 + character.json，新 id，亲密度/记忆归零 */
+export function cloneCharacter(sourceId: string, newName?: string): { ok: boolean; character?: Character; reason?: string } {
+  const src = getCharacter(sourceId)
+  if (!src) return { ok: false, reason: 'source not found' }
+  const baseName = newName ?? `${src.name} (副本)`
+  const newId = generateId(baseName)
+  const newDir = characterDir(newId)
+  try {
+    mkdirSync(newDir, { recursive: true })
+    // copy soul 目录
+    const srcSoul = characterSoulDir(sourceId)
+    if (existsSync(srcSoul)) cpSync(srcSoul, characterSoulDir(newId), { recursive: true })
+    // copy preferences
+    const srcPrefs = characterPreferencesPath(sourceId)
+    if (existsSync(srcPrefs)) cpSync(srcPrefs, characterPreferencesPath(newId))
+    // 不 copy history.sqlite — 新角色应该有自己的对话上下文
+    // 新 character.json — 重置亲密度/对话次数/时间戳
+    const cloned: Character = {
+      ...src,
+      id: newId,
+      name: baseName,
+      description: src.description ? `${src.description}（克隆自 ${src.name}）` : `克隆自 ${src.name}`,
+      intimacy_level: 0,
+      total_chats: 0,
+      last_chat_at: 0,
+      created_at: Date.now(),
+      builtin: false, // 克隆产物永远不是 builtin
+    }
+    saveCharacterMeta(cloned)
+    return { ok: true, character: cloned }
+  } catch (e) {
+    try { rmSync(newDir, { recursive: true, force: true }) } catch { /* skip */ }
+    return { ok: false, reason: String(e).slice(0, 200) }
+  }
+}
+
 export function deleteCharacter(id: string): { ok: boolean; reason?: string } {
   const c = getCharacter(id)
   if (!c) return { ok: false, reason: 'not_found' }

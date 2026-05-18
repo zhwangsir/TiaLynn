@@ -3,6 +3,7 @@
  */
 import { ipcMain, type BrowserWindow } from 'electron'
 import {
+  cloneCharacter,
   createCharacter,
   deleteCharacter,
   getActiveCharacter,
@@ -37,6 +38,9 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
   })
 
   ipcMain.handle('characters:delete', (_evt, id: string) => deleteCharacter(id))
+  ipcMain.handle('characters:clone', (_evt, payload: { source_id: string; new_name?: string }) => {
+    return cloneCharacter(payload.source_id, payload.new_name)
+  })
 
   /** v0.14 T8: 读 character 灵魂目录的 yaml 文件 */
   ipcMain.handle('characters:read-soul-file', (_evt, payload: { id: string; filename: string }) => {

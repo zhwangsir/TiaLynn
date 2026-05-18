@@ -80,6 +80,17 @@ export const useCharacterStore = defineStore('character', () => {
     return r
   }
 
+  async function clone(sourceId: string, newName?: string): Promise<
+    { ok: true; character: Character } | { ok: false; reason: string }
+  > {
+    const r = await window.api.characters.clone({
+      source_id: sourceId,
+      ...(newName ? { new_name: newName } : {}),
+    })
+    if (r.ok) await refresh()
+    return r
+  }
+
   return {
     active,
     all,
@@ -89,5 +100,6 @@ export const useCharacterStore = defineStore('character', () => {
     switchTo,
     create,
     remove,
+    clone,
   }
 })

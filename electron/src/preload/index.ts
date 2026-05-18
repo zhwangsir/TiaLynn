@@ -225,6 +225,7 @@ const api: TialynnApi = {
     create: (input) => invoke('characters:create', input) as ReturnType<TialynnApi['characters']['create']>,
     update: (payload) => invoke('characters:update', payload) as ReturnType<TialynnApi['characters']['update']>,
     delete: (id) => invoke('characters:delete', id) as ReturnType<TialynnApi['characters']['delete']>,
+    clone: (payload) => invoke('characters:clone', payload) as ReturnType<TialynnApi['characters']['clone']>,
     switch: (id) => invoke('characters:switch', id) as ReturnType<TialynnApi['characters']['switch']>,
     recordChat: () => invoke('characters:record-chat') as ReturnType<TialynnApi['characters']['recordChat']>,
     readSoulFile: (payload) => invoke('characters:read-soul-file', payload) as ReturnType<TialynnApi['characters']['readSoulFile']>,

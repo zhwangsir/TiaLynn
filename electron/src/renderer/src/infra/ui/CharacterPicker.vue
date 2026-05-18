@@ -43,6 +43,22 @@ async function pick(id: string): Promise<void> {
   }
 }
 
+async function clone(id: string, e: Event): Promise<void> {
+  e.stopPropagation()
+  const src = character.all.find((c) => c.id === id)
+  if (!src) return
+  const r = await character.clone(id)
+  if (r.ok) {
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `已克隆 ${src.name} → ${r.character.name}（亲密度重置）`,
+      ttl_ms: 4000,
+    })
+  } else {
+    bus.emit('ui:toast', { kind: 'error', message: `克隆失败: ${r.reason}`, ttl_ms: 4000 })
+  }
+}
+
 async function remove(id: string, e: Event): Promise<void> {
   e.stopPropagation()
   const target = character.all.find((c) => c.id === id)
@@ -138,14 +154,23 @@ function initials(name: string): string {
               </span>
               <span class="meta-time">{{ relativeTime(c.last_chat_at) }}</span>
             </div>
-            <button
-              v-if="!c.builtin && c.id !== character.active?.id"
-              class="remove-btn"
-              title="删除"
-              @click="remove(c.id, $event)"
-            >
-              ✕
-            </button>
+            <div class="card-actions">
+              <button
+                class="action-btn clone-btn"
+                title="克隆 (复制灵魂 + 偏好，重置亲密度)"
+                @click="clone(c.id, $event)"
+              >
+                ⎘
+              </button>
+              <button
+                v-if="!c.builtin && c.id !== character.active?.id"
+                class="action-btn remove-btn"
+                title="删除"
+                @click="remove(c.id, $event)"
+              >
+                ✕
+              </button>
+            </div>
           </button>
         </div>
 
@@ -361,22 +386,30 @@ h2 {
   color: var(--color-muted);
 }
 
-.remove-btn {
+.card-actions {
   position: absolute;
   top: 4px;
   right: 4px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.char-card:hover .card-actions {
+  opacity: 1;
+}
+.action-btn {
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: oklch(0% 0 0 / 0.05);
+  background: oklch(0% 0 0 / 0.06);
   color: var(--color-muted);
   font-size: 11px;
-  opacity: 0;
-  transition: opacity var(--duration-fast), color var(--duration-fast),
-    background var(--duration-fast);
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
-.char-card:hover .remove-btn {
-  opacity: 1;
+.clone-btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 .remove-btn:hover {
   background: var(--color-danger-soft);

@@ -232,6 +232,10 @@ export interface TialynnApi {
       { ok: true; character: Character } | { ok: false; reason: string }
     >
     delete(id: string): Promise<{ ok: boolean; reason?: string }>
+    /** v0.15 B3: 克隆角色 (复制灵魂 + 偏好，重置亲密度/历史) */
+    clone(payload: { source_id: string; new_name?: string }): Promise<
+      { ok: true; character: Character } | { ok: false; reason: string }
+    >
     switch(id: string): Promise<{ ok: boolean; character?: Character; reason?: string }>
     /** v0.14 T5: 对话完成时调用，更新亲密度 */
     recordChat(): Promise<{ ok: boolean; character?: Character | null; reason?: string }>
