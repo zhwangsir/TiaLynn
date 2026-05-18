@@ -4,6 +4,7 @@ import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import DiskUsageDialog from './DiskUsageDialog.vue'
 import RvcSettingsSection from './settings/RvcSettingsSection.vue'
+import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -52,11 +53,12 @@ const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 /** v0.13: 磁盘占用统计 dialog */
 const diskUsageOpen = ref(false)
 /** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
-type SettingsTab = 'llm' | 'avatar' | 'tts' | 'rvc' | 'soul'
+type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul'
 const activeTab = ref<SettingsTab>('llm')
 const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'llm', label: '大脑', icon: '🧠' },
   { id: 'avatar', label: '立绘', icon: '🎭' },
+  { id: 'scene', label: '场景', icon: '🌅' },
   { id: 'tts', label: '声音', icon: '🎙️' },
   { id: 'rvc', label: 'RVC', icon: '🎚️' },
   { id: 'soul', label: '灵魂', icon: '💎' },
@@ -615,6 +617,10 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </p>
       </section>
 
+      </div>
+
+      <div v-show="activeTab === 'scene'">
+        <SceneSettingsTab />
       </div>
 
       <div v-show="activeTab === 'tts'">

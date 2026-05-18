@@ -82,6 +82,36 @@ const timeFilter = computed(() => {
         }"
       >🌸</span>
     </template>
+    <!-- 雨夜雨滴 -->
+    <template v-if="sceneId === 'rainy'">
+      <span
+        v-for="i in 40"
+        :key="i"
+        class="raindrop"
+        :style="{
+          left: ((i * 23) % 100) + '%',
+          animationDelay: (i * 0.13) + 's',
+          animationDuration: (0.4 + (i % 3) * 0.15) + 's',
+        }"
+      ></span>
+    </template>
+    <!-- 雪景雪花 -->
+    <template v-if="sceneId === 'snow'">
+      <span
+        v-for="i in 25"
+        :key="i"
+        class="snowflake"
+        :style="{
+          left: ((i * 31) % 100) + '%',
+          animationDelay: (i * 0.7) + 's',
+          animationDuration: (10 + (i % 5)) + 's',
+        }"
+      >❄</span>
+    </template>
+    <!-- 火炉跳动火苗 -->
+    <template v-if="sceneId === 'fireplace'">
+      <span class="fire-glow"></span>
+    </template>
   </div>
 
   <!-- 时间光照覆盖层 — 当场景为透明时也启用 -->
@@ -180,6 +210,146 @@ const timeFilter = computed(() => {
     oklch(85% 0.07 12 / 0.25) 55%,
     transparent 82%
   );
+}
+
+/* === 咖啡馆：木色 + 暖灯 === */
+.scene-cafe {
+  background: radial-gradient(
+    circle at 50% 65%,
+    oklch(85% 0.08 45 / 0.55) 0%,
+    oklch(72% 0.08 40 / 0.4) 30%,
+    oklch(58% 0.06 35 / 0.22) 55%,
+    transparent 82%
+  );
+}
+.scene-cafe::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, oklch(95% 0.12 65 / 0.18) 0%, transparent 50%);
+}
+
+/* === 海边：蓝绿 === */
+.scene-ocean {
+  background: radial-gradient(
+    circle at 50% 60%,
+    oklch(80% 0.08 200 / 0.55) 0%,
+    oklch(70% 0.1 210 / 0.4) 30%,
+    oklch(55% 0.1 215 / 0.22) 55%,
+    transparent 82%
+  );
+}
+.scene-ocean::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* 水平方向的波浪线 */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 40px,
+      oklch(70% 0.1 215 / 0.06) 40px,
+      oklch(70% 0.1 215 / 0.06) 41px
+    );
+}
+
+/* === 雨夜 === */
+.scene-rainy {
+  background: radial-gradient(
+    circle at 50% 60%,
+    oklch(32% 0.06 245 / 0.6) 0%,
+    oklch(25% 0.04 240 / 0.45) 30%,
+    oklch(18% 0.03 235 / 0.3) 55%,
+    transparent 82%
+  );
+}
+.raindrop {
+  position: absolute;
+  top: -10%;
+  width: 1.5px;
+  height: 18px;
+  background: linear-gradient(to bottom, transparent, oklch(85% 0.04 250 / 0.5));
+  animation: rain-fall linear infinite;
+}
+@keyframes rain-fall {
+  to { transform: translateY(120vh); }
+}
+
+/* === 雪景 === */
+.scene-snow {
+  background: radial-gradient(
+    circle at 50% 60%,
+    oklch(92% 0.03 230 / 0.55) 0%,
+    oklch(82% 0.04 220 / 0.4) 30%,
+    oklch(70% 0.04 220 / 0.22) 55%,
+    transparent 82%
+  );
+}
+.snowflake {
+  position: absolute;
+  top: -30px;
+  font-size: 12px;
+  opacity: 0.7;
+  color: white;
+  animation: snow-fall linear infinite;
+  filter: drop-shadow(0 1px 1px oklch(0% 0 0 / 0.05));
+}
+@keyframes snow-fall {
+  0% { transform: translateY(-30px) translateX(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.85; }
+  100% { transform: translateY(110vh) translateX(60px) rotate(360deg); opacity: 0; }
+}
+
+/* === 火炉 === */
+.scene-fireplace {
+  background: radial-gradient(
+    circle at 50% 70%,
+    oklch(75% 0.18 35 / 0.55) 0%,
+    oklch(62% 0.15 30 / 0.4) 30%,
+    oklch(45% 0.12 25 / 0.22) 55%,
+    transparent 82%
+  );
+}
+.fire-glow {
+  position: absolute;
+  left: 50%;
+  bottom: 15%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 100px;
+  background: radial-gradient(ellipse at 50% 100%, oklch(85% 0.2 50 / 0.4) 0%, transparent 70%);
+  animation: fire-flicker 1.5s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+@keyframes fire-flicker {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+}
+
+/* === 图书馆 === */
+.scene-library {
+  background: radial-gradient(
+    circle at 50% 60%,
+    oklch(85% 0.05 70 / 0.55) 0%,
+    oklch(75% 0.06 60 / 0.4) 30%,
+    oklch(60% 0.05 55 / 0.22) 55%,
+    transparent 82%
+  );
+}
+.scene-library::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* 竖向「书架」纹理 */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 30px,
+      oklch(40% 0.06 50 / 0.07) 30px,
+      oklch(40% 0.06 50 / 0.07) 32px
+    );
 }
 .petal {
   position: absolute;
