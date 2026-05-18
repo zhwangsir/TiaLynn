@@ -38,6 +38,30 @@ const customKeywords = ref('')
 // 音色
 const rvcVoices = ref<string[]>([])
 const rvcVoice = ref('')
+const previewingVoice = ref<string | null>(null)
+const selectedCharacterId = ref<string | null>(null) // 选模型时自动捕获 model.meta.character_id
+
+// v0.15 B2: 试听 5 秒
+async function previewVoice(voiceId: string): Promise<void> {
+  if (previewingVoice.value) return
+  previewingVoice.value = voiceId
+  try {
+    const r = await window.api.tts.speak({
+      text: '你好主人～我是这个声音哦',
+      voice: voiceId,
+      emotion: 'happy',
+    })
+    if (r.ok) {
+      const audio = new Audio(`data:${r.mime};base64,${r.audio_b64}`)
+      await audio.play()
+      await new Promise((res) => audio.addEventListener('ended', res, { once: true }))
+    } else {
+      bus.emit('ui:toast', { kind: 'error', message: `试听失败: ${r.reason ?? ''}`, ttl_ms: 3000 })
+    }
+  } finally {
+    previewingVoice.value = null
+  }
+}
 
 // 模板预览
 interface TemplateInfo {
@@ -65,9 +89,11 @@ const filteredModels = computed(() => {
     .slice(0, 30)
 })
 
-function selectModel(m: { dir: string; model_file: string; display: string }): void {
+function selectModel(m: { dir: string; model_file: string; display: string; meta?: { character_id?: string } }): void {
   modelDir.value = m.dir
   modelFile.value = m.model_file
+  // v0.15 B2: 捕获模型的 character_id 以便 finish 时拉缩略图作头像
+  selectedCharacterId.value = m.meta?.character_id ?? null
 }
 
 const selectedModelLabel = computed(() => {
@@ -115,6 +141,20 @@ async function finish(): Promise<void> {
     if (!r.ok) {
       bus.emit('ui:toast', { kind: 'error', message: `创建失败: ${r.reason}`, ttl_ms: 5000 })
       return
+    }
+    // v0.15 B2: 如果选的模型有 character_id 且有缩略图缓存 → 写到 avatar_thumb_url
+    if (selectedCharacterId.value) {
+      try {
+        const thumb = await window.api.thumbs.get(selectedCharacterId.value)
+        if (thumb.exists && thumb.url) {
+          await window.api.characters.update({
+            id: r.character.id,
+            patch: { avatar_thumb_url: thumb.url },
+          })
+        }
+      } catch {
+        /* 缩略图缺失不阻塞创建 */
+      }
     }
     bus.emit('ui:toast', { kind: 'success', message: `已创建 ${r.character.name}，正在切换...`, ttl_ms: 3000 })
     await character.switchTo(r.character.id)
@@ -229,14 +269,23 @@ async function finish(): Promise<void> {
             <button :class="['voice-pill', { active: rvcVoice === '' }]" @click="rvcVoice = ''">
               不用 RVC（纯 TTS）
             </button>
-            <button
-              v-for="v in rvcVoices"
-              :key="v"
-              :class="['voice-pill', { active: rvcVoice === v }]"
-              @click="rvcVoice = v"
-            >
-              {{ v }}
-            </button>
+            <div v-for="v in rvcVoices" :key="v" class="voice-row">
+              <button
+                :class="['voice-pill', { active: rvcVoice === v }]"
+                @click="rvcVoice = v"
+              >
+                {{ v }}
+              </button>
+              <button
+                class="preview-btn"
+                :disabled="previewingVoice !== null"
+                :title="`试听 ${v}`"
+                @click="previewVoice(v)"
+              >
+                <span v-if="previewingVoice === v">⏸</span>
+                <span v-else>▶</span>
+              </button>
+            </div>
           </div>
           <div v-else class="empty-hint">
             RVC sidecar 未连接 / 无已训练音色。创建后可以在设置里改。
@@ -351,14 +400,47 @@ h1 {
   outline: none;
 }
 
-.model-grid,
-.rvc-list {
+.model-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   max-height: 200px;
   overflow-y: auto;
   padding: 4px;
+}
+.rvc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.voice-row .voice-pill {
+  flex: 1;
+  text-align: left;
+}
+.preview-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--color-bubble-surface);
+  color: var(--color-accent);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.preview-btn:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  transform: scale(1.08);
+}
+.preview-btn:disabled {
+  opacity: 0.4;
+  cursor: wait;
 }
 .model-pill,
 .voice-pill {
