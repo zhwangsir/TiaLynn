@@ -169,8 +169,9 @@ h2 {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 14px;
-  background: oklch(96% 0.012 25 / 0.7);
+  padding: 14px 16px;
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
   margin-bottom: 14px;
 }
@@ -187,11 +188,15 @@ h2 {
 .refresh-btn {
   padding: 6px 12px;
   border-radius: var(--radius-pill);
-  background: oklch(95% 0.012 25 / 0.8);
+  background: var(--color-bubble);
+  border: 1px solid var(--color-bubble-border);
   font-size: var(--text-xs);
+  color: var(--color-bubble-text);
 }
 .refresh-btn:hover:not(:disabled) {
-  background: oklch(92% 0.015 25 / 0.9);
+  background: var(--color-bubble-surface-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 .refresh-btn:disabled {
   opacity: 0.5;
@@ -204,10 +209,16 @@ h2 {
 .entry {
   display: flex;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
-  background: oklch(97% 0.008 25 / 0.6);
+  background: var(--color-bubble-surface);
+  border: 1px solid transparent;
   align-items: flex-start;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.entry:hover {
+  border-color: var(--color-divider);
+  background: var(--color-bubble-surface-hover);
 }
 .entry.not-exist {
   opacity: 0.45;
@@ -253,16 +264,24 @@ h2 {
   text-overflow: ellipsis;
 }
 .clean-btn {
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: var(--radius-pill);
-  background: oklch(94% 0.05 80 / 0.7);
-  color: oklch(45% 0.15 80);
+  background: oklch(94% 0.05 80 / 0.6);
+  color: var(--color-warn);
   font-size: var(--text-xs);
   font-weight: 600;
   flex-shrink: 0;
+  border: 1px solid oklch(85% 0.08 80 / 0.5);
+}
+@media (prefers-color-scheme: dark) {
+  .clean-btn {
+    background: oklch(35% 0.08 80 / 0.4);
+    border-color: oklch(50% 0.1 80 / 0.5);
+  }
 }
 .clean-btn:hover:not(:disabled) {
-  background: oklch(91% 0.06 80 / 0.85);
+  background: oklch(89% 0.08 80 / 0.85);
+  transform: translateY(-1px);
 }
 .clean-btn:disabled {
   opacity: 0.5;
@@ -270,11 +289,11 @@ h2 {
 }
 .note {
   margin: 14px 0 0;
-  padding: 10px 12px;
+  padding: 11px 14px;
   font-size: 11px;
   color: var(--color-muted);
-  line-height: 1.5;
-  background: oklch(96% 0.012 25 / 0.5);
+  line-height: 1.55;
+  background: var(--color-bubble-surface);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--color-accent);
 }

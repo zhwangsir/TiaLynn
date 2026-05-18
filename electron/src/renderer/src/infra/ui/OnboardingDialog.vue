@@ -238,6 +238,8 @@ $ uvicorn main:app --host 127.0.0.1 --port 8765</pre>
   max-height: 86vh;
   overflow: auto;
   border: 1px solid var(--color-bubble-border);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
 header {
   display: flex;
@@ -254,8 +256,8 @@ header {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: oklch(88% 0.012 25);
-  transition: all var(--duration-fast);
+  background: var(--color-divider);
+  transition: all var(--duration-normal) var(--ease-out-back);
 }
 .dot.active {
   background: var(--color-accent);
@@ -317,14 +319,16 @@ h2 {
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  background: oklch(96% 0.012 25 / 0.7);
+  background: var(--color-bubble-surface);
   text-align: left;
-  transition: all var(--duration-fast);
+  transition: background var(--duration-fast), border-color var(--duration-fast),
+    transform var(--duration-fast);
   border: 1px solid transparent;
 }
 .preset-btn:hover {
-  background: oklch(94% 0.015 25 / 0.9);
+  background: var(--color-bubble-surface-hover);
   border-color: var(--color-accent);
+  transform: translateY(-1px);
 }
 .preset-label {
   font-weight: 600;
@@ -348,28 +352,31 @@ h2 {
 }
 .field input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-bubble-border);
-  background: oklch(98% 0.005 25);
+  background: var(--color-bubble-surface);
+  color: var(--color-bubble-text);
   font-size: var(--text-sm);
   font-family: inherit;
   box-sizing: border-box;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 .field input:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -1px;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 .code {
   margin: 0 0 14px;
-  padding: 10px 12px;
-  background: oklch(20% 0.01 25 / 0.92);
-  color: oklch(92% 0.01 145);
+  padding: 12px 14px;
+  background: oklch(18% 0.01 25 / 0.95);
+  color: oklch(92% 0.04 145);
   border-radius: var(--radius-sm);
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  border: 1px solid oklch(0% 0 0 / 0.1);
 }
 .probe-row {
   display: flex;
@@ -381,10 +388,12 @@ h2 {
   font-size: var(--text-xs);
 }
 .probe-status.ok {
-  color: oklch(45% 0.15 145);
+  color: var(--color-success);
+  font-weight: 500;
 }
 .probe-status.fail {
-  color: oklch(45% 0.18 25);
+  color: var(--color-danger);
+  font-weight: 500;
 }
 footer {
   display: flex;
@@ -401,11 +410,11 @@ footer {
   transition: all var(--duration-fast);
 }
 .ghost {
-  background: oklch(95% 0.012 25 / 0.7);
+  background: var(--color-bubble-surface);
   color: var(--color-bubble-text);
 }
 .ghost:hover {
-  background: oklch(92% 0.015 25 / 0.9);
+  background: var(--color-bubble-surface-hover);
 }
 .ghost:disabled {
   opacity: 0.5;
