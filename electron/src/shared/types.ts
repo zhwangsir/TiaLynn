@@ -153,6 +153,15 @@ export interface SoulConfig {
     offset_y: number
     search_paths: string[]
   }
+  /** v0.15 B1: few-shot 示范对话，LLM 学习角色语气的最高 ROI 手段 */
+  example_dialogues?: Array<{
+    user: string
+    assistant: {
+      text: string
+      emotion: string
+      intensity: number
+    }
+  }>
 }
 
 export interface IpcStreamChunk {

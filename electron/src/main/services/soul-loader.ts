@@ -168,7 +168,7 @@ function mergeWithDefaults(src: Record<string, unknown>): SoulConfig {
 }
 
 function buildSystemPrompt(soul: SoulConfig): string {
-  return [
+  const parts: string[] = [
     `# 你的身份`,
     `你叫 ${soul.name}。你的主人是 ${soul.master}。你称呼主人为「${soul.call_master_as}」。`,
     ``,
@@ -194,5 +194,25 @@ function buildSystemPrompt(soul: SoulConfig): string {
     `text 字段里**绝对不要写情感括号标注**：不要写「（害羞地）」「(撒娇)」「【小声】」「~温柔~」`,
     `「*开心地*」之类的描述词。情感完全用 emotion 字段表达，语气融在话里。`,
     `这些括号会被 TTS 直接念出来，破坏对话沉浸感。`,
-  ].join('\n')
+  ]
+
+  // v0.15 B1: few-shot examples — 提升 LLM 学习「这个角色应该怎么说话」最高 ROI 手段
+  if (soul.example_dialogues && soul.example_dialogues.length > 0) {
+    parts.push(``)
+    parts.push(`# 你的说话方式（学习这些示范）`)
+    parts.push(`下面是 ${soul.name} 在不同场景下应该的回应。请严格模仿这种语气、用词、emotion 选择：`)
+    parts.push(``)
+    for (const ex of soul.example_dialogues) {
+      parts.push(`【主人】 ${ex.user}`)
+      parts.push(`【${soul.name}】 ${JSON.stringify({
+        text: ex.assistant.text,
+        emotion: ex.assistant.emotion,
+        intensity: ex.assistant.intensity,
+      }, null, 0)}`)
+      parts.push(``)
+    }
+    parts.push(`记住：上面只是示范，不是模板。要自然变化，但保持这种**语气和性格**。`)
+  }
+
+  return parts.join('\n')
 }
