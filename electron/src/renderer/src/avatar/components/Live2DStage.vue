@@ -243,6 +243,12 @@ onBeforeUnmount(() => {
 <template>
   <div ref="containerRef" class="live2d-stage" :data-state="status">
     <canvas ref="canvasRef" class="live2d-canvas" />
+    <!-- v0.15 A2: 切换 character 时的 shimmer 过渡层 -->
+    <transition name="shimmer">
+      <div v-if="status === 'loading'" class="shimmer-veil">
+        <div class="shimmer-pulse"></div>
+      </div>
+    </transition>
     <div v-if="status === 'loading'" class="overlay">
       <span class="dot" />正在召唤……
     </div>
@@ -266,6 +272,46 @@ onBeforeUnmount(() => {
   /* v0.8.2: canvas pointer-events: none，让上层 UI（ControlDock/DialogBubble）能正常 hit-test。
      立绘鼠标命中由主进程 cursor poll + alpha-hit sampler 处理，不依赖 canvas 自己接事件。 */
   pointer-events: none;
+  /* v0.15 A2: loading 时 canvas 整体淡出 */
+  transition: opacity var(--duration-normal) var(--ease-in-out);
+}
+.live2d-stage[data-state='loading'] .live2d-canvas {
+  opacity: 0.3;
+}
+
+/* v0.15 A2: shimmer 切换过渡 — 切角色时柔和过渡而非硬切 */
+.shimmer-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+.shimmer-pulse {
+  position: absolute;
+  inset: 20% 25%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--color-accent-soft) 0%,
+    transparent 70%
+  );
+  animation: shimmer-breath 1.5s var(--ease-in-out) infinite;
+  filter: blur(20px);
+  opacity: 0.5;
+}
+@keyframes shimmer-breath {
+  0%, 100% { transform: scale(0.85); opacity: 0.3; }
+  50% { transform: scale(1.05); opacity: 0.7; }
+}
+
+.shimmer-enter-active,
+.shimmer-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-in-out);
+}
+.shimmer-enter-from,
+.shimmer-leave-to {
+  opacity: 0;
 }
 .overlay {
   position: absolute;
