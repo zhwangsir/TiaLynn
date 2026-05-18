@@ -8,6 +8,7 @@ import {
   getActiveCharacter,
   getCharacter,
   listCharacters,
+  recordChatInteraction,
   setActiveCharacterId,
   updateCharacter,
 } from '../services/character-store'
@@ -34,6 +35,15 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
   })
 
   ipcMain.handle('characters:delete', (_evt, id: string) => deleteCharacter(id))
+
+  /** v0.14 T5: 每轮对话完成后调用，更新 last_chat_at + total_chats + intimacy 成长 */
+  ipcMain.handle('characters:record-chat', () => {
+    const active = getActiveCharacter()
+    if (!active) return { ok: false as const, reason: 'no_active' }
+    recordChatInteraction(active.id)
+    const updated = getCharacter(active.id)
+    return { ok: true as const, character: updated }
+  })
 
   ipcMain.handle('characters:switch', (_evt, id: string) => {
     const r = setActiveCharacterId(id)

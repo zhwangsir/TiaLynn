@@ -290,6 +290,10 @@ export const useDialogStore = defineStore('dialog', () => {
     if (parsed.actions && parsed.actions.length > 0) {
       bus.emit('brain:reply-actions', { actions: parsed.actions })
     }
+    // v0.14 T5: 对话完成 → 更新当前 character 亲密度 + last_chat_at
+    void window.api.characters.recordChat().catch((e) => {
+      console.warn('[dialog] recordChat failed:', e)
+    })
     replying.value = false
     currentStreamId.value = null
     activeAssistantId = null

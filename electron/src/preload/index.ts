@@ -226,6 +226,7 @@ const api: TialynnApi = {
     update: (payload) => invoke('characters:update', payload) as ReturnType<TialynnApi['characters']['update']>,
     delete: (id) => invoke('characters:delete', id) as ReturnType<TialynnApi['characters']['delete']>,
     switch: (id) => invoke('characters:switch', id) as ReturnType<TialynnApi['characters']['switch']>,
+    recordChat: () => invoke('characters:record-chat') as ReturnType<TialynnApi['characters']['recordChat']>,
     onSwitched: (cb) => {
       const handler = (_: unknown, character: unknown): void => cb(character as Parameters<typeof cb>[0])
       ipcRenderer.on('character:switched', handler)

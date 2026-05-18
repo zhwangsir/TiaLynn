@@ -27,6 +27,19 @@ export const useCharacterStore = defineStore('character', () => {
       active.value = c
       bus.emit('character:switched', { character: c })
     })
+    // 监听对话结束 → 刷新当前 character (拿最新 intimacy / last_chat_at)
+    bus.on('brain:reply-end', () => {
+      void refreshActive()
+    })
+  }
+
+  async function refreshActive(): Promise<void> {
+    try {
+      const a = await window.api.characters.active()
+      if (a) active.value = a
+    } catch {
+      /* skip */
+    }
   }
 
   async function refresh(): Promise<void> {

@@ -233,6 +233,8 @@ export interface TialynnApi {
     >
     delete(id: string): Promise<{ ok: boolean; reason?: string }>
     switch(id: string): Promise<{ ok: boolean; character?: Character; reason?: string }>
+    /** v0.14 T5: 对话完成时调用，更新亲密度 */
+    recordChat(): Promise<{ ok: boolean; character?: Character | null; reason?: string }>
     onSwitched(cb: (character: Character) => void): () => void
   }
   soul: {
