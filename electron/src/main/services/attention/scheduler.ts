@@ -36,8 +36,11 @@ export class AttentionScheduler {
     last_action_at: 0,
     idle_ms: 0,
     time_period: 'morning',
+    session_active_ms: 0,
   }
   private lastProactiveAt = 0
+  /** v0.14: 本次启动时间，用于计算 session_active_ms */
+  private sessionStartedAt = Date.now()
   private config: AttentionConfig = { ...DEFAULT_ATTENTION_CONFIG }
   private timer: ReturnType<typeof setInterval> | null = null
   private unsubscribers: Array<() => void> = []
@@ -177,6 +180,8 @@ export class AttentionScheduler {
     // 自然衰减
     this.decay('focus_on_screen', 0.05)
     this.decay('focus_on_master', 0.02)
+    // v0.14: session_active_ms 实时更新
+    this.state.session_active_ms = Date.now() - this.sessionStartedAt
 
     const now = Date.now()
     const sinceAction = now - this.state.last_action_at
@@ -226,6 +231,17 @@ export class AttentionScheduler {
       reasons.push('detected_frustration')
     }
 
+    // v0.14 P4-T12: 时间事件触发
+    const timeEventReason = this.evaluateTimeEvents()
+    if (timeEventReason) {
+      reasons.push(timeEventReason)
+    }
+
+    // v0.14 P4-T12: 疲劳曲线 — 连续工作 > 90 分钟
+    if (snap.idle_ms < 60_000 && snap.session_active_ms > 90 * 60_000) {
+      reasons.push(`fatigue(work=${Math.round(snap.session_active_ms / 60_000)}min)`)
+    }
+
     if (reasons.length === 0) {
       return { should_act: false, reason: 'no trigger', snapshot: snap }
     }
@@ -234,6 +250,60 @@ export class AttentionScheduler {
       reason: reasons.join(' + '),
       snapshot: snap,
     }
+  }
+
+  /**
+   * v0.14 P4-T12: 时间事件 — 早安/午饭/晚安/整点等。
+   * 每个时间窗口内只触发一次（用 lastTimeEventKey 防重复）。
+   */
+  private lastTimeEventKey: string = ''
+  private evaluateTimeEvents(): string | null {
+    const d = new Date()
+    const h = d.getHours()
+    const m = d.getMinutes()
+    const day = d.toDateString()
+
+    // 早安窗口 6:00-9:00（每天第一次）
+    if (h >= 6 && h < 9) {
+      const k = `morning-${day}`
+      if (this.lastTimeEventKey !== k) {
+        this.lastTimeEventKey = k
+        return 'time_event:good_morning'
+      }
+    }
+    // 午饭提醒 12:00-13:00
+    if (h === 12 && m < 30) {
+      const k = `lunch-${day}`
+      if (this.lastTimeEventKey !== k) {
+        this.lastTimeEventKey = k
+        return 'time_event:lunch_reminder'
+      }
+    }
+    // 下午休息 15:30-16:00
+    if (h === 15 && m >= 30) {
+      const k = `afternoon_break-${day}`
+      if (this.lastTimeEventKey !== k) {
+        this.lastTimeEventKey = k
+        return 'time_event:afternoon_break'
+      }
+    }
+    // 晚安 22:30 之后
+    if (h >= 22 && m >= 30) {
+      const k = `goodnight-${day}`
+      if (this.lastTimeEventKey !== k) {
+        this.lastTimeEventKey = k
+        return 'time_event:goodnight'
+      }
+    }
+    // 深夜关心 1:00-3:00（如果你还在）
+    if (h >= 1 && h < 3) {
+      const k = `late_night-${day}`
+      if (this.lastTimeEventKey !== k) {
+        this.lastTimeEventKey = k
+        return 'time_event:late_night_concern'
+      }
+    }
+    return null
   }
 }
 

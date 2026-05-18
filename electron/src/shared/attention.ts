@@ -24,6 +24,8 @@ export interface AttentionSnapshot {
   idle_ms: number
   /** 当前时段 */
   time_period: 'morning' | 'afternoon' | 'evening' | 'night' | 'late_night'
+  /** v0.14 P4-T12: 本次启动以来连续活跃时长 ms (用于疲劳曲线) */
+  session_active_ms: number
 }
 
 /** Planner 输出的行为指令 */
