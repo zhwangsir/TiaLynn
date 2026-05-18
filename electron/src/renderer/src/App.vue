@@ -12,6 +12,8 @@ import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
+import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
+import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
@@ -23,6 +25,7 @@ const cfg = useConfigStore()
 const dialog = useDialogStore()
 const speech = useSpeechStore()
 const approval = useApprovalStore()
+const character = useCharacterStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
@@ -34,6 +37,7 @@ const menuOpen = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
 const onboardingOpen = ref(false)
+const characterPickerOpen = ref(false)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
@@ -179,11 +183,23 @@ async function onDrop(e: DragEvent): Promise<void> {
 
 onMounted(async () => {
   await cfg.bootstrap()
+  await character.bootstrap()           // v0.14: 先 load character
   await dialog.bootstrap()
   speech.bootstrap()
   approval.bootstrap()
   dialog.injectGreeting()
   ready.value = true
+
+  // v0.14: 切角色时清空对话历史 + 重新 inject greeting
+  bus.on('character:switched', async () => {
+    await dialog.bootstrap()  // reload per-character history
+    await cfg.reloadSoul()    // 新角色的灵魂
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `已切换到 ${character.active?.name ?? '?'}`,
+      ttl_ms: 2500,
+    })
+  })
 
   // v0.13 首次启动引导：LLM 未配置就弹出
   if (!cfg.config?.llm_endpoint || !cfg.config?.llm_model) {
@@ -241,9 +257,11 @@ onBeforeUnmount(() => {
       @drop="onDrop"
     >
       <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
+      <CharacterStatusBar v-if="ready" @open-picker="characterPickerOpen = true" />
       <ControlDock
         v-if="ready"
         @open-settings="settingsOpen = true"
+        @open-picker="characterPickerOpen = true"
         @reload-model="onReloadModelClick"
       />
       <DialogBubble v-if="ready" />

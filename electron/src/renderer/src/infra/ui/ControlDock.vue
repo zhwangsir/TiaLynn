@@ -4,6 +4,7 @@ import { bus } from '../eventbus'
 
 const emit = defineEmits<{
   (e: 'open-settings'): void
+  (e: 'open-picker'): void
   (e: 'reload-model'): void
 }>()
 
@@ -37,7 +38,16 @@ function zoomReset(): void {
 <template>
   <div class="dock">
     <!-- 主操作组 -->
-    <button class="dock-btn primary" title="设置" @click="emit('open-settings')">
+    <button class="dock-btn primary" title="切换角色" @click="emit('open-picker')">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M5 21a4 4 0 0 1 4-4h0a4 4 0 0 1 4 4" />
+        <path d="m17 4 3 3-3 3" />
+        <path d="M14 7h6" />
+      </svg>
+    </button>
+    <button class="dock-btn" title="设置" @click="emit('open-settings')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3" />
