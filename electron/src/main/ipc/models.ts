@@ -8,6 +8,20 @@
 import { ipcMain } from 'electron'
 
 export function registerModelsIpc(): void {
+  // v0.15 E1: Live2D 模型行业标准学习数据库
+  ipcMain.handle('models:compute-learnings', async (_evt, force?: boolean) => {
+    const { computeLearnings } = await import('../services/model-learnings')
+    return computeLearnings(!!force)
+  })
+  ipcMain.handle('models:get-learnings', async () => {
+    const { loadLearnings } = await import('../services/model-learnings')
+    return loadLearnings()
+  })
+  ipcMain.handle('models:evaluate', async (_evt, payload: { model_json_path: string }) => {
+    const { evaluateModel, loadLearnings } = await import('../services/model-learnings')
+    return evaluateModel(payload.model_json_path, loadLearnings())
+  })
+
   // v0.8.2: Model Auto-Heal — 给模型补基础 motion/expression + bind orphan
   ipcMain.handle('models:heal', async (_evt, payload: { model_json_path: string }) => {
     const { healModel } = await import('../services/model-healer')
