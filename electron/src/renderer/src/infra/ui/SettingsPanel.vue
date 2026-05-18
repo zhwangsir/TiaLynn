@@ -891,7 +891,7 @@ header h2 {
   display: flex;
   gap: 4px;
   padding: 4px;
-  background: oklch(96% 0.012 25 / 0.55);
+  background: var(--color-bubble-surface);
   border-radius: var(--radius-md);
   position: sticky;
   top: -16px;
@@ -903,27 +903,32 @@ header h2 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 4px;
+  gap: 3px;
+  padding: 7px 4px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 500;
   color: var(--color-muted);
   background: transparent;
-  transition: all var(--duration-fast);
+  transition: color var(--duration-fast), background var(--duration-fast);
+  position: relative;
 }
 .tab:hover {
-  background: oklch(94% 0.015 25 / 0.7);
+  background: var(--color-bubble-surface-hover);
   color: var(--color-bubble-text);
+}
+.tab:hover .tab-icon {
+  transform: scale(1.1);
 }
 .tab.active {
   background: var(--color-bubble);
   color: var(--color-accent);
-  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.06);
+  box-shadow: var(--shadow-sm);
 }
 .tab-icon {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
+  transition: transform var(--duration-fast) var(--ease-out-back);
 }
 .tab-label {
   font-size: 10px;

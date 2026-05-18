@@ -117,14 +117,20 @@ onBeforeUnmount(() => {
   color: var(--color-bubble-text);
   text-align: left;
   background: transparent;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast),
+    padding var(--duration-fast) var(--ease-out-expo);
 }
 .item:hover:not(.disabled) {
-  background: oklch(95% 0.02 25 / 0.7);
+  background: var(--color-bubble-surface-hover);
+  /* hover 时图标轻微右滑 — 微反馈 */
+  padding-left: 12px;
+  padding-right: 8px;
+}
+.item.danger {
+  color: var(--color-danger);
 }
 .item.danger:hover:not(.disabled) {
-  background: oklch(92% 0.1 25 / 0.6);
-  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 .item.disabled {
   opacity: 0.4;
@@ -137,6 +143,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  color: var(--color-muted);
+  transition: color var(--duration-fast);
+}
+.item:hover:not(.disabled) .icon {
+  color: var(--color-accent);
+}
+.item.danger:hover:not(.disabled) .icon {
+  color: var(--color-danger);
 }
 .icon :deep(svg) {
   width: 16px;
@@ -149,18 +163,21 @@ onBeforeUnmount(() => {
 }
 .label {
   flex: 1;
+  font-weight: 500;
 }
 .shortcut {
   font-size: var(--text-xs);
   color: var(--color-muted);
   padding: 1px 6px;
-  background: oklch(94% 0.012 25 / 0.6);
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-divider);
   border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 .sep {
   height: 1px;
   margin: 4px 6px;
-  background: var(--color-bubble-border);
+  background: var(--color-divider);
 }
 
 .menu-enter-active,

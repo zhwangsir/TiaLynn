@@ -67,11 +67,13 @@ function inputPreview(input: Record<string, unknown>): string {
   width: min(440px, 92vw);
   max-height: 90vh;
   overflow-y: auto;
-  background: oklch(99% 0.008 25 / 0.98);
+  background: var(--color-bubble);
   border: 1px solid var(--color-bubble-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   color: var(--color-bubble-text);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
 .card[data-risk='high'] {
   border-color: oklch(75% 0.18 25 / 0.6);
@@ -130,10 +132,13 @@ pre {
   padding: 10px 12px;
   font-size: 11px;
   line-height: 1.5;
-  background: oklch(94% 0.012 25 / 0.6);
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-all;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--color-bubble-text);
 }
 footer {
   display: flex;

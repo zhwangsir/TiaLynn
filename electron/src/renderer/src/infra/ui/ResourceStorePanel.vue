@@ -101,9 +101,10 @@ const activeTab = ref<TabId>('avatars')
   display: flex;
   gap: 4px;
   padding: 16px 24px 0;
-  border-bottom: 1px solid oklch(90% 0.01 250 / 0.4);
+  border-bottom: 1px solid var(--color-divider);
 }
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -111,26 +112,45 @@ const activeTab = ref<TabId>('avatars')
   border-radius: 10px 10px 0 0;
   font-size: 13px;
   font-weight: 500;
-  color: oklch(45% 0.05 250);
-  transition: all 150ms;
+  color: var(--color-muted);
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
-.tab:hover { background: oklch(94% 0.02 250 / 0.5); }
+.tab:hover { background: var(--color-bubble-surface); color: var(--color-bubble-text); }
 .tab.active {
-  color: oklch(25% 0.1 250);
-  background: oklch(96% 0.025 250 / 0.7);
+  color: var(--color-accent);
+  background: var(--color-bubble-surface);
   font-weight: 600;
+}
+/* v0.13 UX: active tab 下面有横条指示器，跟 Material / iOS 一致 */
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 2px 2px 0 0;
+  animation: tab-bar-in 0.3s var(--ease-out-back);
+}
+@keyframes tab-bar-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 .badge {
   font-size: 10px;
   font-weight: 600;
   padding: 1px 6px;
-  background: oklch(92% 0.05 250);
-  color: oklch(40% 0.1 250);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   border-radius: 999px;
 }
 .badge.soon {
-  background: oklch(94% 0.06 80);
-  color: oklch(40% 0.12 80);
+  background: oklch(94% 0.06 80 / 0.7);
+  color: var(--color-warn);
+}
+@media (prefers-color-scheme: dark) {
+  .badge.soon { background: oklch(35% 0.06 80 / 0.5); }
 }
 
 .tab-body {
