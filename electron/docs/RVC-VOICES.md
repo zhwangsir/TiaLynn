@@ -1,11 +1,11 @@
 # RVC 音色目录与使用指南（v0.10）
 
-48 个可用音色：master（你自训）+ 47 个原神角色（ArkanDash 公开模型，100-700 epoch + 5-20 分钟干净游戏配音）。
+47 个公开音色（ArkanDash 公开原神角色模型，100-700 epoch + 5-20 分钟干净游戏配音）+ 你自训的个人音色（可选）。
 
 ## 部署位置
 - **模型**：`workstation:C:\TiaLynn-rvc\assets\weights\<voice_id>.pth` (~50-80MB/个)
 - **索引**：`workstation:C:\TiaLynn-rvc\logs\<voice_id>\added_<voice_id>.index` (~300-500MB/个)
-- **sidecar API**：`GET http://192.168.71.100:8765/v1/rvc/voices` 列出全部
+- **sidecar API**：`GET http://127.0.0.1:8765/v1/rvc/voices` 列出全部
 
 ## 使用方法
 
@@ -19,7 +19,7 @@
 
 ### 方式 2：直接调 sidecar
 ```bash
-curl -X POST http://192.168.71.100:8765/v1/audio/speech \
+curl -X POST http://127.0.0.1:8765/v1/audio/speech \
   -H "content-type: application/json" \
   -d '{
     "text": "你想说的话",
@@ -107,10 +107,13 @@ curl -X POST http://192.168.71.100:8765/v1/audio/speech \
 | `zhongli-jp` | 钟离 岩王帝君 |
 | `itto-jp` | 一斗 豪迈（**唯一 40k 采样率**） |
 
-## 你的声音
-| voice_id | 来源 | 训练 | f0 |
-|----------|------|------|-----|
-| `master` | 主人 7 个样本 ~2.2 分钟 | 100 epoch CPU | -12（底座女声→你男声） |
+## 自训音色（可选）
+
+你可以用 RVC 训练自己的音色（命名 `master` 或任意 voice_id），步骤：
+1. 准备 5-20 分钟干净语音样本（单说话人，去背景音）
+2. 在 workstation 跑 RVC WebUI 训练（100 epoch CPU 即可起步）
+3. 模型放 `assets/weights/<voice_id>.pth`，索引放 `logs/<voice_id>/added_<voice_id>.index`
+4. TiaLynn UI → 设置 → RVC 音色下拉就会列出
 
 ## 推荐组合（TiaLynn 女友场景）
 
@@ -121,7 +124,7 @@ curl -X POST http://192.168.71.100:8765/v1/audio/speech \
 | 御姐反差 | `raiden-jp` f0=-2 index=0.7 |
 | 大小姐 | `ayaka-jp` f0=0 index=0.8 |
 | 元气陪伴 | `barbara-jp` f0=0 index=0.75 |
-| 听你自己 | `master` f0=0 index=0.75 |
+| 听你自训音色 | `<your_voice_id>` f0=0 index=0.75 |
 | 不用 RVC | 设置里清空 RVC 音色，走纯 edge_tts |
 
 ## 参数微调

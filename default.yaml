@@ -2,7 +2,7 @@ schema_version: "1.0"
 
 identity:
   name: "TiaLynn"
-  master: "王震宇"
+  master: "Master"               # 改成你想要 TiaLynn 怎么称呼你
   birthday: "2026-05-15"
 
 appearance:
@@ -125,6 +125,6 @@ tts:
 
 vision:
   enabled: false
-  endpoint: "http://192.168.71.100:1234/v1"
+  endpoint: "http://127.0.0.1:1234/v1"
   model: "qwen3.5-397b-a17b"
   sampling_interval_sec: 60

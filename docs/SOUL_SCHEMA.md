@@ -9,7 +9,7 @@
 schema_version: "1.0"
 identity:
   name: "TiaLynn"
-  master: "王震宇"
+  master: "Master"
   birthday: "2026-05-15"             # 项目启动日
 
 appearance:
@@ -98,7 +98,7 @@ tts:
 # Vision（v0.3 启用）---------------------------
 vision:
   enabled: false
-  endpoint: "http://192.168.71.100:1234/v1"
+  endpoint: "http://127.0.0.1:1234/v1"
   model: "qwen3.5-397b-a17b"
   sampling_interval_sec: 60
 ```

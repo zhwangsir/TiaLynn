@@ -328,7 +328,7 @@ function relativePathPortable(fromDir: string, toFile: string): string {
 
 /** 取目录的顶级 segment（用于 mergeGroups 安全检查：只合并同 root 下的） */
 function topLevelOf(dir: string): string {
-  // 取 path 的前两层（如 /Users/wangzhenyu/Documents/Live2d-model-master/BanG... → /Users/wangzhenyu/Documents/Live2d-model-master）
+  // 取 path 的前两层（如 /Users/<user>/Documents/Live2d-model-master/BanG... → /Users/<user>/Documents/Live2d-model-master）
   const parts = dir.split(sep).filter(Boolean)
   return parts.slice(0, 5).join(sep) // 5 层够 fingerprint 主人模型库根
 }

@@ -6,8 +6,8 @@
  *   node scripts/llm-health.mjs <endpoint> <model> [--vision]
  *
  * 示例:
- *   node scripts/llm-health.mjs http://192.168.71.100:1234 qwen3.5-397b-a17b
- *   node scripts/llm-health.mjs http://192.168.71.100:1234 qwen3.5-397b-a17b --vision
+ *   node scripts/llm-health.mjs http://127.0.0.1:1234 qwen3.5-397b-a17b
+ *   node scripts/llm-health.mjs http://127.0.0.1:1234 qwen3.5-397b-a17b --vision
  */
 
 import { deflateSync } from 'node:zlib'
