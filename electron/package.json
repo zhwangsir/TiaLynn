@@ -1,9 +1,9 @@
 {
   "name": "tialynn-electron",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
-  "description": "TiaLynn v0.14 — 通用桌面 AI 容器（Character 系统 + 视觉沉浸 + 主动性升级）",
+  "description": "TiaLynn v0.15 — 个性化深化 (few-shot 灵魂 + 11 场景 + 长期记忆 + MCP 工具 + 模型补全)",
   "main": "out/main/index.js",
   "author": "TiaLynn for Master",
   "scripts": {

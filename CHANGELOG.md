@@ -5,9 +5,49 @@
 ## [Unreleased]
 
 ### 路线
-- ✅ M0-M8 v0.4-v0.13
-- ✅ **M9 v0.14**：通用 AI 容器（Character 系统 + 视觉沉浸 + 主动性升级）
-- ⏳ v0.15+：长期向量记忆 + MCP 工具调用 + RPA 桌面自动化
+- ✅ M0-M9 v0.4-v0.14
+- ✅ **M10 v0.15**: 个性化深化（B+A+E+C+D 5 路径）
+- ⏳ v0.15.1+：embedding/LLM 完整接入 + 外部 MCP server
+
+---
+
+## [0.15.0] — 2026-05-18 — 个性化深化
+
+13 个 commit 跨 5 路径：
+
+### Added — 路径 B 个性化
+- 灵魂 few-shot examples (5 模板 × 5 示范对话) — LLM 输出质量飞跃
+- CharacterCreator 音色试听 + 自动头像（从立绘 thumb）
+- CharacterPicker 克隆角色 ⎘ 按钮
+
+### Added — 路径 A 沉浸感
+- SceneBackground 扩到 11 个场景（+ 咖啡馆/海边/雨夜/雪景/火炉/图书馆）
+- SettingsPanel 加 🌅 场景 tab
+- Live2D 切换 shimmer 过渡（消除空窗硬切）
+- Live2D stage 呼吸跟情绪联动（happy 1.6s / sleepy 4.0s）
+
+### Added — 路径 E 立绘模型设计辅助
+- model-learnings.ts 行业标准学习库 + 完整度评分 (A/B/C/D)
+- model-auto-fill.ts 一键补全缺失 motion/expression (MVP placeholder)
+- IPC: models:compute-learnings / get-learnings / evaluate / auto-fill
+
+### Added — 路径 C 长期记忆
+- per-character memory.db (sqlite + cosine search, 不装 sqlite-vec)
+- memory-extractor 自动抽取 preference/event
+- buildRagContext top-K RAG prepend
+- daily reflection (占位，v0.16 接 LLM)
+- 7 个 memory IPC handlers
+
+### Added — 路径 D MCP 工具
+- 3 内置 zero-config tools: get_current_time / list_recent_files / recall_memory
+- soul-loader buildSystemPrompt 自动注入 tools 描述
+- IPC: mcp:list / mcp:run
+
+### Output
+- `electron/release/0.15.0/TiaLynn-0.15.0-arm64.dmg`
+- `electron/release/0.15.0/TiaLynn-0.15.0.dmg`
+
+完整说明见 [docs/RELEASE_v0.15.md](docs/RELEASE_v0.15.md)
 
 ---
 
