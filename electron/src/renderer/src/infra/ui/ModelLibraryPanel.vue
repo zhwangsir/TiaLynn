@@ -440,8 +440,10 @@ watch(
   },
 )
 
+// v0.14 P2-T7: 只默认展开「前 3 个有最多角色的 IP」+ 包含当前 active 模型的 IP
+// 之前全部展开 = 30+ IP × 60 卡片 = 1800 DOM 节点，scroll 卡。
+// 现在 ≤ 4 IP × 60 = 240 DOM 节点，大幅降低渲染开销。
 watch(groupedByIp, (groups) => {
-  // 自动选第一个 IP / 第一个 cluster 的第一个 view
   if (!focused.value && groups.length > 0) {
     const firstGroup = groups[0]!
     const firstCluster = firstGroup.clusters[0]
@@ -450,10 +452,20 @@ watch(groupedByIp, (groups) => {
       expandedIps.value.add(firstGroup.ip)
     }
   }
-  // v0.12: 自动展开所有「已识别 IP」，「其他」桶默认折叠
-  for (const g of groups) {
-    if (g.ip !== UNKNOWN_IP_BUCKET && !expandedIps.value.has(g.ip)) {
-      expandedIps.value.add(g.ip)
+  // 只展开角色数最多的前 3 个 IP（按 char_count 降序）
+  const top3 = [...groups]
+    .filter((g) => g.ip !== UNKNOWN_IP_BUCKET)
+    .sort((a, b) => b.char_count - a.char_count)
+    .slice(0, 3)
+  for (const g of top3) {
+    expandedIps.value.add(g.ip)
+  }
+  // 包含当前 active 模型的 IP 也展开
+  const activeDir = cfg.soul?.avatar.model_dir
+  if (activeDir) {
+    for (const g of groups) {
+      const has = g.clusters.some((c) => c.views.some((v) => v.dir === activeDir))
+      if (has) expandedIps.value.add(g.ip)
     }
   }
 })
