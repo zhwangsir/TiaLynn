@@ -262,7 +262,10 @@ onBeforeUnmount(() => {
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
       <ApprovalDialog />
       <ToastStack />
-      <div v-if="!ready" class="boot-hint">召唤 TiaLynn 中…</div>
+      <div v-if="!ready" class="boot-hint">
+        <span class="boot-heart">♡</span>
+        <span class="boot-text">召唤 TiaLynn 中…</span>
+      </div>
       <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
       <transition name="drop">
         <div v-if="dragOver" class="drop-overlay">
@@ -288,17 +291,40 @@ onBeforeUnmount(() => {
 .boot-hint,
 .hint {
   position: absolute;
-  bottom: 20px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 14px;
+  padding: 8px 16px;
   font-size: var(--text-xs);
   color: var(--color-muted);
   background: var(--color-bubble);
+  border: 1px solid var(--color-bubble-border);
   border-radius: 999px;
   box-shadow: var(--shadow-sm);
   pointer-events: none;
   white-space: nowrap;
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+}
+.boot-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.boot-heart {
+  color: var(--color-accent);
+  font-size: 14px;
+  line-height: 1;
+  animation: heart-beat 1.4s var(--ease-in-out) infinite;
+}
+.boot-text {
+  font-weight: 500;
+}
+@keyframes heart-beat {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  20% { transform: scale(1.25); opacity: 1; }
+  40% { transform: scale(1); opacity: 0.85; }
+  60% { transform: scale(1.15); opacity: 1; }
 }
 .hint {
   opacity: 0;
@@ -320,20 +346,32 @@ onBeforeUnmount(() => {
   justify-content: center;
   z-index: 1900;
   pointer-events: none;
+  backdrop-filter: blur(8px) saturate(1.2);
+  -webkit-backdrop-filter: blur(8px) saturate(1.2);
 }
 .drop-card {
   background: var(--color-bubble);
   border: 2px dashed var(--color-accent);
   border-radius: var(--radius-lg);
-  padding: 30px 36px;
+  padding: 32px 40px;
   text-align: center;
   box-shadow: var(--shadow-lg);
   color: var(--color-bubble-text);
   max-width: 80%;
+  animation: drop-pulse 1.8s var(--ease-in-out) infinite;
+}
+@keyframes drop-pulse {
+  0%, 100% { transform: scale(1); border-color: var(--color-accent); }
+  50% { transform: scale(1.02); border-color: var(--color-accent-hover); }
 }
 .drop-icon {
-  font-size: 48px;
-  margin-bottom: 8px;
+  font-size: 52px;
+  margin-bottom: 10px;
+  animation: drop-bounce 1.5s var(--ease-in-out) infinite;
+}
+@keyframes drop-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 .drop-title {
   font-size: var(--text-lg);

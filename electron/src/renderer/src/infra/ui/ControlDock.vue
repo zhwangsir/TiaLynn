@@ -36,14 +36,18 @@ function zoomReset(): void {
 
 <template>
   <div class="dock">
-    <button class="dock-btn" title="设置" @click="emit('open-settings')">
+    <!-- 主操作组 -->
+    <button class="dock-btn primary" title="设置" @click="emit('open-settings')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3" />
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
       </svg>
     </button>
-    <!-- v0.9: 立绘缩放 -->
+
+    <span class="divider"></span>
+
+    <!-- 缩放组 -->
     <button class="dock-btn" title="放大立绘 (+)" @click="zoomIn">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
         stroke-width="2.5" stroke-linecap="round">
@@ -67,7 +71,11 @@ function zoomReset(): void {
         <path d="M9 9h6v6H9z" />
       </svg>
     </button>
-    <button class="dock-btn" title="重载模型" @click="emit('reload-model')">
+
+    <span class="divider"></span>
+
+    <!-- 状态组 -->
+    <button class="dock-btn" title="重载模型 / 灵魂" @click="emit('reload-model')">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
@@ -90,6 +98,10 @@ function zoomReset(): void {
         <path d="M12 8v14" />
       </svg>
     </button>
+
+    <span class="divider"></span>
+
+    <!-- 窗口组 -->
     <button class="dock-btn" title="收起" @click="minimize">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round">
@@ -113,16 +125,32 @@ function zoomReset(): void {
   right: 14px;
   z-index: 2000;
   display: flex;
-  gap: 6px;
-  padding: 6px;
-  background: oklch(98% 0.005 25 / 0.92);
-  border: 1px solid oklch(85% 0.02 25 / 0.6);
-  border-radius: 999px;
-  box-shadow: 0 4px 20px oklch(0% 0 0 / 0.15);
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  background: var(--color-bubble);
+  border: 1px solid var(--color-bubble-border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
   pointer-events: auto;
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  /* 出现动画 */
+  animation: dock-in 0.5s var(--ease-out-back) backwards;
 }
+@keyframes dock-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.95); }
+  to { opacity: 1; transform: none; }
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-divider);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
 .dock-btn {
   display: inline-flex;
   align-items: center;
@@ -131,19 +159,28 @@ function zoomReset(): void {
   height: 28px;
   border-radius: 999px;
   color: var(--color-bubble-text);
-  transition: background var(--duration-fast), transform var(--duration-fast),
-    color var(--duration-fast);
+  position: relative;
 }
 .dock-btn:hover {
-  background: oklch(95% 0.025 25 / 0.7);
+  background: var(--color-bubble-surface-hover);
   transform: scale(1.08);
+}
+.dock-btn.primary:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 .dock-btn.on {
   color: var(--color-accent);
-  background: oklch(95% 0.04 25 / 0.6);
+  background: var(--color-accent-soft);
 }
 .dock-btn.danger:hover {
-  background: oklch(92% 0.1 25 / 0.6);
+  background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+
+/* 焦点 ring 用 box-shadow 不挤布局 */
+.dock-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 </style>

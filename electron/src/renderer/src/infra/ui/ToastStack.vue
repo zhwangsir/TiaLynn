@@ -6,6 +6,7 @@ interface Toast {
   id: number
   kind: 'info' | 'warn' | 'error' | 'success'
   message: string
+  ttl: number
 }
 
 const toasts = ref<Toast[]>([])
@@ -16,7 +17,7 @@ let offHandler: (() => void) | null = null
 
 function push(kind: Toast['kind'], message: string, ttl: number): void {
   const id = nextId++
-  toasts.value.push({ id, kind, message })
+  toasts.value.push({ id, kind, message, ttl })
   if (toasts.value.length > MAX_VISIBLE) {
     toasts.value.splice(0, toasts.value.length - MAX_VISIBLE)
   }
@@ -51,7 +52,7 @@ onBeforeUnmount(() => {
 
 const iconFor: Record<Toast['kind'], string> = {
   info: 'ℹ',
-  warn: '⚠',
+  warn: '!',
   error: '✕',
   success: '✓',
 }
@@ -68,8 +69,9 @@ const iconFor: Record<Toast['kind'], string> = {
         role="status"
         @click="dismiss(t.id)"
       >
-        <span class="icon">{{ iconFor[t.kind] }}</span>
+        <span class="icon" :class="t.kind">{{ iconFor[t.kind] }}</span>
         <span class="msg">{{ t.message }}</span>
+        <span class="progress" :style="{ animationDuration: t.ttl + 'ms' }"></span>
       </div>
     </transition-group>
   </div>
@@ -88,6 +90,7 @@ const iconFor: Record<Toast['kind'], string> = {
   max-width: 320px;
 }
 .toast {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -102,36 +105,72 @@ const iconFor: Record<Toast['kind'], string> = {
   cursor: pointer;
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  transition: transform var(--duration-fast);
+  overflow: hidden;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
 }
 .toast:hover {
-  transform: translateX(-2px);
+  transform: translateX(-3px);
+  box-shadow: var(--shadow-lg);
 }
 .toast.error {
-  border-color: oklch(80% 0.12 25 / 0.7);
-  color: oklch(40% 0.15 25);
+  border-left: 3px solid var(--color-danger);
 }
 .toast.warn {
-  border-color: oklch(80% 0.1 80 / 0.7);
-  color: oklch(45% 0.12 80);
+  border-left: 3px solid var(--color-warn);
 }
 .toast.success {
-  border-color: oklch(80% 0.1 145 / 0.7);
-  color: oklch(40% 0.12 145);
+  border-left: 3px solid var(--color-success);
 }
+.toast.info {
+  border-left: 3px solid var(--color-accent);
+}
+
 .icon {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--color-accent-text);
 }
+.icon.info { background: var(--color-accent); }
+.icon.error { background: var(--color-danger); }
+.icon.warn { background: var(--color-warn); }
+.icon.success { background: var(--color-success); }
+
 .msg {
   flex: 1;
-  line-height: 1.4;
+  line-height: 1.45;
   word-break: break-word;
+  padding-top: 2px;
+}
+
+/* 倒计时进度条 — 视觉提示「自动消失」 */
+.progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.15;
+  animation-name: toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  transform-origin: left;
+}
+.toast.info .progress { color: var(--color-accent); }
+.toast.error .progress { color: var(--color-danger); }
+.toast.warn .progress { color: var(--color-warn); }
+.toast.success .progress { color: var(--color-success); }
+
+@keyframes toast-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
 }
 
 .toast-enter-active,
