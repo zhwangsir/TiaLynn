@@ -13,6 +13,7 @@ import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
+import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
@@ -38,6 +39,7 @@ const menuX = ref(0)
 const menuY = ref(0)
 const onboardingOpen = ref(false)
 const characterPickerOpen = ref(false)
+const characterCreatorOpen = ref(false)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
@@ -46,7 +48,9 @@ const passthroughEnabled = computed(
     !motionFactoryOpen.value &&
     !menuOpen.value &&
     !libraryOpen.value &&
-    !onboardingOpen.value,
+    !onboardingOpen.value &&
+    !characterPickerOpen.value &&
+    !characterCreatorOpen.value,
 )
 
 const menuItems = computed<MenuItem[]>(() => [
@@ -278,6 +282,11 @@ onBeforeUnmount(() => {
       <MotionFactoryPanel v-if="motionFactoryOpen" @close="motionFactoryOpen = false" />
       <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
+      <CharacterPicker
+        v-if="characterPickerOpen"
+        @close="characterPickerOpen = false"
+        @open-creator="() => { characterPickerOpen = false; characterCreatorOpen = true }"
+      />
       <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">
