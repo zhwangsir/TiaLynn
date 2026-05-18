@@ -40,6 +40,7 @@ import { registerThumbsIpc } from './ipc/thumbs'
 import { registerModelsIpc } from './ipc/models'
 import { registerOnlineIpc } from './ipc/online'
 import { registerCharactersIpc } from './ipc/characters'
+import { registerMemoryIpc } from './ipc/memory'
 import { registerToolIpc } from './ipc/tools'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
@@ -106,6 +107,7 @@ app.whenReady().then(() => {
   registerModelsIpc()
   registerOnlineIpc()
   registerCharactersIpc(getMainWindow)
+  registerMemoryIpc()
   registerToolIpc(getMainWindow)
   registerMarketIpc(getMainWindow)
   registerMotionFactoryIpc(getMainWindow)
