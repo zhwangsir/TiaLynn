@@ -1,7 +1,7 @@
 {
   "name": "tialynn-workspace",
   "private": true,
-  "version": "0.6.3",
+  "version": "0.14.0",
   "type": "module",
   "description": "TiaLynn — Electron + Vue 3 桌面 AI 伴侣（Live2D + 本地 LLM + RVC 语音）",
   "scripts": {

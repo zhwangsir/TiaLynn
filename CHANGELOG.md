@@ -4,17 +4,45 @@
 
 ## [Unreleased]
 
-### 路线（实际状况，2026-05-18）
-- ✅ M0 v0.4 Constitutional Rewrite
-- ✅ M1 v0.5 多 LLM Provider + 多文件灵魂加载
-- ✅ M2 v0.6 Electron 重生 + 五大能力域重构
-- ✅ M3 v0.7 动作工业链（Motion factory + Engine）
-- ✅ M4 v0.8 主体性 AI（PerceptionBus + Attention + Planner）
-- ✅ M5 v0.9-v0.10 模型库 + 收藏 + 角色增强
-- ✅ M6 v0.11 RVC 47 voice + 流式 TTS
-- ✅ M7 v0.12 资源商店 + 在线 repo 浏览
-- ✅ M8 v0.13 TS Tier 3 严格化 + audit 修复批
-- ⏳ v0.14+：长期向量记忆 + MCP 工具调用 + RPA 自动化
+### 路线
+- ✅ M0-M8 v0.4-v0.13
+- ✅ **M9 v0.14**：通用 AI 容器（Character 系统 + 视觉沉浸 + 主动性升级）
+- ⏳ v0.15+：长期向量记忆 + MCP 工具调用 + RPA 桌面自动化
+
+---
+
+## [0.14.0] — 2026-05-18 — 通用 AI 容器
+
+**定位重构**：从「TiaLynn 一个角色」→「装任何「她」的桌面 AI 容器」
+
+### Added
+- **Character 系统** — 每个 Character = (Live2D 模型 + RVC 音色 + 灵魂档案 + 可选 LLM 覆盖) 原子绑定
+- **CharacterStatusBar** — 左上角浮窗显示头像 + 心情 + 亲密度（5 阶色等级）
+- **CharacterPicker** — 一键切换角色，1 秒同步切立绘/音色/灵魂/对话历史
+- **CharacterCreator** — 3 步向导创建新角色 + 5 内置 SoulTemplate (gentle/genki/tsundere/cool/yandere)
+- **SoulEditor** — GUI 编辑 4 个灵魂 yaml + 保存热重载
+- **SceneBackground** — 4 场景 (bedroom/starry/study/sakura) + 时间光照（早暖晚冷夜偏紫）
+- **EmotionParticles** — 7 emotion 各自专属粒子池（happy ✨ / shy 💗 / tease 💖 等）
+- **主动性升级** — 时间事件（早安/午饭/下午茶/晚安/深夜关心）+ 疲劳曲线（连续 90 min 关心）
+
+### Changed
+- 数据布局 `~/.tialynn/` → `~/.tialynn/chars/<id>/` per-character 隔离
+- history.sqlite 现按 active character 动态切换 db handle
+- soul-loader 现读 active character soul dir
+- ModelLibraryPanel 默认只展开角色数前 3 IP（DOM 节点 1800→240）
+- SettingsPanel 拆 RvcSettingsSection 子组件
+- ControlDock 加切角色 + 编辑灵魂入口
+
+### Migration
+- 自动检测 v0.13 老 `~/.tialynn/{soul,history.sqlite}` → copy 到 `chars/default/`
+- 读 identity.yaml 生成 character.json
+- 老数据保留作 backup
+
+### Output
+- `electron/release/0.14.0/TiaLynn-0.14.0-arm64.dmg` (unsigned)
+- `electron/release/0.14.0/TiaLynn-0.14.0.dmg` (x64, unsigned)
+
+完整说明见 [docs/RELEASE_v0.14.md](docs/RELEASE_v0.14.md)
 
 ---
 
