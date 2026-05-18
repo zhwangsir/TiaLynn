@@ -17,6 +17,7 @@ import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
 import SoulEditor from './infra/ui/SoulEditor.vue'
 import SceneBackground from './infra/ui/SceneBackground.vue'
+import EmotionParticles from './infra/ui/EmotionParticles.vue'
 import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
@@ -267,6 +268,7 @@ onBeforeUnmount(() => {
     >
       <SceneBackground v-if="ready" />
       <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
+      <EmotionParticles v-if="ready" />
       <CharacterStatusBar v-if="ready" @open-picker="characterPickerOpen = true" />
       <ControlDock
         v-if="ready"
