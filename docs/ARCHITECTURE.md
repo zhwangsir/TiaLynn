@@ -1,265 +1,229 @@
-# TiaLynn 架构文档
+# TiaLynn 架构
 
-> 版本：v0.4.0 (Constitutional Rewrite)  
-> 最后更新：2026-05-16
+> 版本：v0.13 (Electron + 五大能力域 + 主体性 AI)
+> 最后更新：2026-05-18
 
 ## 0. 项目本质
 
 TiaLynn 是一个**常驻桌面的自我进化型 AI 智能体**：
 
-- **身体**：Live2D 形象 + 透明置顶窗口 + 桌面交互
-- **大脑**：本地/云端 LLM + 长期记忆 + 工具调用
-- **手脚**：MCP/Function Call 驱动的电脑操作能力
-- **灵魂**：可热重载的人格档案 + 持续学习的记忆系统
+- **身体**：Live2D 形象 + 透明置顶窗口 + 像素级穿透
+- **大脑**：本地/云端 LLM + SQLite 短期记忆 + 三层人格 prompt
+- **手脚**：动作工坊 (motion factory) + plan executor + 桌面自动化基建
+- **声音**：RVC 47 voice + Edge-TTS / CosyVoice / F5-TTS sidecar + 流式 + 嘴型同步
+- **主体**：PerceptionBus + Attention Scheduler + Planner LLM + proactive 触发
 
-**核心区别于普通桌宠**：她不只是看着，**她能做事**。  
-**核心区别于普通 AI 助手**：她不只在对话框里，**她在你桌面上**。
+**核心区别于普通桌宠**：她不只是看着，**她能做事 + 会主动**。
+**核心区别于普通 AI 助手**：她不只在对话框里，**她在你桌面上 + 持续感知**。
 
-## 1. 五大能力域
-
-所有代码必须归属其一。**模块间通过事件总线通信，禁止跨域直接 import 内部函数。**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          Event Bus (mitt)                       │
-└───┬──────────┬─────────────┬─────────────┬──────────────────┬───┘
-    │          │             │             │                  │
-    ▼          ▼             ▼             ▼                  ▼
-┌────────┐ ┌────────┐ ┌────────────┐ ┌──────────────┐ ┌──────────┐
-│ Avatar │ │ Brain  │ │   Hands    │ │   Presence   │ │  Infra   │
-│        │ │        │ │            │ │              │ │          │
-│ 她长   │ │ 她怎么 │ │  她能干    │ │   她怎么"在" │ │  让她    │
-│ 什么样 │ │ 思考、 │ │  什么活    │ │   你身边     │ │  稳定地  │
-│ 怎么动 │ │ 记什么 │ │            │ │              │ │  活着    │
-└────────┘ └────────┘ └────────────┘ └──────────────┘ └──────────┘
-```
-
-### 🎭 Avatar — 形象表现层
-
-她的身体。
-
-- Live2D 渲染（pixi-live2d-display）
-- 透明置顶窗口 + 拖动 + 缩放
-- 表情切换、idle 动作、视线跟随、嘴型同步（参数源驱动）
-- 模型热切换（从用户的 `Live2d-model-master` 任选）
-- 鼠标穿透判定（窗口外穿透）
-
-### 🧠 Brain — 智能核心层
-
-她怎么思考、记什么。
-
-- LLM Provider 抽象（Claude / OpenAI-compat / Ollama）
-- 三层人格 prompt：底层（identity）+ 表层（personality）+ 反差变量
-- 短期记忆（SQLite messages）+ 长期向量记忆（ChromaDB，M3 启用）
-- 凝练 tick：周期把对话总结为 fact
-- 记忆衰减与强化（M6）
-- 元认知：能查询自己记得什么（M6）
-
-### 🛠 Hands — 工具执行层
-
-她能干什么活。**项目的灵魂在此**。
-
-- MCP 客户端（Anthropic Model Context Protocol）
-- 内置工具：filesystem / shell / browser / git / screenshot
-- 工具调用 UI：意图展示 + 批准/拒绝
-- 安全沙盒：默认敏感操作需确认
-- 自动化编排：把多步操作组合成"她会的活"
-- 主动建议（M5+）
-
-### 💗 Presence — 陪伴交互层
-
-她怎么"在"你身边。
-
-- 时段感知（早晚不同语气）
-- 状态感知（你空闲多久、屏幕在干嘛）
-- 主动行为：定时关心、闲聊、催睡
-- 情感反应：基于事件触发情绪
-- 语音：STT（whisper.cpp）+ TTS（CosyVoice/GPT-SoVITS）+ 嘴型同步
-- 屏幕感知（M5+）
-
-### 🔐 Infra — 基础设施层
-
-让她稳定地活着。
-
-- 数据：SQLite（结构化）+ Chroma（向量）+ YAML（配置）
-- 配置：灵魂档案热重载 + 提示词模板化
-- 事件总线：mitt（前端）+ Tauri emit（前后端跨进程）
-- 跨平台抽象（macOS 优先）
-- 备份：灵魂包导出/导入
-- 可观测：日志、记忆查看器、prompt 调试
-
-## 2. 项目结构
+## 1. 进程模型
 
 ```
-TiaLynn/
-├── soul/                    # 灵魂档案（YAML）
-│   ├── identity.yaml        # 名字、称呼、avatar 偏好
-│   ├── personality.yaml     # 三层人格 prompt 模板
-│   ├── core_memories.yaml   # 永久注入的核心记忆
-│   └── learned_traits.yaml  # 学习到的特质（自动写入）
-│
-├── src/                     # 前端
-│   ├── avatar/              # 域 1：形象
-│   │   ├── render/          # Live2D renderer
-│   │   ├── animation/       # eyeBlink / focus / lipSync
-│   │   ├── interaction/     # 拖动 / 点击穿透
-│   │   ├── emotion-params/  # 情绪→Live2D 参数表
-│   │   ├── components/      # Live2DStage.vue 等
-│   │   ├── stores/          # avatar state pinia
-│   │   └── README.md
-│   ├── brain/               # 域 2：智能
-│   │   ├── persona/         # prompt 组装
-│   │   ├── memory/          # short / long / vector
-│   │   ├── providers/       # claude / ollama / openai-compat（前端调用层）
-│   │   ├── stores/          # dialog / emotion / soul pinia
-│   │   ├── types/
-│   │   └── README.md
-│   ├── hands/               # 域 3：工具（M0 空骨架）
-│   │   ├── mcp_client/      # M4 实施
-│   │   ├── tools/
-│   │   ├── approval/
-│   │   └── README.md
-│   ├── presence/            # 域 4：陪伴
-│   │   ├── speech/          # tts / stt / lipSync 协调
-│   │   ├── awareness/       # 时段/空闲/屏幕（M5 实施）
-│   │   ├── triggers/        # 主动开口（M5 实施）
-│   │   ├── stores/          # stt pinia
-│   │   └── README.md
-│   ├── infra/               # 域 5：基础设施
-│   │   ├── eventbus.ts      # mitt 实例
-│   │   ├── config/          # 配置 store + 加载
-│   │   ├── ui/              # 通用 UI（设置面板）
-│   │   └── README.md
-│   ├── App.vue
-│   └── main.ts
-│
-├── src-tauri/src/
-│   ├── avatar/              # window mouse_tracker
-│   ├── brain/               # llm / memory / persona / embed
-│   ├── hands/               # MCP / tools（M4）
-│   ├── presence/            # tts / stt / sidecar
-│   ├── infra/               # config / soul / system / tray / eventbus / error
-│   ├── lib.rs               # app 入口
-│   └── main.rs
-│
-├── sidecar/
-│   └── speech/              # CosyVoice + whisper Python sidecar
-│
-├── data/                    # 本地数据（.gitignore）
-│   ├── memory.db
-│   ├── vectors/             # Chroma 持久化
-│   └── logs/
-│
-├── public/                  # 静态资源
-│   └── live2dcubismcore.min.js
-│
-└── docs/
-    ├── ARCHITECTURE.md      # 本文件
-    ├── ROADMAP.md           # 里程碑路线
-    ├── DECISIONS.md         # 决策记录
-    ├── M0_INVENTORY.md      # 现有代码盘点
-    ├── PRD.md               # 产品需求（保留历史）
-    └── PROJECT_VISION.md    # 项目愿景报告
+┌──────────────────────────────────────────────────────────────┐
+│  Electron Main Process (Node.js)                             │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  services/ — LLM provider / motion factory / attention │  │
+│  │  scheduler / planner / perception bus / model scanner  │  │
+│  │  / soul loader / online store / sqlite history / disk  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  ipc/ — 9 个 IPC 文件，按主题划分（v0.13 拆分后）       │  │
+│  │  system / tts / thumbs / models / online / llm /       │  │
+│  │  motion-factory / motion-engine / trigger / tools /    │  │
+│  │  perception / market / window-control                  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  windows/ — 透明立绘 BrowserWindow + NSPanel + 拖动    │  │
+│  └────────────────────────────────────────────────────────┘  │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ contextBridge IPC (deepPlain wrapper)
+┌────────────────────────┴─────────────────────────────────────┐
+│  Electron Renderer (Vue 3 + Pinia + PixiJS Live2D)           │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  五大能力域 + infra 横切（见 §2）                       │  │
+│  └────────────────────────────────────────────────────────┘  │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ HTTP localhost
+┌────────────────────────┴─────────────────────────────────────┐
+│  Python Sidecar (FastAPI)                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  edge-tts / CosyVoice / F5-TTS / RVC 47 voice          │  │
+│  │  /v1/audio/speech (含 RVC 转换) + /v1/rvc/voices       │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 3. 事件总线规范
+## 2. 五大能力域 (renderer)
 
-模块间不直接 import 内部函数，通过事件通信。
+所有 renderer 代码归属其一。**域间通过 infra/eventbus 通信，禁止跨域直接 import store。**
+纯 util 函数（如 `brain/parser.ts`）跨域使用合理（v0.13 决策）。
 
-**前端**：`mitt` 单例，由 `src/infra/eventbus.ts` 导出。
+| 域 | 路径 | 职责 |
+|----|------|------|
+| **avatar** 身体 | `renderer/src/avatar/` | Live2D 渲染 / 像素穿透 / 拖动 / motion player / alpha-hit / 1389 模型库扫描 |
+| **brain** 思考 | `renderer/src/brain/` | dialog store / 灵魂 system prompt 合成 / parser（流式 token 增量解析） |
+| **presence** 声音 | `renderer/src/presence/` | speech store / TTS 调用 / 嘴型同步 / 双队列流式音频 |
+| **hands** 行动 | `renderer/src/hands/` | approval store / plan executor 触发 / 桌面动作 |
+| **attention** 主体 | `main/services/attention/` (主进程) | scheduler 5s tick / planner LLM / perception bus / sensors |
+
+横切：
+- **infra** `renderer/src/infra/` — UI 组件 / Pinia stores / eventbus / 设置面板 / 资源商店 / 引导对话框
+
+## 3. IPC 设计
+
+`shared/api.ts` 是 single source of truth：
 
 ```ts
-import { bus } from '@/infra/eventbus'
-
-// 发
-bus.emit('brain:reply_streaming', { text: '主人主人', emotion: 'happy' })
-
-// 收
-bus.on('avatar:state_changed', ({ state }) => { ... })
+interface TialynnApi {
+  system: { ... }      // version / paths / disk usage / config
+  window: { ... }      // 拖动 / 穿透 / 置顶
+  cursor: { ... }      // 50ms tick 鼠标位置
+  config: { ... }      // 读写 RuntimeConfig
+  models: { ... }      // scan / heal / dedup / describe / favorites / enrich
+  soul: { ... }        // load / system prompt / saveAvatar
+  llm: { ... }         // chat / stream / test / healthCheck
+  tts: { ... }         // speak / probe / listRvcVoices
+  history: { ... }     // append / listRecent / clear
+  thumbs: { ... }      // get / getBatch / save / markFailed / listMissing
+  market: { ... }      // installPaths / installFromUrl / installFromZip
+  motionFactory: { ... } // generate motion3.json via LLM
+  motionEngine: { ... }  // play / sync / library
+  trigger: { ... }       // rules
+  perception: { ... }    // history / triggerSnapshot
+  online: { ... }        // listRepoAssets / install / cancelInstall
+  attention: { ... }     // onPlan
+  tools: { ... }         // MCP tool list (v0.14+ ready)
+}
 ```
 
-**Rust ↔ 前端**：用 Tauri 的 `emit` / `listen`。
+preload 用 `ReturnType<TialynnApi[ns][method]>` 自动同步类型，preload 实现与契约不会漂移。
 
-**事件命名约定**：`<domain>:<verb>_<noun>`，小写下划线。
+跨进程克隆走 `deepPlain()` 三级 fallback：`structuredClone → JSON round-trip → manualClone`，专门解决 Vue Proxy → V8 结构化克隆失败问题。
 
-### 初始事件清单（M0）
+## 4. 主体性 AI 循环 (v0.8+)
 
-| 事件名 | 发起方 | 监听方 | payload |
-|---|---|---|---|
-| `infra:config_loaded` | infra | all | 全量 config |
-| `infra:config_changed` | infra | all | 变化字段 |
-| `infra:soul_reloaded` | infra | brain, avatar | 全量 soul |
-| `brain:chat_input` | dialog ui | brain | { text } |
-| `brain:reply_token` | brain | dialog ui | { stream_id, delta } |
-| `brain:reply_end` | brain | dialog ui, presence, avatar | { full_text, emotion } |
-| `brain:emotion_changed` | brain | avatar | { emotion, intensity } |
-| `avatar:model_loaded` | avatar | brain, presence | { model_path } |
-| `avatar:mouse_inside` | avatar | brain | { inside, screen_x, screen_y } |
-| `presence:tts_start` | presence | avatar (lipSync) | { audio_path } |
-| `presence:tts_end` | presence | brain | { stream_id } |
-| `presence:stt_result` | presence | brain | { text } |
-| `hands:tool_request` | brain | hands | { tool, args } |
-| `hands:tool_result` | hands | brain | { tool, ok, output } |
+```
+PerceptionBus (main process)
+  ↓ (Mouse / Idle / Window / Time / Vision sensors)
+Attention Scheduler (5s tick)
+  ↓ (检查触发条件：idle ≥ N min / window 切换 / proactive 60s 等)
+Planner (LLM 调用)
+  ↓ (输入感知摘要 + soul prompt，输出 BehaviorPlan)
+IPC `attention:plan` → renderer
+  ↓
+Plan Executor (avatar/plan-executor.ts)
+  ↓ (依次执行 actions: look_at / speak / play_motion / change_emotion)
+  ↓ speak action → bus.emit('brain:inject-utterance')
+  ↓ → dialog store 注入 assistant turn → TTS 自动播
+```
 
-## 4. 设计原则（不可破坏）
+设计文档：[docs/SOUL_SCHEMA.md](SOUL_SCHEMA.md) | [docs/ARCHITECTURE_MOTION_SYSTEM.md](ARCHITECTURE_MOTION_SYSTEM.md)
 
-1. **配置驱动**：所有可调参数 YAML 化，热重载。代码里**禁止硬编码**业务参数。
-2. **能力可插拔**：MCP server、LLM provider、TTS 引擎都是插件，通过统一接口接入。
-3. **本地优先**：默认本地运行，云端是增强而非依赖。
-4. **可观测**：所有 LLM 调用、工具执行、记忆读写都有日志。
-5. **安全沙盒**：涉及写入/执行/网络的工具调用默认需要批准（白名单可放行）。
-6. **域边界**：跨域只通过事件，禁止 `import` 跨域的内部模块。
+## 5. 设计原则（不可破坏）
 
-## 5. 技术栈（已锁定）
-
-| 层 | 选型 |
-|---|---|
-| 桌面壳 | Tauri 2.x + Web 前端 |
-| Live2D | pixi-live2d-display@cubism4（cubism2 后续） |
-| LLM | Claude API（主）+ Ollama（兜底）+ OpenAI-compat（兼容） |
-| 记忆 | SQLite（结构化）+ ChromaDB（向量，M3 启用） |
-| TTS | CosyVoice 2（M2 实装）+ macOS say（占位） |
-| STT | whisper.cpp（M2，目前 sidecar 用 faster-whisper） |
-| 工具调用 | MCP 协议（@modelcontextprotocol/sdk） |
-| 桌面控制 | pyautogui / nut-js / Anthropic Computer Use（M4 决） |
+1. **域间通过 bus 通信** — 不直接 import 跨域 store（v0.13 plan-executor → brain:inject-utterance 案例）
+2. **IPC 契约单一来源** — `shared/api.ts` 定义，preload 自动同步
+3. **TS Tier 3 严格** — 0 any / 0 @ts-ignore / noUncheckedIndexedAccess / exactOptional / noImplicitReturns / noImplicitOverride
+4. **配置默认空** — LLM endpoint / TTS sidecar URL 默认空，引导用户首次配置
+5. **错误显式 throw 或 {ok, reason}** — IPC handler 统一返回 `{ok: boolean, ...}`，main 抛错走 IPC reject
+6. **本地优先** — 用户数据在 `~/.tialynn/`，模型库在 `electron/models-library/`，无遥测无上报
 
 ## 6. 数据流：一次对话
 
 ```
-[1] 用户在输入框打字 / 按 F8 说话
-       │
-       ▼
-[2] STT (if voice) → presence:stt_result → text
-       │
-       ▼
-[3] dialog store: bus.emit('brain:chat_input', { text })
-       │
-       ▼
-[4] brain/chat handler:
-    a. 从 memory 召回相关长期记忆 (M3)
-    b. 组合三层人格 prompt
-    c. 调 LLM Provider，流式
-    d. 若 LLM 触发 tool_use → bus.emit('hands:tool_request')
-       ↓
-    e. hands 执行工具 → 等用户批准 → 返回结果
-       ↓
-    f. 把结果喂回 LLM，继续 stream
-       │
-       ▼
-[5] brain:reply_token (一路推到 dialog ui)
-       │
-       ▼
-[6] brain:reply_end → emotion 解析 → avatar:emotion_changed
-       │
-       ▼
-[7] presence/tts: 合成音频 → presence:tts_start
-       │
-       ▼
-[8] avatar/lipSync 监听 presence:tts_start → 驱动嘴部参数
-       │
-       ▼
-[9] 音频播放完 → presence:tts_end
-       │
-       ▼
-[10] brain/distill 后台凝练（M3）
+User types "你好" in InputBar
+  ↓ bus.emit('brain:chat-input', {text})
+brain/stores/dialog.send(text)
+  ↓ window.api.llm.chat({...})         // IPC: llm:chat
+main/ipc/llm.ts → main/services/llm/<provider>
+  ↓ HTTP POST → LLM endpoint (Ollama/LM Studio/Anthropic)
+  ↓ SSE stream
+main → renderer: 'llm:chunk' event per token
+  ↓ bus.emit('brain:reply-token', {delta})
+  ↓ DialogBubble UI 实时打字机
+  ↓ ... done
+bus.emit('brain:reply-end', {full_text, emotion, intensity})
+  ↓ presence/speech 监听 → window.api.tts.speak(...)
+  ↓ main/ipc/tts.ts → sidecar /v1/audio/speech (含 RVC)
+  ↓ 返 audio_b64
+renderer 解码 → Web Audio API 播 + AudioContext analyser
+  ↓ analyser.getByteFrequencyData 算 RMS
+  ↓ bus.emit('presence:lipsync', {rms})
+avatar/render/live2d-renderer 接收 RMS → 驱动 ParamMouthOpenY
+  ↓ Live2D 嘴型动起来
 ```
+
+## 7. 配置 + 数据布局
+
+```
+~/.tialynn/                              # 用户数据根
+├── config.json                          # RuntimeConfig (LLM/TTS/RVC/idle 等)
+├── history.sqlite                       # 对话历史 (better-sqlite3, WAL mode)
+├── soul/                                # 灵魂档案 (multi-file YAML)
+│   ├── identity.yaml
+│   ├── personality.yaml
+│   └── learned_traits.yaml
+├── model-scan-cache.json                # v0.13: 模型扫描 mtime 缓存
+├── model-favorites.json                 # 收藏 + 最近使用
+├── model-preferences.json               # 每模型 scale / offset_y
+├── character-enriched.json              # LLM 角色中文名+简介缓存
+├── model-descriptions.json              # AI 生成的模型描述
+├── thumbs/                              # Live2D 缩略图 (~10 MB)
+│   └── char:<sha1>.webp
+├── logs/                                # v0.13: electron-log 写文件
+│   └── main.log                         # 10 MB 轮转 + 敏感字段 redact
+├── voice_clones/                        # 用户上传的 RVC 训练样本
+├── cosyvoice-repo/ (6.8 MB)             # CosyVoice 仓库副本
+├── rvc-venv/ (22 MB)                    # Python venv
+├── models-tts/ (4-6 GB)                 # TTS 模型 (CosyVoice / F5-TTS / RVC)
+└── window-state.json                    # 窗口位置 / always-on-top
+
+electron/models-library/ (5-17 GB)       # Live2D 模型（1389 满载）
+docs/rfcs/                               # 重大架构 RFC (TS Tier 3 等)
+```
+
+## 8. 安全模型 (v0.13 audit)
+
+- **contextIsolation: true** + **nodeIntegration: false** — renderer 不能直接调 Node API
+- **webSecurity: false** — Live2D 跨目录加载需要（known debt，未来用 protocol.handle 替代）
+  - **mitigation**：CSP header + setWindowOpenHandler + will-navigate 三道防线
+- **sandbox: false** — preload 需要 Node API
+- **IPC 输入验证** — 所有用户输入路径过 path.resolve + 白名单（disk-usage / online-store）
+- **YAML 解析** — `yaml.JSON_SCHEMA` 防 `!!js/*` 标签注入（soul / motion templates / trigger rules）
+- **命令执行** — `execFile(cmd, [args])` 数组形式防 shell 注入（osascript / scp / ssh）
+- **日志 redact** — `~/.tialynn/logs/main.log` 自动脱敏 6 类敏感字段（api_key / Bearer / sk- 等）
+- **single-instance lock** — 防双启冲突
+
+## 9. 测试 (v0.13 启动)
+
+```bash
+pnpm test          # vitest run — 22 个 starter tests
+pnpm test:watch    # vitest 监听模式
+pnpm test:coverage # v8 覆盖率报告
+```
+
+当前覆盖：
+- `motion-factory/parser.test.ts` — draftToMotion3Json (7 tests)
+- `services/logger.test.ts` — redactSensitive 敏感字段 (15 tests)
+
+待补：motion-engine / planner / model-scanner 等纯函数。
+
+## 10. 技术栈
+
+- **运行时**：Electron 33 / Node 20+ / Vue 3.5 / TypeScript 5.7 (Tier 3 strict)
+- **打包**：electron-vite 2.3 + electron-builder 25
+- **UI**：Vue 3 setup script + Pinia 2 + mitt eventbus + OKLCH design tokens
+- **Live2D**：pixi-live2d-display 0.4 + PIXI.js 6.5 + Cubism Core
+- **存储**：better-sqlite3 12 (WAL mode) + js-yaml 4 (JSON_SCHEMA)
+- **TTS sidecar**：Python 3.10+ + FastAPI + edge-tts / CosyVoice / F5-TTS / RVC
+- **测试**：vitest 2.1 + @vitest/coverage-v8
+- **日志**：electron-log 5 (file + console + redact hooks)
+
+---
+
+## 历史背景
+
+v0.1-v0.4 是 Tauri + Rust 时代，v0.6 转 Electron 吸收 [airi](https://github.com/moeru-ai/airi)
+的成熟做法，五大能力域结构延续至今。
+转 Electron 后的关键决策见 [docs/AIRI_STUDY.md](AIRI_STUDY.md)。
+TS Tier 3 严格化 RFC 见 [docs/rfcs/0001-ts-strict-tier-3.md](rfcs/0001-ts-strict-tier-3.md)。
