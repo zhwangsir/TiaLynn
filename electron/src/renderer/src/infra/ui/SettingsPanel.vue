@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import DiskUsageDialog from './DiskUsageDialog.vue'
+import RvcSettingsSection from './settings/RvcSettingsSection.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -642,100 +643,13 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
       </div>
 
       <div v-show="activeTab === 'rvc'">
-      <section>
-        <h3>RVC 音色转换（你的真声）</h3>
-        <p class="hint">
-          流程：text → 底座 TTS 生成中性 wav → RVC 转你训练好的音色 → 最终 wav。
-          需要先在 workstation 上用 <code>C:\TiaLynn-rvc</code> 训练 .pth 模型。
-        </p>
-        <label>
-          <span>RVC 音色</span>
-          <div class="row" style="flex: 1; gap: 6px">
-            <select v-model="form.rvc_voice" @change="markDirty" style="flex: 1">
-              <option value="">— 不启用 RVC，用底座 TTS 原声 —</option>
-              <option v-for="v in rvcVoices" :key="v" :value="v">{{ v }}</option>
-            </select>
-            <button class="ghost" @click="refreshRvcVoices">↻ 刷新</button>
-          </div>
-        </label>
-        <p v-if="rvcStatus" class="hint" :class="rvcStatus.startsWith('✗') ? 'bad' : 'ok'">
-          {{ rvcStatus }}
-        </p>
-        <label v-if="form.rvc_voice">
-          <span>音调偏移（半音）</span>
-          <div class="row" style="flex: 1; gap: 8px; align-items: center">
-            <input type="range" min="-12" max="12" step="1"
-              v-model.number="form.rvc_f0_up_key" @change="markDirty" style="flex: 1" />
-            <span style="min-width: 40px; text-align: right">{{ form.rvc_f0_up_key }}</span>
-          </div>
-        </label>
-        <p v-if="form.rvc_voice" class="hint">男→女 +12，女→男 -12，同性 0。底座 TTS 是女声时，转你声 -12 试试。</p>
-        <label v-if="form.rvc_voice">
-          <span>索引权重</span>
-          <div class="row" style="flex: 1; gap: 8px; align-items: center">
-            <input type="range" min="0" max="1" step="0.05"
-              v-model.number="form.rvc_index_rate" @change="markDirty" style="flex: 1" />
-            <span style="min-width: 40px; text-align: right">{{ Number(form.rvc_index_rate ?? 0).toFixed(2) }}</span>
-          </div>
-        </label>
-        <p v-if="form.rvc_voice" class="hint">0 = 纯模型，1 = 全用索引检索。0.75 推荐，越高越像但伪影也多。</p>
-        <label v-if="form.rvc_voice">
-          <span>F0 算法</span>
-          <select v-model="form.rvc_f0_method" @change="markDirty">
-            <option value="rmvpe">rmvpe（推荐 · 快 + 准）</option>
-            <option value="harvest">harvest（最准 · 慢）</option>
-            <option value="pm">pm（最快 · 易抖）</option>
-          </select>
-        </label>
-
-        <!-- v0.11: RVC 高级参数（折叠区） -->
-        <details v-if="form.rvc_voice" class="advanced">
-          <summary>🔧 高级参数（声音质感微调）</summary>
-          <label>
-            <span>清音保护 (protect)</span>
-            <div class="row" style="flex: 1; gap: 8px; align-items: center">
-              <input type="range" min="0" max="0.5" step="0.01"
-                v-model.number="form.rvc_protect" @change="markDirty" style="flex: 1" />
-              <span style="min-width: 50px; text-align: right">{{ Number(form.rvc_protect ?? 0.33).toFixed(2) }}</span>
-            </div>
-          </label>
-          <p class="hint">越高越保护辅音/呼吸的清晰度。0.33 推荐。太低会变机器声。</p>
-
-          <label>
-            <span>F0 平滑 (filter_radius)</span>
-            <div class="row" style="flex: 1; gap: 8px; align-items: center">
-              <input type="range" min="0" max="7" step="1"
-                v-model.number="form.rvc_filter_radius" @change="markDirty" style="flex: 1" />
-              <span style="min-width: 50px; text-align: right">{{ form.rvc_filter_radius }}</span>
-            </div>
-          </label>
-          <p class="hint">F0 中值滤波半径。≥3 去 harvest 算法的呼吸杂音；rmvpe 用 0 也可以。</p>
-
-          <label>
-            <span>音量包络 (rms_mix_rate)</span>
-            <div class="row" style="flex: 1; gap: 8px; align-items: center">
-              <input type="range" min="0" max="1" step="0.05"
-                v-model.number="form.rvc_rms_mix_rate" @change="markDirty" style="flex: 1" />
-              <span style="min-width: 50px; text-align: right">{{ Number(form.rvc_rms_mix_rate ?? 1).toFixed(2) }}</span>
-            </div>
-          </label>
-          <p class="hint">1 = 完全用源音量曲线，0 = 用目标音色固有音量。1 保持戏剧化语气，0 更接近角色平均音量。</p>
-
-          <label>
-            <span>输出采样率 (Hz)</span>
-            <select v-model.number="form.rvc_resample_sr" @change="markDirty">
-              <option :value="0">保持源采样率（推荐）</option>
-              <option :value="16000">16000 (极省带宽)</option>
-              <option :value="32000">32000</option>
-              <option :value="40000">40000</option>
-              <option :value="48000">48000 (高保真)</option>
-            </select>
-          </label>
-          <p class="hint">0 = 不重采样。多数 RVC 模型本身就是 40k/48k。</p>
-        </details>
-      </section>
-
-      <!-- v0.11: 底座 TTS 语速/音量/音调（无论是否启用 RVC，都先经过底座 TTS） -->
+        <RvcSettingsSection
+          :form="form"
+          :rvc-voices="rvcVoices"
+          :rvc-status="rvcStatus"
+          @mark-dirty="markDirty"
+          @refresh="refreshRvcVoices"
+        />
       </div>
 
       <div v-show="activeTab === 'tts'">
