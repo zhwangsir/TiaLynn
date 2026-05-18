@@ -21,6 +21,10 @@ export function registerModelsIpc(): void {
     const { evaluateModel, loadLearnings } = await import('../services/model-learnings')
     return evaluateModel(payload.model_json_path, loadLearnings())
   })
+  ipcMain.handle('models:auto-fill', async (_evt, payload: { model_json_path: string; skip_expressions?: boolean }) => {
+    const { fillMissingForModel } = await import('../services/model-auto-fill')
+    return fillMissingForModel(payload.model_json_path, { skip_expressions: !!payload.skip_expressions })
+  })
 
   // v0.8.2: Model Auto-Heal — 给模型补基础 motion/expression + bind orphan
   ipcMain.handle('models:heal', async (_evt, payload: { model_json_path: string }) => {
