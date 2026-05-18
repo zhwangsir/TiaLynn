@@ -15,6 +15,9 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const errorMsg = ref<string>('')
+// v0.15 A3: 当前情绪，驱动 CSS 呼吸节奏
+const currentEmotion = ref<string>('neutral')
+const currentIntensity = ref(0.5)
 
 let renderer: Live2DRenderer | null = null
 let sampler: AlphaSampler | null = null
@@ -41,6 +44,12 @@ onMounted(async () => {
   // 嘴型驱动 —— 监听总线
   bus.on('avatar:lipsync', ({ value }) => {
     renderer?.setLipsync(value)
+  })
+
+  // v0.15 A3: 情绪变化驱动 stage 整体呼吸节奏
+  bus.on('brain:emotion-changed', ({ emotion, intensity }) => {
+    currentEmotion.value = emotion
+    currentIntensity.value = intensity
   })
 
   // 窗口尺寸响应（节流）
@@ -241,7 +250,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="containerRef" class="live2d-stage" :data-state="status">
+  <div
+    ref="containerRef"
+    class="live2d-stage"
+    :data-state="status"
+    :data-emotion="currentEmotion"
+    :style="{ '--emotion-intensity': currentIntensity }"
+  >
     <canvas ref="canvasRef" class="live2d-canvas" />
     <!-- v0.15 A2: 切换 character 时的 shimmer 过渡层 -->
     <transition name="shimmer">
@@ -263,6 +278,37 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background: transparent;
+  /* v0.15 A3: 整体呼吸 — transform-origin: bottom 让脚下不动头/胸前后微浮 */
+  transform-origin: 50% 90%;
+  animation: stage-breath 2.4s var(--ease-in-out) infinite;
+}
+/* 不同 emotion 不同呼吸节奏 + 振幅 — 用 emotion-intensity 0-1 调强度 */
+.live2d-stage[data-emotion='happy'] {
+  animation-duration: 1.6s; /* 兴奋呼吸快 */
+}
+.live2d-stage[data-emotion='angry'] {
+  animation-duration: 1.2s; /* 怒气呼吸最快 */
+}
+.live2d-stage[data-emotion='surprise'] {
+  animation-duration: 1.3s;
+}
+.live2d-stage[data-emotion='shy'],
+.live2d-stage[data-emotion='tease'] {
+  animation-duration: 2.0s;
+}
+.live2d-stage[data-emotion='sad'] {
+  animation-duration: 3.2s; /* 难过呼吸长 */
+}
+.live2d-stage[data-emotion='sleepy'] {
+  animation-duration: 4.0s; /* 困了呼吸最慢 */
+}
+@keyframes stage-breath {
+  /* scale 振幅基础 0.6% × intensity */
+  0%, 100% { transform: scale(calc(1 - var(--emotion-intensity, 0.5) * 0.006)); }
+  50% { transform: scale(calc(1 + var(--emotion-intensity, 0.5) * 0.006)); }
+}
+.live2d-stage[data-state='loading'] {
+  animation: none; /* loading 时不呼吸 */
 }
 .live2d-canvas {
   width: 100%;
