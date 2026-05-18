@@ -30,6 +30,8 @@ export type BusEventMap = {
   'brain:reply-actions': { actions: BehaviorAction[] }
   /** v0.13: 主体性 plan 主动注入 assistant 回合（避免 avatar 域直接 import brain/stores） */
   'brain:inject-utterance': { text: string; emotion: EmotionId; intensity: number }
+  /** v0.14: character 切换通知，所有域可监听重新加载 */
+  'character:switched': { character: import('@shared/character').Character }
   /* 在场 */
   'presence:tts-start': { audio_url: string; emotion: EmotionId }
   'presence:tts-end': void

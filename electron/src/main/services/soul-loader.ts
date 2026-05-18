@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 import type { SoulConfig } from '@shared/types'
 import { getPaths } from './paths'
+import { getActiveCharacter, characterSoulDir } from './character-store'
 
 const DEFAULT_SOUL: SoulConfig = {
   schema_version: '2.0',
@@ -58,7 +59,10 @@ export interface LoadedSoul {
 
 export function loadSoul(): LoadedSoul {
   const paths = getPaths()
-  const dir = paths.soulDir
+  // v0.14: 优先用当前 active character 的 soul 目录；fallback 用全局
+  const active = getActiveCharacter()
+  const activeSoul = active ? characterSoulDir(active.id) : null
+  const dir = activeSoul && existsSync(activeSoul) ? activeSoul : paths.soulDir
   const files = ['identity.yaml', 'personality.yaml', 'learned_traits.yaml', 'core_memories.yaml']
 
   const merged: Record<string, unknown> = {}

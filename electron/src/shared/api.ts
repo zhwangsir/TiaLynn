@@ -11,6 +11,7 @@ import type {
   RuntimeConfig,
   SoulConfig,
 } from './types'
+import type { Character, CreateCharacterInput } from './character'
 import type {
   ApprovalDecision,
   ApprovalRequest,
@@ -219,6 +220,20 @@ export interface TialynnApi {
     markFailed(payload: { character_id: string; reason: string }): Promise<{ ok: boolean }>
     listMissing(characterIds: string[]): Promise<string[]>
     clearAll(): Promise<{ deleted: number }>
+  }
+  characters: {
+    list(): Promise<Character[]>
+    active(): Promise<Character | null>
+    get(id: string): Promise<Character | null>
+    create(input: CreateCharacterInput): Promise<
+      { ok: true; character: Character } | { ok: false; reason: string }
+    >
+    update(payload: { id: string; patch: Partial<Character> }): Promise<
+      { ok: true; character: Character } | { ok: false; reason: string }
+    >
+    delete(id: string): Promise<{ ok: boolean; reason?: string }>
+    switch(id: string): Promise<{ ok: boolean; character?: Character; reason?: string }>
+    onSwitched(cb: (character: Character) => void): () => void
   }
   soul: {
     load(): Promise<{ config: SoulConfig; sources: string[] }>

@@ -11,6 +11,7 @@ import Database, { type Database as DB } from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { getPaths } from './paths'
+import { characterHistoryDb, getActiveCharacter } from './character-store'
 
 export interface StoredTurn {
   id: string
@@ -25,10 +26,24 @@ export interface StoredTurn {
 
 const DEFAULT_SESSION = 'default'
 let db: DB | null = null
+let dbPath: string | null = null
+
+/** v0.14: db 路径解析 — 优先 active character 的 history.sqlite */
+function resolveDbPath(): string {
+  const active = getActiveCharacter()
+  if (active) return characterHistoryDb(active.id)
+  return getPaths().historyDbPath
+}
 
 function ensure(): DB {
+  const path = resolveDbPath()
+  // 路径变了（切了 active character）→ 关旧开新
+  if (db && dbPath !== path) {
+    try { db.close() } catch { /* skip */ }
+    db = null
+    dbPath = null
+  }
   if (db) return db
-  const path = getPaths().historyDbPath
   if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true })
   const instance = new Database(path)
   instance.pragma('journal_mode = WAL')
@@ -47,7 +62,17 @@ function ensure(): DB {
     CREATE INDEX IF NOT EXISTS idx_turns_session_ts ON turns(session_id, ts);
   `)
   db = instance
+  dbPath = path
   return instance
+}
+
+/** v0.14: 切换 character 时调用，强制下次 ensure 重新打开新 db */
+export function reopenForActiveCharacter(): void {
+  if (db) {
+    try { db.close() } catch { /* skip */ }
+    db = null
+    dbPath = null
+  }
 }
 
 export function appendTurn(t: Omit<StoredTurn, 'session_id'> & { session_id?: string }): void {

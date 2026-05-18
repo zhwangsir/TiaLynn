@@ -218,6 +218,20 @@ const api: TialynnApi = {
       invoke('thumbs:list-missing', characterIds) as ReturnType<TialynnApi['thumbs']['listMissing']>,
     clearAll: () => invoke('thumbs:clear-all') as ReturnType<TialynnApi['thumbs']['clearAll']>,
   },
+  characters: {
+    list: () => invoke('characters:list') as ReturnType<TialynnApi['characters']['list']>,
+    active: () => invoke('characters:active') as ReturnType<TialynnApi['characters']['active']>,
+    get: (id) => invoke('characters:get', id) as ReturnType<TialynnApi['characters']['get']>,
+    create: (input) => invoke('characters:create', input) as ReturnType<TialynnApi['characters']['create']>,
+    update: (payload) => invoke('characters:update', payload) as ReturnType<TialynnApi['characters']['update']>,
+    delete: (id) => invoke('characters:delete', id) as ReturnType<TialynnApi['characters']['delete']>,
+    switch: (id) => invoke('characters:switch', id) as ReturnType<TialynnApi['characters']['switch']>,
+    onSwitched: (cb) => {
+      const handler = (_: unknown, character: unknown): void => cb(character as Parameters<typeof cb>[0])
+      ipcRenderer.on('character:switched', handler)
+      return () => ipcRenderer.off('character:switched', handler)
+    },
+  },
   soul: {
     load: () => invoke('soul:load') as ReturnType<TialynnApi['soul']['load']>,
     systemPrompt: () => invoke('soul:system-prompt') as Promise<string>,
