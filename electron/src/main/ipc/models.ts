@@ -31,6 +31,16 @@ export function registerModelsIpc(): void {
     const { dirname } = await import('node:path')
     return applyStandardExpressionPack(dirname(payload.model_json_path))
   })
+  // v0.16 T3: 物理预设
+  ipcMain.handle('models:list-physics-presets', async () => {
+    const { listPhysicsPresets } = await import('../services/physics-presets')
+    return listPhysicsPresets()
+  })
+  ipcMain.handle('models:apply-physics-preset', async (_evt, payload: { model_json_path: string; preset_id: string }) => {
+    const { applyPhysicsPreset } = await import('../services/physics-presets')
+    const { dirname } = await import('node:path')
+    return applyPhysicsPreset(dirname(payload.model_json_path), payload.preset_id as Parameters<typeof applyPhysicsPreset>[1])
+  })
 
   // v0.8.2: Model Auto-Heal — 给模型补基础 motion/expression + bind orphan
   ipcMain.handle('models:heal', async (_evt, payload: { model_json_path: string }) => {
