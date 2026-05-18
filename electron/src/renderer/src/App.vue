@@ -14,6 +14,7 @@ import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
+import CharacterCreator from './infra/ui/CharacterCreator.vue'
 import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
@@ -286,6 +287,10 @@ onBeforeUnmount(() => {
         v-if="characterPickerOpen"
         @close="characterPickerOpen = false"
         @open-creator="() => { characterPickerOpen = false; characterCreatorOpen = true }"
+      />
+      <CharacterCreator
+        v-if="characterCreatorOpen"
+        @close="characterCreatorOpen = false"
       />
       <ApprovalDialog />
       <ToastStack />
