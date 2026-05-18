@@ -155,5 +155,7 @@ curl -X POST http://127.0.0.1:8765/v1/audio/speech \
 
 某个 voice 推理报错：
 1. `/v1/rvc/voices` 检查它是否在 `trained_voices` 列表
-2. 看 sidecar 日志：`ssh "merlin chen@workstation" 'powershell -NoProfile -Command "Get-Content C:\TiaLynn-sidecar\qwen-tts-server\sidecar.log -Tail 20"'`
+2. 看 sidecar 日志：`ssh "$TIALYNN_WORKSTATION" 'powershell -NoProfile -Command "Get-Content C:\TiaLynn-sidecar\qwen-tts-server\sidecar.log -Tail 20"'`
 3. 重启 sidecar 强制重 load：`ssh ... 'Restart-Service TiaLynnSidecar'`
+
+（`TIALYNN_WORKSTATION` 是 env 变量，格式 `user@host`，按你自己 workstation 配置）
