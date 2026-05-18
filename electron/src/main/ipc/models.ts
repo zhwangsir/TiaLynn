@@ -25,6 +25,12 @@ export function registerModelsIpc(): void {
     const { fillMissingForModel } = await import('../services/model-auto-fill')
     return fillMissingForModel(payload.model_json_path, { skip_expressions: !!payload.skip_expressions })
   })
+  // v0.16 T2: 一键 8 标准 expression
+  ipcMain.handle('models:apply-expression-pack', async (_evt, payload: { model_json_path: string }) => {
+    const { applyStandardExpressionPack } = await import('../services/expression-pack')
+    const { dirname } = await import('node:path')
+    return applyStandardExpressionPack(dirname(payload.model_json_path))
+  })
 
   // v0.8.2: Model Auto-Heal — 给模型补基础 motion/expression + bind orphan
   ipcMain.handle('models:heal', async (_evt, payload: { model_json_path: string }) => {

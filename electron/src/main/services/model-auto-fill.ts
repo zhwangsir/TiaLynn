@@ -13,6 +13,8 @@
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { evaluateModel } from './model-learnings'
+import { generateMotion } from './motion-factory/llm-generate'
+import { draftToMotion3Json, summarizeModelMotions } from './motion-factory/parser'
 
 export interface FillProgress {
   total: number
@@ -119,42 +121,65 @@ export async function fillMissingForModel(
 }
 
 /**
- * v0.15 E2 MVP: 生成一个最简 idle-style motion3.json 占位。
- * 实际生成由 v0.15.1 接 motion-factory llm-generate 替代。
+ * v0.16 T1: 真用 LLM (motion-factory) 生成有意义的 motion，不再 placeholder。
+ * 失败时 fallback 到简单占位。
  */
 async function generatePlaceholderMotion(modelDir: string, groupName: string): Promise<boolean> {
-  // 简单 placeholder — 2 秒 loop 微动作（眨眼参数轻摆）
-  // 实际接 motion-factory 会 LLM 输出真实风格化 motion
   const motionDir = join(modelDir, 'motions')
   if (!existsSync(motionDir)) mkdirSync(motionDir, { recursive: true })
   const fileName = `${groupName.toLowerCase()}_auto.motion3.json`
   const filePath = join(motionDir, fileName)
-  if (existsSync(filePath)) return false // 已存在不覆盖
+  if (existsSync(filePath)) return false
 
-  const motion3 = {
-    Version: 3,
-    Meta: {
-      Duration: 2.0,
-      Fps: 30,
-      Loop: true,
-      CurveCount: 1,
-      TotalSegmentCount: 1,
-      TotalPointCount: 2,
-      AreBeziersRestricted: true,
-    },
-    Curves: [
-      {
-        Target: 'Parameter',
-        Id: 'ParamAngleY',
-        Segments: [0, 0, 0, 2, 0],
+  // v0.16: 先尝试 LLM 生成真有意义的 motion
+  try {
+    const summary = summarizeModelMotions(modelDir)
+    const description = motionDescriptionFor(groupName)
+    const draft = await generateMotion({
+      summary,
+      description,
+      examples: 2,
+    })
+    const motion3Json = draftToMotion3Json(draft)
+    writeFileSync(filePath, motion3Json, 'utf-8')
+    return addToModel3References(modelDir, 'Motions', groupName, `motions/${fileName}`)
+  } catch (e) {
+    console.warn(`[auto-fill] LLM 生成失败 ${groupName}，fallback 占位:`, String(e).slice(0, 100))
+    // Fallback: 最简 placeholder
+    const motion3 = {
+      Version: 3,
+      Meta: {
+        Duration: 2.0,
+        Fps: 30,
+        Loop: true,
+        CurveCount: 1,
+        TotalSegmentCount: 1,
+        TotalPointCount: 2,
+        AreBeziersRestricted: true,
       },
-    ],
-    UserData: [{ Time: 0, Value: `auto-filled placeholder for ${groupName}` }],
+      Curves: [
+        { Target: 'Parameter', Id: 'ParamAngleY', Segments: [0, 0, 0, 2, 0] },
+      ],
+      UserData: [{ Time: 0, Value: `auto-filled placeholder for ${groupName}` }],
+    }
+    writeFileSync(filePath, JSON.stringify(motion3, null, 2), 'utf-8')
+    return addToModel3References(modelDir, 'Motions', groupName, `motions/${fileName}`)
   }
-  writeFileSync(filePath, JSON.stringify(motion3, null, 2), 'utf-8')
+}
 
-  // 更新 model3.json 加 motion 引用
-  return addToModel3References(modelDir, 'Motions', groupName, `motions/${fileName}`)
+/** 把 motion group 名（Idle / Tap / Talk 等）翻译成 LLM prompt 描述 */
+function motionDescriptionFor(groupName: string): string {
+  const n = groupName.toLowerCase()
+  if (n.includes('idle')) return '自然的待机动作，1-2 秒微微呼吸、轻轻晃头'
+  if (n.includes('tap') || n.includes('touch')) return '被点击时的反应，1 秒身体微缩 + 表情变化'
+  if (n.includes('talk') || n.includes('speak')) return '说话时的动作，2 秒嘴部张合 + 头部轻晃'
+  if (n.includes('shy')) return '害羞时的动作，2 秒头偏 + 眼神向下'
+  if (n.includes('angry')) return '生气时的动作，1.5 秒眉毛皱起 + 头部猛转'
+  if (n.includes('happy') || n.includes('smile')) return '开心时的动作，2 秒微笑 + 头部轻摆'
+  if (n.includes('sad') || n.includes('cry')) return '难过时的动作，2 秒头部下垂 + 眼神低落'
+  if (n.includes('nod')) return '点头，1 秒头部 Y 轴上下动作'
+  if (n.includes('shake')) return '摇头，1 秒头部 X 轴左右动作'
+  return `${groupName} 主题的自然动作，1.5-3 秒`
 }
 
 async function generatePlaceholderExpression(modelDir: string, expName: string): Promise<boolean> {
