@@ -31,6 +31,13 @@ export function registerModelsIpc(): void {
     const { dirname } = await import('node:path')
     return applyStandardExpressionPack(dirname(payload.model_json_path))
   })
+  // v0.16 T4: 参数命名分析
+  ipcMain.handle('models:analyze-params', async (_evt, payload: { model_json_path: string }) => {
+    const { analyzeModelParams } = await import('../services/param-naming')
+    const { dirname } = await import('node:path')
+    return analyzeModelParams(dirname(payload.model_json_path))
+  })
+
   // v0.16 T3: 物理预设
   ipcMain.handle('models:list-physics-presets', async () => {
     const { listPhysicsPresets } = await import('../services/physics-presets')
