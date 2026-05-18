@@ -5,9 +5,28 @@
 ## [Unreleased]
 
 ### 路线
-- ✅ M0-M9 v0.4-v0.14
-- ✅ **M10 v0.15**: 个性化深化（B+A+E+C+D 5 路径）
-- ⏳ v0.15.1+：embedding/LLM 完整接入 + 外部 MCP server
+- ✅ M0-M10 v0.4-v0.15
+- ✅ **M11 v0.16**: Live2D 模型完整度工坊
+- ⏳ v0.17: AI 原画生成 + 图层切割 + 外部 MCP
+
+---
+
+## [0.16.0] — 2026-05-18 — 模型完整度工坊
+
+跨 5 task：
+
+### Added
+- **T1** motion-factory 接真 LLM 生成（auto-fill 不再 placeholder）
+- **T2** 8 标准 expression 一键模板 (Cubism 行业参数命名)
+- **T3** 5 物理预设库 (短发 / 长发 / 双马尾 / 长裙 / 短裙)
+- **T4** 参数命名标准化检测（基于 35 个 STANDARD_PARAM_NAMES + 启发式建议）
+- **T5** 🔬 ModelHealthDashboard — 全库完整度统计 + grade 分布 + 批量补全 D 级 + 详情面板一键操作
+
+### Output
+- `electron/release/0.16.0/TiaLynn-0.16.0-arm64.dmg`
+- `electron/release/0.16.0/TiaLynn-0.16.0.dmg`
+
+完整说明 + Live2D 技术解释见 [docs/RELEASE_v0.16.md](docs/RELEASE_v0.16.md)
 
 ---
 
