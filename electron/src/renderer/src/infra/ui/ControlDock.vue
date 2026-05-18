@@ -6,6 +6,7 @@ const emit = defineEmits<{
   (e: 'open-settings'): void
   (e: 'open-picker'): void
   (e: 'open-soul-editor'): void
+  (e: 'open-health-dashboard'): void
   (e: 'reload-model'): void
 }>()
 
@@ -46,6 +47,13 @@ function zoomReset(): void {
         <path d="M5 21a4 4 0 0 1 4-4h0a4 4 0 0 1 4 4" />
         <path d="m17 4 3 3-3 3" />
         <path d="M14 7h6" />
+      </svg>
+    </button>
+    <button class="dock-btn" title="🔬 模型健康仪表盘" @click="emit('open-health-dashboard')">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 12l2 2 4-4" />
+        <circle cx="12" cy="12" r="10" />
       </svg>
     </button>
     <button class="dock-btn" title="编辑灵魂" @click="emit('open-soul-editor')">

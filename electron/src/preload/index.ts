@@ -166,6 +166,23 @@ const api: TialynnApi = {
       ipcRenderer.on('models:enrich-progress', handler)
       return () => ipcRenderer.off('models:enrich-progress', handler)
     },
+    // v0.15+v0.16: 模型 learning / 评分 / 补全
+    computeLearnings: (force = false) =>
+      invoke('models:compute-learnings', force) as ReturnType<TialynnApi['models']['computeLearnings']>,
+    getLearnings: () =>
+      invoke('models:get-learnings') as ReturnType<TialynnApi['models']['getLearnings']>,
+    evaluate: (payload) =>
+      invoke('models:evaluate', payload) as ReturnType<TialynnApi['models']['evaluate']>,
+    autoFill: (payload) =>
+      invoke('models:auto-fill', payload) as ReturnType<TialynnApi['models']['autoFill']>,
+    applyExpressionPack: (payload) =>
+      invoke('models:apply-expression-pack', payload) as ReturnType<TialynnApi['models']['applyExpressionPack']>,
+    listPhysicsPresets: () =>
+      invoke('models:list-physics-presets') as ReturnType<TialynnApi['models']['listPhysicsPresets']>,
+    applyPhysicsPreset: (payload) =>
+      invoke('models:apply-physics-preset', payload) as ReturnType<TialynnApi['models']['applyPhysicsPreset']>,
+    analyzeParams: (payload) =>
+      invoke('models:analyze-params', payload) as ReturnType<TialynnApi['models']['analyzeParams']>,
   },
   online: {
     listRecommended: () =>

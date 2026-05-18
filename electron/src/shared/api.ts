@@ -196,6 +196,68 @@ export interface TialynnApi {
     enrichAbort(): Promise<{ ok: boolean }>
     enrichClear(): Promise<{ ok: boolean }>
     onEnrichProgress(cb: (p: EnrichProgress) => void): () => void
+    /** v0.15 E1: 模型行业标准学习库 */
+    computeLearnings(force?: boolean): Promise<{
+      total_models: number
+      complete_models: number
+      standard_motion_groups: string[]
+      standard_expression_names: string[]
+      physics_coverage: number
+      [k: string]: unknown
+    }>
+    getLearnings(): Promise<{
+      total_models: number
+      standard_motion_groups: string[]
+      standard_expression_names: string[]
+      [k: string]: unknown
+    } | null>
+    evaluate(payload: { model_json_path: string }): Promise<{
+      score: number
+      grade: 'A' | 'B' | 'C' | 'D'
+      missing_motion_groups: string[]
+      missing_expression_names: string[]
+      missing_physics: boolean
+      missing_eye_blink: boolean
+      missing_lip_sync: boolean
+      hints: string[]
+    } | null>
+    /** v0.15 E2 / v0.16: 自动补 motion + expression */
+    autoFill(payload: { model_json_path: string; skip_expressions?: boolean }): Promise<{
+      ok: boolean
+      added_motions: string[]
+      added_expressions: string[]
+      failed: string[]
+      reason?: string
+    }>
+    /** v0.16 T2: 8 标准 expression 一键 */
+    applyExpressionPack(payload: { model_json_path: string }): Promise<{
+      ok: boolean
+      added: string[]
+      skipped: string[]
+      reason?: string
+    }>
+    /** v0.16 T3: 物理预设 */
+    listPhysicsPresets(): Promise<Array<{ id: string; label: string; description: string }>>
+    applyPhysicsPreset(payload: { model_json_path: string; preset_id: string }): Promise<{
+      ok: boolean
+      applied_outputs: string[]
+      reason?: string
+    }>
+    /** v0.16 T4: 参数命名分析 */
+    analyzeParams(payload: { model_json_path: string }): Promise<{
+      total_params: number
+      non_standard_count: number
+      usages: Array<{
+        param_id: string
+        motion_refs: number
+        expression_refs: number
+        observed_min: number
+        observed_max: number
+        non_standard: boolean
+        reason?: string
+        suggested_id?: string
+      }>
+    }>
   }
   thumbs: {
     get(characterId: string): Promise<{

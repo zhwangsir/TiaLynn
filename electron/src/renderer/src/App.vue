@@ -16,6 +16,7 @@ import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
 import SoulEditor from './infra/ui/SoulEditor.vue'
+import ModelHealthDashboard from './infra/ui/ModelHealthDashboard.vue'
 import SceneBackground from './infra/ui/SceneBackground.vue'
 import EmotionParticles from './infra/ui/EmotionParticles.vue'
 import { useCharacterStore } from './infra/stores/character'
@@ -45,6 +46,7 @@ const onboardingOpen = ref(false)
 const characterPickerOpen = ref(false)
 const characterCreatorOpen = ref(false)
 const soulEditorOpen = ref(false)
+const healthDashboardOpen = ref(false)
 
 // 任何模态打开时关闭穿透判定（避免点击被穿透到下层）
 const passthroughEnabled = computed(
@@ -275,6 +277,7 @@ onBeforeUnmount(() => {
         @open-settings="settingsOpen = true"
         @open-picker="characterPickerOpen = true"
         @open-soul-editor="soulEditorOpen = true"
+        @open-health-dashboard="healthDashboardOpen = true"
         @reload-model="onReloadModelClick"
       />
       <DialogBubble v-if="ready" />
@@ -303,6 +306,10 @@ onBeforeUnmount(() => {
       <SoulEditor
         v-if="soulEditorOpen"
         @close="soulEditorOpen = false"
+      />
+      <ModelHealthDashboard
+        v-if="healthDashboardOpen"
+        @close="healthDashboardOpen = false"
       />
       <ApprovalDialog />
       <ToastStack />
