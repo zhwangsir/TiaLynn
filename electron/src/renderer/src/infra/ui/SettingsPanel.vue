@@ -6,6 +6,7 @@ import DiskUsageDialog from './DiskUsageDialog.vue'
 import FloatingPanel from './FloatingPanel.vue'
 import RvcSettingsSection from './settings/RvcSettingsSection.vue'
 import SceneSettingsTab from './settings/SceneSettingsTab.vue'
+import EvalRunner from './EvalRunner.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -810,6 +811,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           <button class="ghost" @click="openDataDir">打开数据目录</button>
         </div>
       </section>
+
+      <!-- P3 UI: 角色一致性测试 — 50 题 5-25 分钟 -->
+      <EvalRunner />
 
       </div>
 
