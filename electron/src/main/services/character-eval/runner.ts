@@ -6,7 +6,7 @@
  * 串行而非并行 — 避免 LLM endpoint rate limit；每题 5-30s，整套 5-25 分钟。
  * UI 通过 onProgress 显示当前进度。
  */
-import type { ChatMessage } from '@shared/types'
+import type { ChatMessage, LlmProvider } from '@shared/types'
 import { loadConfig } from '../config-store'
 import { loadSoul } from '../soul-loader'
 import { buildProvider } from '../llm'
@@ -24,23 +24,39 @@ export interface RunEvalOptions {
   timeoutMs?: number
   /** 调试用：限制只跑前 N 题 */
   limit?: number
+  /**
+   * 跨模型对比模式：覆盖当前 RuntimeConfig 的 LLM 配置（不写盘）。
+   * 用法：runEvalSuite({ llmOverride: { provider: 'openai_compat',
+   *        endpoint: 'http://other:1234', model: 'glm-4.6' } })
+   */
+  llmOverride?: {
+    provider?: LlmProvider
+    endpoint?: string
+    api_key?: string
+    model?: string
+  }
 }
 
 /** 串行跑一道题 → 返回解析后的 answer_text + answer_emotion */
 async function askOne(
   question: EvalQuestion,
   systemPrompt: string,
-  opts: { timeoutMs: number; abortSignal?: AbortSignal },
+  opts: {
+    timeoutMs: number
+    abortSignal?: AbortSignal
+    llmOverride?: RunEvalOptions['llmOverride']
+  },
 ): Promise<QuestionAnswerPair> {
   const cfg = loadConfig()
-  if (!cfg.llm_provider || !cfg.llm_endpoint || !cfg.llm_model) {
+  const o = opts.llmOverride ?? {}
+  const llmProvider = o.provider ?? cfg.llm_provider
+  const llmEndpoint = o.endpoint ?? cfg.llm_endpoint
+  const llmApiKey = o.api_key ?? cfg.llm_api_key ?? ''
+  const llmModel = o.model ?? cfg.llm_model
+  if (!llmProvider || !llmEndpoint || !llmModel) {
     throw new Error('LLM 未配置 (provider/endpoint/model 缺失)')
   }
-  const provider = buildProvider(
-    cfg.llm_provider,
-    cfg.llm_endpoint,
-    cfg.llm_api_key ?? '',
-  )
+  const provider = buildProvider(llmProvider, llmEndpoint, llmApiKey)
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -63,7 +79,7 @@ async function askOne(
     await provider.chatStream(
       messages,
       {
-        model: cfg.llm_model,
+        model: llmModel,
         temperature: 0.7,
         // v0.8.1 lesson: Qwen3 / DeepSeek-R1 等 thinking 模型 max_tokens 必须够大
         // 否则思考链占满，没有最终答案 — eval 题虽短，思考可能 4000+ tokens
@@ -113,9 +129,10 @@ async function askOne(
 }
 
 export async function runEvalSuite(opts: RunEvalOptions = {}): Promise<EvalReport> {
-  const { onProgress, abortSignal, timeoutMs = 60_000, limit } = opts
+  const { onProgress, abortSignal, timeoutMs = 60_000, limit, llmOverride } = opts
   const cfg = loadConfig()
-  if (!cfg.llm_model) {
+  const effectiveModel = llmOverride?.model ?? cfg.llm_model
+  if (!effectiveModel) {
     throw new Error('LLM model 未配置；无法跑评测')
   }
 
@@ -134,7 +151,11 @@ export async function runEvalSuite(opts: RunEvalOptions = {}): Promise<EvalRepor
     if (abortSignal?.aborted) break
     const q = questions[i]!
     try {
-      const pair = await askOne(q, systemPrompt, { timeoutMs, ...(abortSignal ? { abortSignal } : {}) })
+      const pair = await askOne(q, systemPrompt, {
+        timeoutMs,
+        ...(abortSignal ? { abortSignal } : {}),
+        ...(llmOverride ? { llmOverride } : {}),
+      })
       const s = scoreAnswer(pair, subjects)
       scored.push(s)
       onProgress?.({ done: i + 1, total: questions.length, current: s })
@@ -149,7 +170,7 @@ export async function runEvalSuite(opts: RunEvalOptions = {}): Promise<EvalRepor
     }
   }
 
-  const report = buildReport(scored, cfg.llm_model)
+  const report = buildReport(scored, effectiveModel)
   appendEvalHistory(report)
   return report
 }
