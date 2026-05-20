@@ -13,7 +13,7 @@ import {
   emotionalSetMood,
   emotionalTick,
 } from '@shared/channels/emotional'
-import { getActiveCharacter } from '../services/character-store'
+import { getActiveCharacter, listCharacters } from '../services/character-store'
 import {
   loadEmotionalState,
   onSetMood,
@@ -27,6 +27,10 @@ import {
 } from '../services/emotional-state/evolution'
 import { emotionToSentiment } from '../services/emotional-state/sentiment'
 import { extractTopics } from '../services/emotional-state/topic-extractor'
+import {
+  applyMentionedToOtherCharacter,
+  detectOtherCharactersMentioned,
+} from '../services/emotional-state/cross-character'
 import { handleInvoke } from './channel-helpers'
 
 export function registerEmotionalIpc(): void {
@@ -46,6 +50,25 @@ export function registerEmotionalIpc(): void {
       next = applyTick(next)
       return next
     })
+
+    // P5: 跨角色情感联动 — user_text 提到其他角色名 → 给那些角色累积"被主人提到"印记
+    // 取 sentiment * 0.7 衰减 (毕竟不是直接对话，强度弱一些)
+    try {
+      const mentioned = detectOtherCharactersMentioned(
+        payload.user_text ?? '',
+        listCharacters(),
+        active.id,
+      )
+      for (const other of mentioned) {
+        applyMentionedToOtherCharacter(other.id, sentiment * 0.7)
+        console.log(
+          `[emotional] cross-mention: ${other.id} (sentiment=${(sentiment * 0.7).toFixed(2)})`,
+        )
+      }
+    } catch (e) {
+      console.warn('[emotional] cross-character apply failed (non-fatal):', e)
+    }
+
     return { ok: true }
   })
 
