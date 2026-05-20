@@ -13,7 +13,9 @@ export type BusEventMap = {
   'avatar:model-loaded': { model_path: string; cubism: 'cubism2' | 'cubism4' }
   'avatar:model-error': { reason: string }
   'avatar:mouse-inside': { inside: boolean; x: number; y: number }
-  'avatar:lipsync': { value: number } // 0~1，AudioWorklet 实时输出
+  'avatar:lipsync': { value: number } // 0~1，AudioWorklet 实时输出 (mouthOpen)
+  /** Phase 1: wlipsync 输出的 AEIOU 元音权重 — 留给未来驱动 Live2D ParamMouthA/E/I/O/U 多参数 */
+  'avatar:vowel-weights': { A: number; E: number; I: number; O: number; U: number }
   /** 用户在立绘上右键 → 打开主菜单 */
   'avatar:contextmenu': { x: number; y: number }
   /** v0.8.2: 强制重载当前 Live2D 模型（比如动作工坊新写了 motion / Heal 完成后） */
