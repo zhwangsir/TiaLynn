@@ -791,6 +791,19 @@ export interface TialynnApi {
     ): () => void
   }
 
+  /** P5: character pack export/import — 打包 character soul+emotional+thumb 成 zip 分享 */
+  characterPack: {
+    export(payload?: {
+      characterId?: string
+      includeEmotional?: boolean
+      includeThumb?: boolean
+    }): Promise<import('./channels/character-pack').CharacterPackExportResult>
+    import(payload?: {
+      newName?: string
+      includeEmotional?: boolean
+    }): Promise<import('./channels/character-pack').CharacterPackImportResult>
+  }
+
   /** Phase 1 J: 情感状态轨迹 — 每轮对话 dialog.ts fire-and-forget onReply */
   emotional: {
     onReply(payload: {

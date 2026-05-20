@@ -227,6 +227,10 @@ import {
   evalHistory,
   evalRun,
 } from '@shared/channels/eval'
+import {
+  characterPackExport,
+  characterPackImport,
+} from '@shared/channels/character-pack'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -653,6 +657,10 @@ const api: TialynnApi = {
       ipcRenderer.on('eval:progress', handler)
       return () => ipcRenderer.off('eval:progress', handler)
     },
+  },
+  characterPack: {
+    export: (payload) => invokeChannel(characterPackExport, payload),
+    import: (payload) => invokeChannel(characterPackImport, payload),
   },
   agent: {
     halt: (on) => invokeChannel(agentHalt, on),

@@ -478,6 +478,53 @@ async function openDataDir(): Promise<void> {
   await window.api.system.revealDataDir()
 }
 
+// P5: character pack export/import
+const packStatus = ref('')
+
+async function exportPack(): Promise<void> {
+  packStatus.value = '导出中...'
+  try {
+    const r = await window.api.characterPack.export({})
+    if (r.canceled) {
+      packStatus.value = '已取消'
+      return
+    }
+    if (r.ok) {
+      packStatus.value = `✓ 已导出到 ${r.savedPath} (${((r.size ?? 0) / 1024).toFixed(1)} KB)`
+      bus.emit('ui:toast', { kind: 'success', message: '角色 pack 导出成功', ttl_ms: 3000 })
+    } else {
+      packStatus.value = `✗ 失败: ${r.reason}`
+      bus.emit('ui:toast', { kind: 'error', message: `导出失败: ${r.reason}`, ttl_ms: 5000 })
+    }
+  } catch (e) {
+    packStatus.value = `✗ 异常: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
+async function importPack(): Promise<void> {
+  packStatus.value = '选择文件...'
+  try {
+    const r = await window.api.characterPack.import({})
+    if (r.canceled) {
+      packStatus.value = '已取消'
+      return
+    }
+    if (r.ok && r.character) {
+      packStatus.value = `✓ 已导入: ${r.character.name} (id: ${r.character.id})`
+      bus.emit('ui:toast', {
+        kind: 'success',
+        message: `角色"${r.character.name}"已导入`,
+        ttl_ms: 4000,
+      })
+    } else {
+      packStatus.value = `✗ 失败: ${r.reason}`
+      bus.emit('ui:toast', { kind: 'error', message: `导入失败: ${r.reason}`, ttl_ms: 5000 })
+    }
+  } catch (e) {
+    packStatus.value = `✗ 异常: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
 async function openModelsDir(): Promise<void> {
   await window.api.system.revealModelsDir()
 }
@@ -818,6 +865,20 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       <!-- P3 UI: 情感状态 debug (J 可视化) -->
       <EmotionalDebugPanel />
+
+      <!-- P5: character pack export/import — 分享角色 -->
+      <section style="margin-top: 18px">
+        <h3>角色 pack（导入/导出）</h3>
+        <p class="hint">
+          把当前角色打包成 .zip 文件分享给朋友 (含 soul + 情感状态 + 缩略图，
+          不含对话历史)；或导入别人的 pack 创建新角色。
+        </p>
+        <div class="row">
+          <button class="ghost" @click="exportPack">📤 导出当前角色 pack</button>
+          <button class="ghost" @click="importPack">📥 导入 pack</button>
+        </div>
+        <p v-if="packStatus" class="hint" style="margin-top: 8px">{{ packStatus }}</p>
+      </section>
 
       </div>
 
