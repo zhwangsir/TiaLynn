@@ -50,6 +50,8 @@ export type BusEventMap = {
   'avatar:motion-ended': { draft_name: string }
   /* 主体性 Behavior 执行 (v0.8) */
   'attention:execute-plan': { plan: BehaviorPlan }
+  /** Phase 1 J P3: dialog.ts 调 emotional:on-reply 后通知 UI 刷新 mood 角标 */
+  'emotional:state-changed': void
 }
 
 export const bus: Emitter<BusEventMap> = mitt<BusEventMap>()

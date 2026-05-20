@@ -353,6 +353,8 @@ export const useDialogStore = defineStore('dialog', () => {
           emotion: parsed.emotion,
           intensity: parsed.intensity,
         })
+        // 通知 UI（CharacterStatusBar）重新拉 mood
+        bus.emit('emotional:state-changed')
       } catch (e) {
         console.warn('[dialog] emotional.onReply failed (non-fatal):', e)
       }

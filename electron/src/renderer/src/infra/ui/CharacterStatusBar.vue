@@ -4,9 +4,10 @@
  * 位置：右上角悬浮。默认半透明，hover 完整显示。
  * 点击 → 触发切角色 picker。
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import { bus } from '../eventbus'
+import type { EmotionalState, Mood } from '@shared/emotional'
 
 const character = useCharacterStore()
 
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 
 const emotionEmoji: Record<string, string> = {
   neutral: '😐',
+  calm: '😐',
   happy: '😊',
   sad: '😢',
   angry: '😠',
@@ -23,7 +25,49 @@ const emotionEmoji: Record<string, string> = {
   shy: '😳',
   tease: '😈',
   sleepy: '😴',
+  anxious: '😰',
+  missing: '🥺',
 }
+
+// Phase 1 J P3: 实时拉 EmotionalState，跟随 emotional:state-changed 刷新
+const emotional = ref<EmotionalState | null>(null)
+let cleanups: Array<() => void> = []
+
+async function refreshEmotional(): Promise<void> {
+  try {
+    const s = await window.api.emotional.getState()
+    emotional.value = s
+  } catch {
+    /* ignore */
+  }
+}
+
+onMounted(() => {
+  void refreshEmotional()
+  const onChange = (): void => {
+    void refreshEmotional()
+  }
+  bus.on('emotional:state-changed', onChange)
+  bus.on('character:switched', onChange)
+  cleanups = [
+    () => bus.off('emotional:state-changed', onChange),
+    () => bus.off('character:switched', onChange),
+  ]
+})
+
+onBeforeUnmount(() => {
+  for (const c of cleanups) c()
+  cleanups = []
+})
+
+const currentMood = computed<Mood>(
+  () =>
+    emotional.value?.current_mood ?? ((character.active?.emotion_baseline as Mood) || 'calm'),
+)
+const moodIntensity = computed(() => emotional.value?.mood_intensity ?? 0.3)
+const missingIntensity = computed(() => emotional.value?.missing_intensity ?? 0)
+const showMissingBadge = computed(() => missingIntensity.value > 0.4)
+const moodEmoji = computed(() => emotionEmoji[currentMood.value] ?? '😐')
 
 const intimacyTier = computed(() => {
   const lv = character.active?.intimacy_level ?? 0
@@ -65,8 +109,19 @@ const initials = computed(() => {
       <div class="info">
         <div class="name-row">
           <span class="name">{{ character.active.name }}</span>
-          <span class="emotion-tag" :title="character.active.emotion_baseline">
-            {{ emotionEmoji[character.active.emotion_baseline ?? 'neutral'] ?? '😐' }}
+          <span
+            class="emotion-tag"
+            :class="{ 'mood-strong': moodIntensity > 0.7 }"
+            :title="`${currentMood} (intensity ${moodIntensity.toFixed(2)})`"
+          >
+            {{ moodEmoji }}
+          </span>
+          <span
+            v-if="showMissingBadge"
+            class="missing-badge"
+            :title="`想念主人 ${(missingIntensity * 100).toFixed(0)}%`"
+          >
+            💭
           </span>
         </div>
         <div class="intimacy-row">
@@ -185,6 +240,21 @@ const initials = computed(() => {
 .emotion-tag {
   font-size: 13px;
   line-height: 1;
+  transition: transform var(--duration-fast) var(--ease-out-back);
+}
+.emotion-tag.mood-strong {
+  transform: scale(1.25);
+  filter: drop-shadow(0 0 4px oklch(72% 0.18 18 / 0.5));
+}
+.missing-badge {
+  font-size: 11px;
+  line-height: 1;
+  margin-left: 2px;
+  animation: missing-pulse 2.5s var(--ease-in-out) infinite;
+}
+@keyframes missing-pulse {
+  0%, 100% { opacity: 0.6; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-1px); }
 }
 
 .intimacy-row {
