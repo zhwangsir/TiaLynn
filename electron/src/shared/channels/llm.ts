@@ -32,3 +32,43 @@ export interface LlmChatStreamResponse {
 export const llmChatStream = defineChannel<LlmChatStreamRequest, LlmChatStreamResponse>(
   'llm:chat-stream',
 )
+
+// P3: G 任务残余迁移 — llm:abort / llm:test / llm:health-check
+
+export const llmAbort = defineChannel<string, { ok: boolean }>('llm:abort')
+
+export const llmTest = defineChannel<
+  { provider: LlmProvider; endpoint: string; api_key: string; model: string },
+  { ok: boolean; message: string }
+>('llm:test')
+
+/** main/services/llm/health-check.FullHealthReport 镜像 */
+export interface LlmHealthResult {
+  test: string
+  ok: boolean
+  detail: string
+  is_thinking_model?: boolean
+  supports_vision?: boolean
+  latency_ms?: number
+}
+
+export interface LlmHealthReport {
+  provider: LlmProvider
+  endpoint: string
+  model: string
+  overall_ok: boolean
+  results: LlmHealthResult[]
+  recommendations: string[]
+}
+
+export const llmHealthCheck = defineChannel<
+  | {
+      provider?: LlmProvider
+      endpoint?: string
+      api_key?: string
+      model?: string
+      test_vision?: boolean
+    }
+  | undefined,
+  LlmHealthReport
+>('llm:health-check')

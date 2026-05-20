@@ -17,7 +17,7 @@ import type {
 } from '@shared/types'
 import type { ApprovalRequest } from '@shared/tools'
 import type { TialynnApi } from '@shared/api'
-import { llmChatStream } from '@shared/channels/llm'
+import { llmAbort, llmChatStream, llmHealthCheck, llmTest } from '@shared/channels/llm'
 import {
   memoryAdd,
   memoryCount,
@@ -456,13 +456,11 @@ const api: TialynnApi = {
     },
   },
   llm: {
-    // Phase 1 试点：走 type-safe channel
     chatStream: (payload) => invokeChannel(llmChatStream, payload),
-    abort: (streamId: string) => invoke('llm:abort', streamId) as Promise<{ ok: boolean }>,
+    abort: (streamId: string) => invokeChannel(llmAbort, streamId),
     test: (payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string }) =>
-      invoke('llm:test', payload) as Promise<{ ok: boolean; message: string }>,
-    healthCheck: (payload) =>
-      invoke('llm:health-check', payload) as ReturnType<TialynnApi['llm']['healthCheck']>,
+      invokeChannel(llmTest, payload),
+    healthCheck: (payload) => invokeChannel(llmHealthCheck, payload),
     onChunk: (cb: ChunkListener): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, chunk: IpcStreamChunk): void => cb(chunk)
       ipcRenderer.on('llm:chunk', handler)

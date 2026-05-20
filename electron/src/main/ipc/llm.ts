@@ -4,13 +4,13 @@
  * 渲染层调用 `window.api.llm.chatStream({ stream_id, messages, options })`，
  * 主进程通过 webContents.send('llm:chunk', { streamId, delta | done | error }) 回推。
  */
-import { ipcMain, type BrowserWindow } from 'electron'
-import type { IpcStreamChunk, LlmProvider } from '@shared/types'
-import { llmChatStream } from '@shared/channels/llm'
+import type { BrowserWindow } from 'electron'
+import type { IpcStreamChunk } from '@shared/types'
+import { llmAbort, llmChatStream, llmHealthCheck, llmTest } from '@shared/channels/llm'
 import { handleInvoke } from './channel-helpers'
 import { buildProvider } from '../services/llm'
 import { loadConfig } from '../services/config-store'
-import { runHealthCheck, type FullHealthReport } from '../services/llm/health-check'
+import { runHealthCheck } from '../services/llm/health-check'
 
 const aborts = new Map<string, AbortController>()
 
@@ -105,7 +105,7 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       }
     })
 
-  ipcMain.handle('llm:abort', (_evt, streamId: string) => {
+  handleInvoke(llmAbort, (streamId) => {
     const c = aborts.get(streamId)
     if (c) {
       c.abort()
@@ -115,55 +115,37 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
     return { ok: false }
   })
 
-  ipcMain.handle(
-    'llm:test',
-    async (
-      _evt,
-      payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string },
-    ) => {
-      const impl = buildProvider(payload.provider, payload.endpoint, payload.api_key)
-      try {
-        let captured = ''
-        await impl.chatStream(
-          [
-            { role: 'system', content: '你是 TiaLynn 测试机。回复一句 ok。' },
-            { role: 'user', content: 'ping' },
-          ],
-          { model: payload.model, temperature: 0.2, max_tokens: 32 },
-          (evt) => {
-            if (evt.delta) captured += evt.delta
-          },
-        )
-        return { ok: true, message: captured.trim() || '(empty response)' }
-      } catch (e) {
-        return { ok: false, message: String(e) }
-      }
-    },
-  )
+  handleInvoke(llmTest, async (payload) => {
+    const impl = buildProvider(payload.provider, payload.endpoint, payload.api_key)
+    try {
+      let captured = ''
+      await impl.chatStream(
+        [
+          { role: 'system', content: '你是 TiaLynn 测试机。回复一句 ok。' },
+          { role: 'user', content: 'ping' },
+        ],
+        { model: payload.model, temperature: 0.2, max_tokens: 32 },
+        (evt) => {
+          if (evt.delta) captured += evt.delta
+        },
+      )
+      return { ok: true, message: captured.trim() || '(empty response)' }
+    } catch (e) {
+      return { ok: false, message: String(e) }
+    }
+  })
 
   // v0.8.1: 完整健康自检 (5 项测试)
-  ipcMain.handle(
-    'llm:health-check',
-    async (
-      _evt,
-      payload?: {
-        provider?: LlmProvider
-        endpoint?: string
-        api_key?: string
-        model?: string
-        test_vision?: boolean
+  handleInvoke(llmHealthCheck, async (payload) => {
+    const cfg = loadConfig()
+    return runHealthCheck(
+      {
+        llm_provider: payload?.provider ?? cfg.llm_provider,
+        llm_endpoint: payload?.endpoint ?? cfg.llm_endpoint,
+        llm_model: payload?.model ?? cfg.llm_model,
+        llm_api_key: payload?.api_key ?? cfg.llm_api_key,
       },
-    ): Promise<FullHealthReport> => {
-      const cfg = loadConfig()
-      return runHealthCheck(
-        {
-          llm_provider: payload?.provider ?? cfg.llm_provider,
-          llm_endpoint: payload?.endpoint ?? cfg.llm_endpoint,
-          llm_model: payload?.model ?? cfg.llm_model,
-          llm_api_key: payload?.api_key ?? cfg.llm_api_key,
-        },
-        { test_vision: payload?.test_vision ?? false },
-      )
-    },
-  )
+      { test_vision: payload?.test_vision ?? false },
+    )
+  })
 }

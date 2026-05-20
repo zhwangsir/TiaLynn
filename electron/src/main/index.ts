@@ -53,6 +53,7 @@ import { registerTriggerIpc } from './ipc/trigger'
 import { registerPerceptionIpc } from './ipc/perception'
 import { registerEmotionalIpc } from './ipc/emotional'
 import { registerEvalIpc } from './ipc/eval'
+import { startEmotionalTicker, stopEmotionalTicker } from './services/emotional-state/ticker'
 import { startPerception, stopPerception } from './services/perception'
 import { startAttention, stopAttention } from './services/attention'
 import { startLlmHealthLoop } from './services/llm/health-fallback'
@@ -169,6 +170,9 @@ app.whenReady().then(() => {
     `[perception] vision_enabled=${cfg.vision_enabled ?? false} endpoint=${cfg.vision_endpoint || '(none)'} model=${cfg.vision_model || '(none)'}`,
   )
 
+  // Phase 1 J P3: 情感周期 tick — always-on，不依赖 LLM 配置
+  startEmotionalTicker()
+
   // v0.8.2: 启动主体性循环（Scheduler tick + Planner LLM 调用 + 推 plan 给 renderer 执行）
   // v0.13: LLM 未配置时不启动 attention loop — 否则每 60s 撞一次 LLM 调用错误
   // 用户首次在 Settings 配完 endpoint 后由 IPC 触发 startAttention（见 ipc/llm.ts 的 setConfig）
@@ -220,4 +224,5 @@ app.on('before-quit', () => {
   stopTray()
   unregisterHaltShortcut()
   shutdownMcp()
+  stopEmotionalTicker()
 })
