@@ -1,14 +1,7 @@
 /**
- * v0.17 P — MCP IPC handlers.
- *
- * 让 renderer (设置面板 / 工具菜单) 能：
- *   - 列已注册的外部 MCP server
- *   - 注册 + 启动一个新 server (command + args)
- *   - 调用 server 暴露的 tool
- *
- * 配合 main/services/mcp-client.ts。
+ * v0.17 P — MCP IPC handlers (Phase 1 W4 改 type-safe channel).
  */
-import { ipcMain, type BrowserWindow } from 'electron'
+import { type BrowserWindow } from 'electron'
 import {
   callTool,
   listServers,
@@ -17,6 +10,14 @@ import {
   unregisterServer,
   validateMcpServerSpec,
 } from '../services/mcp-client'
+import {
+  mcpCallTool,
+  mcpListServers,
+  mcpListTools,
+  mcpRegister,
+  mcpUnregister,
+} from '@shared/channels/mcp'
+import { handleInvoke } from './channel-helpers'
 
 export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
   /** 通知 renderer tools registry 内容变了 — 避免 dialog send 热路径 IPC pre-flight。 */
@@ -25,9 +26,9 @@ export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
     if (win && !win.isDestroyed()) win.webContents.send('tools:changed')
   }
 
-  ipcMain.handle('mcp:list-servers', () => listServers())
+  handleInvoke(mcpListServers, () => listServers())
 
-  ipcMain.handle('mcp:register', async (_evt, payload: unknown) => {
+  handleInvoke(mcpRegister, async (payload) => {
     // C1: renderer 传来的 spec 必须先过白名单 — 防 XSS 触发 RCE
     const v = validateMcpServerSpec(payload)
     if (!v.ok) return { ok: false, reason: v.reason }
@@ -39,19 +40,15 @@ export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
     return { ok: false, reason: r.reason }
   })
 
-  ipcMain.handle('mcp:unregister', (_evt, id: string) => {
+  handleInvoke(mcpUnregister, (id) => {
     const r = unregisterServer(id)
     if (r.ok) notifyToolsChanged()
     return r
   })
 
-  ipcMain.handle('mcp:list-tools', (_evt, serverId: string) => listTools(serverId))
+  handleInvoke(mcpListTools, (serverId) => listTools(serverId))
 
-  ipcMain.handle('mcp:call-tool', async (_evt, payload: {
-    serverId: string
-    toolName: string
-    args: Record<string, unknown>
-  }) => {
+  handleInvoke(mcpCallTool, async (payload) => {
     return callTool(payload.serverId, payload.toolName, payload.args)
   })
 }

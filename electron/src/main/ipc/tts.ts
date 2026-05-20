@@ -8,7 +8,6 @@
  *   - stripEmotionPrefix — LLM 输出「（害羞）」类前缀剥离
  *   - macSayToWav — macOS `say` 兜底合成
  */
-import { ipcMain } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile, unlink } from 'node:fs/promises'
@@ -16,6 +15,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadConfig } from '../services/config-store'
 import { validateSidecarUrl } from '../services/url-guard'
+import { ttsListRvcVoices, ttsProbe, ttsSpeak } from '@shared/channels/tts'
+import { handleInvoke } from './channel-helpers'
 
 const execFileAsync = promisify(execFile)
 
@@ -65,9 +66,7 @@ async function macSayToWav(text: string): Promise<
 }
 
 export function registerTtsIpc(): void {
-  ipcMain.handle(
-    'tts:speak',
-    async (_evt, payload: { text: string; voice?: string; emotion?: string }) => {
+  handleInvoke(ttsSpeak, async (payload) => {
       const cfg = loadConfig()
       const emotion = payload.emotion ?? 'neutral'
       const voiceId = payload.voice ?? cfg.emotion_voice_map[emotion] ?? 'clone_base'
@@ -137,10 +136,9 @@ export function registerTtsIpc(): void {
         return await macSayToWav(cleanText)
       }
       return { ok: false, reason: 'no-tts-backend' }
-    },
-  )
+    })
 
-  ipcMain.handle('tts:list-rvc-voices', async () => {
+  handleInvoke(ttsListRvcVoices, async () => {
     const cfg = loadConfig()
     if (!cfg.tts_sidecar_url) return { ok: false, voices: [], reason: 'no-sidecar' }
     const urls = Array.isArray(cfg.tts_sidecar_url) ? cfg.tts_sidecar_url : [cfg.tts_sidecar_url]
@@ -164,7 +162,7 @@ export function registerTtsIpc(): void {
     return { ok: false, voices: [], reason: 'all-sidecars-unreachable' }
   })
 
-  ipcMain.handle('tts:probe', async () => {
+  handleInvoke(ttsProbe, async () => {
     const cfg = loadConfig()
     if (!cfg.tts_sidecar_url) return { ok: false, reason: 'no-url' }
     const urls = Array.isArray(cfg.tts_sidecar_url) ? cfg.tts_sidecar_url : [cfg.tts_sidecar_url]
@@ -183,3 +181,4 @@ export function registerTtsIpc(): void {
     return { ok: false, reason: 'all-backends-unreachable' }
   })
 }
+

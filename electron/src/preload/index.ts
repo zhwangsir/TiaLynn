@@ -18,6 +18,24 @@ import type {
 import type { ApprovalRequest } from '@shared/tools'
 import type { TialynnApi } from '@shared/api'
 import { llmChatStream } from '@shared/channels/llm'
+import {
+  memoryAdd,
+  memoryCount,
+  memoryDailyReflection,
+  memoryDelete,
+  memoryExtractFromTurn,
+  memoryList,
+  memoryRagContext,
+  memorySearch,
+} from '@shared/channels/memory'
+import {
+  mcpCallTool,
+  mcpListServers,
+  mcpListTools,
+  mcpRegister,
+  mcpUnregister,
+} from '@shared/channels/mcp'
+import { ttsListRvcVoices, ttsProbe, ttsSpeak } from '@shared/channels/tts'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -293,22 +311,10 @@ const api: TialynnApi = {
     },
   },
   tts: {
-    speak: (payload: { text: string; voice?: string; emotion?: string }) =>
-      invoke('tts:speak', payload) as Promise<{
-        ok: boolean
-        audio_b64?: string
-        mime?: string
-        reason?: string
-      }>,
-    probe: () =>
-      invoke('tts:probe') as Promise<{ ok: boolean; status?: number; reason?: string }>,
-    listRvcVoices: () =>
-      invoke('tts:list-rvc-voices') as Promise<{
-        ok: boolean
-        voices: string[]
-        reason?: string
-        sidecar?: string
-      }>,
+    // Phase 1 W4: type-safe channels
+    speak: (payload) => invokeChannel(ttsSpeak, payload),
+    probe: () => invokeChannel(ttsProbe, undefined as never),
+    listRvcVoices: () => invokeChannel(ttsListRvcVoices, undefined as never),
   },
   history: {
     listRecent: (limit) =>
@@ -497,25 +503,23 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('comfyui:progress', handler)
     },
   },
+  // Phase 1 W4: type-safe channels (memory + mcp)
   memory: {
-    list: (opts) => invoke('memory:list', opts) as ReturnType<TialynnApi['memory']['list']>,
-    count: () => invoke('memory:count') as ReturnType<TialynnApi['memory']['count']>,
-    add: (payload) => invoke('memory:add', payload) as ReturnType<TialynnApi['memory']['add']>,
-    delete: (id) => invoke('memory:delete', id) as ReturnType<TialynnApi['memory']['delete']>,
-    search: (payload) => invoke('memory:search', payload) as ReturnType<TialynnApi['memory']['search']>,
-    extractFromTurn: (payload) =>
-      invoke('memory:extract-from-turn', payload) as ReturnType<TialynnApi['memory']['extractFromTurn']>,
-    ragContext: (payload) =>
-      invoke('memory:rag-context', payload) as ReturnType<TialynnApi['memory']['ragContext']>,
-    dailyReflection: () =>
-      invoke('memory:daily-reflection') as ReturnType<TialynnApi['memory']['dailyReflection']>,
+    list: (opts) => invokeChannel(memoryList, opts),
+    count: () => invokeChannel(memoryCount, undefined as never),
+    add: (payload) => invokeChannel(memoryAdd, payload),
+    delete: (id) => invokeChannel(memoryDelete, id),
+    search: (payload) => invokeChannel(memorySearch, payload),
+    extractFromTurn: (payload) => invokeChannel(memoryExtractFromTurn, payload),
+    ragContext: (payload) => invokeChannel(memoryRagContext, payload),
+    dailyReflection: () => invokeChannel(memoryDailyReflection, undefined as never),
   },
   mcp: {
-    listServers: () => invoke('mcp:list-servers') as ReturnType<TialynnApi['mcp']['listServers']>,
-    register: (payload) => invoke('mcp:register', payload) as ReturnType<TialynnApi['mcp']['register']>,
-    unregister: (id) => invoke('mcp:unregister', id) as ReturnType<TialynnApi['mcp']['unregister']>,
-    listTools: (serverId) => invoke('mcp:list-tools', serverId) as ReturnType<TialynnApi['mcp']['listTools']>,
-    callTool: (payload) => invoke('mcp:call-tool', payload) as ReturnType<TialynnApi['mcp']['callTool']>,
+    listServers: () => invokeChannel(mcpListServers, undefined as never),
+    register: (payload) => invokeChannel(mcpRegister, payload),
+    unregister: (id) => invokeChannel(mcpUnregister, id),
+    listTools: (serverId) => invokeChannel(mcpListTools, serverId),
+    callTool: (payload) => invokeChannel(mcpCallTool, payload),
   },
   agent: {
     halt: (on) => invoke('agent:halt', on) as ReturnType<TialynnApi['agent']['halt']>,

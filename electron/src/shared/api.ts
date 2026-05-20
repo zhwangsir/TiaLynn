@@ -721,12 +721,20 @@ export interface TialynnApi {
       score: number
       ts: number
     }>>
-    /** dialog reply-end 后异步抽取记忆 */
+    /** dialog reply-end 后异步抽取记忆 — main 实际返回 Memory[] (fire-and-forget) */
     extractFromTurn(payload: {
       user_text: string
       assistant_text: string
       turn_id: string
-    }): Promise<{ ok: boolean; extracted?: number; reason?: string }>
+    }): Promise<Array<{
+      id: string
+      kind: 'fact' | 'preference' | 'event' | 'reflection'
+      text: string
+      embedding: number[]
+      importance: number
+      source: string
+      ts: number
+    }>>
     /** chat 前 prepend RAG context */
     ragContext(payload: { query_text: string; k?: number }): Promise<{
       ok: boolean
