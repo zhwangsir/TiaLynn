@@ -291,7 +291,7 @@ export const useDialogStore = defineStore('dialog', () => {
       try {
         const userTurn = [...turns.value].reverse().find((t) => t.role === 'user')
         if (!userTurn?.text) return
-        await (window.api as unknown as { memory?: { extractFromTurn: (p: unknown) => Promise<unknown> } }).memory?.extractFromTurn({
+        await window.api.memory.extractFromTurn({
           user_text: userTurn.text,
           assistant_text: assistant.text,
           turn_id: assistant.id,

@@ -7,7 +7,16 @@
 ### 路线
 - ✅ M0-M10 v0.4-v0.15
 - ✅ **M11 v0.16**: Live2D 模型完整度工坊
-- ⏳ v0.17: AI 原画生成 + 图层切割 + 外部 MCP
+- 🚧 **v0.17 进行中** ([RELEASE_v0.17.md](docs/RELEASE_v0.17.md))
+  - ✅ 桌宠原生化（accessory + skipTransformProcessType + screen-saver level）
+  - ✅ AI 原画生成（ComfyUI 5 tabs + quick prompt 模板 chip）
+  - ✅ 外部 MCP server 客户端（stdio JSON-RPC，无 SDK 依赖）
+  - ✅ M2 长期记忆 IPC 桥接通（main 端早已存在，preload 暴露 + dialog typed 调用）
+  - ✅ 视觉融入感（drop-shadow + 漫画气泡 + scene 浓度降低）
+  - ✅ AI 行为协同（TTS 8 voice + rules play_group + reactive trigger + LLM budget 6/min）
+  - ⏳ MCP server UI（设置面板入口）
+  - ⏳ RAG context 接入 chat 前置流程
+  - ❌ 图层切割（PSD 解析 + Cubism Editor 自动化超范围 — 推迟 v0.18）
 
 ---
 

@@ -44,6 +44,8 @@ import { registerMemoryIpc } from './ipc/memory'
 import { registerToolIpc } from './ipc/tools'
 import { registerComfyuiIpc } from './ipc/comfyui'
 import { registerAutomationIpc } from './ipc/automation'
+import { registerMcpIpc } from './ipc/mcp'
+import { shutdownAll as shutdownMcp } from './services/mcp-client'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { registerMotionEngineIpc } from './ipc/motion-engine'
@@ -134,6 +136,7 @@ app.whenReady().then(() => {
   registerPerceptionIpc()
   registerComfyuiIpc(getMainWindow)
   registerAutomationIpc(getMainWindow)
+  registerMcpIpc()
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）
@@ -204,4 +207,5 @@ app.on('before-quit', () => {
   stopPerception()
   stopTray()
   unregisterHaltShortcut()
+  shutdownMcp()
 })

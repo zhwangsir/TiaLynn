@@ -260,6 +260,15 @@ onMounted(() => {
     <section v-show="tab === 't2i'" class="form">
       <label>Prompt</label>
       <textarea v-model="t2iForm.prompt" placeholder="cute anime girl, sticker style, white background, ..." rows="3" />
+      <!-- v0.17：Live2D 立绘原画 quick prompt 模板 — 接 AI 原画生成 pipeline 第一步 -->
+      <div class="quick-prompts">
+        <span class="qp-label">🎨 快速模板</span>
+        <button class="chip" @click="t2iForm.prompt = 'full body, standing, anime girl portrait, transparent background, isolated character, masterpiece, best quality, vtuber style, front facing'">Live2D 立绘</button>
+        <button class="chip" @click="t2iForm.prompt = 'cute chibi anime girl, sticker, transparent background, isolated, kawaii, official art'">贴纸</button>
+        <button class="chip" @click="t2iForm.prompt = 'cozy bedroom interior, anime background, warm lighting, no humans, scenery'">卧室背景</button>
+        <button class="chip" @click="t2iForm.prompt = 'starry night sky, anime scenery, no humans, deep blue, magical, masterpiece'">星空背景</button>
+        <button class="chip" @click="t2iForm.prompt = 'character reference sheet, multiple angles, anime girl, full body, turnaround, character design'">角色设定图</button>
+      </div>
       <label>Negative (可选)</label>
       <textarea v-model="t2iForm.negative" placeholder="lowres, bad anatomy, ..." rows="2" />
       <div class="row">
@@ -569,4 +578,28 @@ onMounted(() => {
   font-family: ui-monospace, monospace; font-size: 0.85em;
 }
 .ftbar .last-files a:hover { background: rgba(96, 165, 250, 0.2); }
+
+/* v0.17: 快速 prompt 模板 chip */
+.quick-prompts {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 6px; margin: 6px 0 8px;
+}
+.qp-label {
+  font-size: 11px; color: rgba(229, 231, 235, 0.55);
+  margin-right: 4px;
+}
+.chip {
+  padding: 4px 10px; font-size: 11px;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  color: rgba(229, 231, 235, 0.85);
+  cursor: pointer;
+  transition: all 150ms;
+}
+.chip:hover {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: white;
+}
 </style>

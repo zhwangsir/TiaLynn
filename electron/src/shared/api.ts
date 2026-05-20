@@ -692,6 +692,74 @@ export interface TialynnApi {
       [k: string]: unknown
     }) => void): () => void
   }
+  /** v0.17 M2：长期向量记忆 — 跨会话陪伴的核心数据层 */
+  memory: {
+    list(opts?: { kind?: 'fact' | 'preference' | 'event' | 'reflection'; limit?: number }): Promise<Array<{
+      id: string
+      kind: 'fact' | 'preference' | 'event' | 'reflection'
+      text: string
+      embedding: number[]
+      importance: number
+      source: string
+      ts: number
+    }>>
+    count(): Promise<number>
+    add(payload: {
+      kind: 'fact' | 'preference' | 'event' | 'reflection'
+      text: string
+      importance: number
+      embedding?: number[]
+    }): Promise<{ ok: boolean; reason?: string; memory?: unknown }>
+    delete(id: string): Promise<{ ok: boolean; reason?: string }>
+    search(payload: { query_embedding: number[]; k?: number }): Promise<Array<{
+      id: string
+      text: string
+      kind: string
+      importance: number
+      score: number
+      ts: number
+    }>>
+    /** dialog reply-end 后异步抽取记忆 */
+    extractFromTurn(payload: {
+      user_text: string
+      assistant_text: string
+      turn_id: string
+    }): Promise<{ ok: boolean; extracted?: number; reason?: string }>
+    /** chat 前 prepend RAG context */
+    ragContext(payload: { query_text: string; k?: number }): Promise<{
+      ok: boolean
+      context?: string
+      matches?: number
+      reason?: string
+    }>
+    /** 每日 reflection — 角色总结今天发生了什么 */
+    dailyReflection(): Promise<{ ok: boolean; text?: string; reason?: string }>
+  }
+
+  /** v0.17 P：外部 MCP server 客户端 */
+  mcp: {
+    /** 列已注册的外部 MCP server */
+    listServers(): Promise<Array<{ id: string; name: string; command: string; status: 'running' | 'stopped' | 'error'; toolCount: number }>>
+    /** 注册并启动一个 stdio MCP server */
+    register(payload: {
+      id: string
+      name: string
+      command: string
+      args?: string[]
+      env?: Record<string, string>
+    }): Promise<{ ok: boolean; toolCount?: number; reason?: string }>
+    /** 关停并移除 */
+    unregister(id: string): Promise<{ ok: boolean }>
+    /** 列某个 server 的工具清单 */
+    listTools(serverId: string): Promise<Array<{ name: string; description: string; inputSchema?: unknown }>>
+    /** 调用一个外部 MCP 工具 */
+    callTool(payload: {
+      serverId: string
+      toolName: string
+      args: Record<string, unknown>
+    }): Promise<{ ok: boolean; result?: unknown; reason?: string }>
+  }
+
   /** v0.17 E：Agent 自动化 — TiaLynn 操控鼠标 / 键盘 / 截屏 */
   agent: {
     halt(on: boolean): Promise<{ halted: boolean }>

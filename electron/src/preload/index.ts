@@ -485,6 +485,26 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('comfyui:progress', handler)
     },
   },
+  memory: {
+    list: (opts) => invoke('memory:list', opts) as ReturnType<TialynnApi['memory']['list']>,
+    count: () => invoke('memory:count') as ReturnType<TialynnApi['memory']['count']>,
+    add: (payload) => invoke('memory:add', payload) as ReturnType<TialynnApi['memory']['add']>,
+    delete: (id) => invoke('memory:delete', id) as ReturnType<TialynnApi['memory']['delete']>,
+    search: (payload) => invoke('memory:search', payload) as ReturnType<TialynnApi['memory']['search']>,
+    extractFromTurn: (payload) =>
+      invoke('memory:extract-from-turn', payload) as ReturnType<TialynnApi['memory']['extractFromTurn']>,
+    ragContext: (payload) =>
+      invoke('memory:rag-context', payload) as ReturnType<TialynnApi['memory']['ragContext']>,
+    dailyReflection: () =>
+      invoke('memory:daily-reflection') as ReturnType<TialynnApi['memory']['dailyReflection']>,
+  },
+  mcp: {
+    listServers: () => invoke('mcp:list-servers') as ReturnType<TialynnApi['mcp']['listServers']>,
+    register: (payload) => invoke('mcp:register', payload) as ReturnType<TialynnApi['mcp']['register']>,
+    unregister: (id) => invoke('mcp:unregister', id) as ReturnType<TialynnApi['mcp']['unregister']>,
+    listTools: (serverId) => invoke('mcp:list-tools', serverId) as ReturnType<TialynnApi['mcp']['listTools']>,
+    callTool: (payload) => invoke('mcp:call-tool', payload) as ReturnType<TialynnApi['mcp']['callTool']>,
+  },
   agent: {
     halt: (on) => invoke('agent:halt', on) as ReturnType<TialynnApi['agent']['halt']>,
     isHalted: () => invoke('agent:is-halted') as ReturnType<TialynnApi['agent']['isHalted']>,
