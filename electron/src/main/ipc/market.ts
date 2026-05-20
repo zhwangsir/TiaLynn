@@ -1,30 +1,27 @@
 /**
- * 模型市场 IPC handlers.
+ * 模型市场 IPC handlers — type-safe channels (Phase 1 G).
+ * 注：market:installed 是 main→renderer 推送，不走 channel（channel 只覆盖 invoke）。
  */
-import { ipcMain, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
+import {
+  marketInstallPath,
+  marketInstallPaths,
+  marketInstallUrl,
+  marketInstallZip,
+} from '@shared/channels/market'
 import { installFromPath, installFromUrl, installFromZip } from '../services/model-market'
-import type { InstallResult } from '../services/model-market'
+import { handleInvoke } from './channel-helpers'
 
 export function registerMarketIpc(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle('market:install-zip', async (_evt, zipPath: string): Promise<InstallResult> => {
-    return installFromZip(zipPath)
-  })
+  handleInvoke(marketInstallZip, (zipPath) => installFromZip(zipPath))
+  handleInvoke(marketInstallUrl, (url) => installFromUrl(url))
+  handleInvoke(marketInstallPath, (path) => installFromPath(path))
 
-  ipcMain.handle('market:install-url', async (_evt, url: string): Promise<InstallResult> => {
-    return installFromUrl(url)
-  })
-
-  ipcMain.handle('market:install-path', async (_evt, path: string): Promise<InstallResult> => {
-    return installFromPath(path)
-  })
-
-  // 用于拖拽：renderer 拿到 file path 后送过来
-  ipcMain.handle('market:install-paths', async (_evt, paths: string[]): Promise<InstallResult[]> => {
-    const results: InstallResult[] = []
+  handleInvoke(marketInstallPaths, async (paths) => {
+    const results = []
     for (const p of paths) {
       results.push(await installFromPath(p))
     }
-    // 安装成功后让 renderer 知道
     const win = getWindow()
     if (win && !win.isDestroyed() && results.some((r) => r.ok)) {
       win.webContents.send('market:installed', results.filter((r) => r.ok))

@@ -1,23 +1,23 @@
 /**
- * Attention/Planner IPC handlers.
+ * Attention/Planner IPC handlers — type-safe channels (Phase 1 G).
  */
-import { ipcMain } from 'electron'
 import {
+  attentionGetConfig,
+  attentionRecentPlans,
   attentionSnapshot,
+  attentionUpdateConfig,
+} from '@shared/channels/attention'
+import {
+  attentionSnapshot as svcAttentionSnapshot,
   getAttentionConfig,
   recentPlans,
   updateAttentionConfig,
 } from '../services/attention'
-import type { AttentionConfig, AttentionSnapshot, BehaviorPlan } from '@shared/attention'
+import { handleInvoke } from './channel-helpers'
 
 export function registerAttentionIpc(): void {
-  ipcMain.handle('attention:get-config', (): AttentionConfig => getAttentionConfig())
-  ipcMain.handle(
-    'attention:update-config',
-    (_evt, patch: Partial<AttentionConfig>): AttentionConfig => updateAttentionConfig(patch),
-  )
-  ipcMain.handle('attention:snapshot', (): AttentionSnapshot => attentionSnapshot())
-  ipcMain.handle('attention:recent-plans', (_evt, limit?: number): BehaviorPlan[] =>
-    recentPlans(limit),
-  )
+  handleInvoke(attentionGetConfig, () => getAttentionConfig())
+  handleInvoke(attentionUpdateConfig, (patch) => updateAttentionConfig(patch))
+  handleInvoke(attentionSnapshot, () => svcAttentionSnapshot())
+  handleInvoke(attentionRecentPlans, (limit) => recentPlans(limit))
 }

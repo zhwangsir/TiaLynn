@@ -1,29 +1,30 @@
 /**
- * TriggerEngine IPC handlers.
+ * TriggerEngine IPC handlers — type-safe channels (Phase 1 G).
  */
-import { ipcMain } from 'electron'
+import {
+  triggerDecide,
+  triggerListRules,
+  triggerResetCooldowns,
+  triggerResetDefaults,
+  triggerSaveRules,
+} from '@shared/channels/trigger'
 import * as engine from '../services/trigger-engine/engine'
-import type { TriggerDecision, TriggerEvent, TriggerRule } from '@shared/trigger'
+import { handleInvoke } from './channel-helpers'
 
 export function registerTriggerIpc(): void {
-  ipcMain.handle(
-    'trigger:decide',
-    (
-      _evt,
-      payload: { event: TriggerEvent; model_dir?: string; ignore_cooldown?: boolean },
-    ): TriggerDecision | null =>
-      engine.decide(payload.event, {
-        ...(payload.model_dir !== undefined && { model_dir: payload.model_dir }),
-        ...(payload.ignore_cooldown !== undefined && { ignore_cooldown: payload.ignore_cooldown }),
-      }),
+  handleInvoke(triggerDecide, (payload) =>
+    engine.decide(payload.event, {
+      ...(payload.model_dir !== undefined && { model_dir: payload.model_dir }),
+      ...(payload.ignore_cooldown !== undefined && { ignore_cooldown: payload.ignore_cooldown }),
+    }),
   )
-  ipcMain.handle('trigger:list-rules', (): TriggerRule[] => engine.loadRules())
-  ipcMain.handle('trigger:save-rules', (_evt, rules: TriggerRule[]): TriggerRule[] => {
+  handleInvoke(triggerListRules, () => engine.loadRules())
+  handleInvoke(triggerSaveRules, (rules) => {
     engine.saveRules(rules)
     return engine.loadRules()
   })
-  ipcMain.handle('trigger:reset-defaults', (): TriggerRule[] => engine.resetToDefaults())
-  ipcMain.handle('trigger:reset-cooldowns', (): { ok: boolean } => {
+  handleInvoke(triggerResetDefaults, () => engine.resetToDefaults())
+  handleInvoke(triggerResetCooldowns, () => {
     engine.resetCooldowns()
     return { ok: true }
   })

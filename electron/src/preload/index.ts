@@ -36,6 +36,75 @@ import {
   mcpUnregister,
 } from '@shared/channels/mcp'
 import { ttsListRvcVoices, ttsProbe, ttsSpeak } from '@shared/channels/tts'
+import {
+  attentionGetConfig,
+  attentionRecentPlans,
+  attentionSnapshot,
+  attentionUpdateConfig,
+} from '@shared/channels/attention'
+import {
+  perceptionGetConfig,
+  perceptionRecent,
+  perceptionUpdateConfig,
+} from '@shared/channels/perception'
+import {
+  triggerDecide,
+  triggerListRules,
+  triggerResetCooldowns,
+  triggerResetDefaults,
+  triggerSaveRules,
+} from '@shared/channels/trigger'
+import {
+  marketInstallPath,
+  marketInstallPaths,
+  marketInstallUrl,
+  marketInstallZip,
+} from '@shared/channels/market'
+import {
+  thumbsClearAll,
+  thumbsGet,
+  thumbsGetBatch,
+  thumbsListMissing,
+  thumbsMarkFailed,
+  thumbsSave,
+} from '@shared/channels/thumbs'
+import {
+  engineByContext,
+  engineByEmotion,
+  engineCreate,
+  engineDelete,
+  engineGet,
+  engineGetVersion,
+  engineList,
+  engineListVersions,
+  engineRecordPlay,
+  engineSaveVersion,
+  engineSetRating,
+  engineSync,
+  engineTopRated,
+  engineUpdate,
+} from '@shared/channels/motion-engine'
+import {
+  charactersActive,
+  charactersClone,
+  charactersCreate,
+  charactersDelete,
+  charactersGet,
+  charactersList,
+  charactersReadSoulFile,
+  charactersRecordChat,
+  charactersSwitch,
+  charactersUpdate,
+  charactersWriteSoulFile,
+} from '@shared/channels/characters'
+import {
+  onlineCancelInstall,
+  onlineCheckInstalled,
+  onlineInstall,
+  onlineInstallCustom,
+  onlineListAssets,
+  onlineListRecommended,
+} from '@shared/channels/online'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -216,22 +285,20 @@ const api: TialynnApi = {
       invoke('models:analyze-params', payload) as ReturnType<TialynnApi['models']['analyzeParams']>,
   },
   online: {
-    listRecommended: () =>
-      invoke('online:list-recommended') as ReturnType<TialynnApi['online']['listRecommended']>,
+    listRecommended: () => invokeChannel(onlineListRecommended, undefined as never),
     listAssets: (payload: { repo_id: string; sub_path?: string }) =>
-      invoke('online:list-assets', payload) as ReturnType<TialynnApi['online']['listAssets']>,
+      invokeChannel(onlineListAssets, payload),
     checkInstalled: (payload: {
       kind: 'rvc' | 'live2d'
       voice_id?: string
       repo_slug?: string
       asset_name?: string
-    }) => invoke('online:check-installed', payload) as ReturnType<TialynnApi['online']['checkInstalled']>,
+    }) => invokeChannel(onlineCheckInstalled, payload),
     install: (payload: { repo_id: string; asset_path: string; kind: 'rvc' | 'live2d' }) =>
-      invoke('online:install', payload) as ReturnType<TialynnApi['online']['install']>,
-    cancelInstall: (installId: string) =>
-      invoke('online:cancel-install', installId) as ReturnType<TialynnApi['online']['cancelInstall']>,
+      invokeChannel(onlineInstall, payload),
+    cancelInstall: (installId: string) => invokeChannel(onlineCancelInstall, installId),
     installCustom: (payload: { url: string; kind: 'rvc' | 'live2d' }) =>
-      invoke('online:install-custom', payload) as ReturnType<TialynnApi['online']['installCustom']>,
+      invokeChannel(onlineInstallCustom, payload),
     onInstallProgress: (
       cb: (p: import('@shared/api').OnlineInstallProgress) => void,
     ): (() => void) => {
@@ -254,30 +321,27 @@ const api: TialynnApi = {
     },
   },
   thumbs: {
-    get: (characterId: string) =>
-      invoke('thumbs:get', characterId) as ReturnType<TialynnApi['thumbs']['get']>,
-    getBatch: (characterIds: string[]) =>
-      invoke('thumbs:get-batch', characterIds) as ReturnType<TialynnApi['thumbs']['getBatch']>,
+    get: (characterId: string) => invokeChannel(thumbsGet, characterId),
+    getBatch: (characterIds: string[]) => invokeChannel(thumbsGetBatch, characterIds),
     save: (payload: { character_id: string; webp_base64: string }) =>
-      invoke('thumbs:save', payload) as ReturnType<TialynnApi['thumbs']['save']>,
+      invokeChannel(thumbsSave, payload),
     markFailed: (payload: { character_id: string; reason: string }) =>
-      invoke('thumbs:mark-failed', payload) as ReturnType<TialynnApi['thumbs']['markFailed']>,
-    listMissing: (characterIds: string[]) =>
-      invoke('thumbs:list-missing', characterIds) as ReturnType<TialynnApi['thumbs']['listMissing']>,
-    clearAll: () => invoke('thumbs:clear-all') as ReturnType<TialynnApi['thumbs']['clearAll']>,
+      invokeChannel(thumbsMarkFailed, payload),
+    listMissing: (characterIds: string[]) => invokeChannel(thumbsListMissing, characterIds),
+    clearAll: () => invokeChannel(thumbsClearAll, undefined as never),
   },
   characters: {
-    list: () => invoke('characters:list') as ReturnType<TialynnApi['characters']['list']>,
-    active: () => invoke('characters:active') as ReturnType<TialynnApi['characters']['active']>,
-    get: (id) => invoke('characters:get', id) as ReturnType<TialynnApi['characters']['get']>,
-    create: (input) => invoke('characters:create', input) as ReturnType<TialynnApi['characters']['create']>,
-    update: (payload) => invoke('characters:update', payload) as ReturnType<TialynnApi['characters']['update']>,
-    delete: (id) => invoke('characters:delete', id) as ReturnType<TialynnApi['characters']['delete']>,
-    clone: (payload) => invoke('characters:clone', payload) as ReturnType<TialynnApi['characters']['clone']>,
-    switch: (id) => invoke('characters:switch', id) as ReturnType<TialynnApi['characters']['switch']>,
-    recordChat: () => invoke('characters:record-chat') as ReturnType<TialynnApi['characters']['recordChat']>,
-    readSoulFile: (payload) => invoke('characters:read-soul-file', payload) as ReturnType<TialynnApi['characters']['readSoulFile']>,
-    writeSoulFile: (payload) => invoke('characters:write-soul-file', payload) as ReturnType<TialynnApi['characters']['writeSoulFile']>,
+    list: () => invokeChannel(charactersList, undefined as never),
+    active: () => invokeChannel(charactersActive, undefined as never),
+    get: (id) => invokeChannel(charactersGet, id),
+    create: (input) => invokeChannel(charactersCreate, input),
+    update: (payload) => invokeChannel(charactersUpdate, payload),
+    delete: (id) => invokeChannel(charactersDelete, id),
+    clone: (payload) => invokeChannel(charactersClone, payload),
+    switch: (id) => invokeChannel(charactersSwitch, id),
+    recordChat: () => invokeChannel(charactersRecordChat, undefined as never),
+    readSoulFile: (payload) => invokeChannel(charactersReadSoulFile, payload),
+    writeSoulFile: (payload) => invokeChannel(charactersWriteSoulFile, payload),
     onSwitched: (cb) => {
       const handler = (_: unknown, character: unknown): void => cb(character as Parameters<typeof cb>[0])
       ipcRenderer.on('character:switched', handler)
@@ -352,18 +416,10 @@ const api: TialynnApi = {
       invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
   },
   attention: {
-    getConfig: () =>
-      invoke('attention:get-config') as ReturnType<TialynnApi['attention']['getConfig']>,
-    updateConfig: (patch) =>
-      invoke('attention:update-config', patch) as ReturnType<
-        TialynnApi['attention']['updateConfig']
-      >,
-    snapshot: () =>
-      invoke('attention:snapshot') as ReturnType<TialynnApi['attention']['snapshot']>,
-    recentPlans: (limit) =>
-      invoke('attention:recent-plans', limit) as ReturnType<
-        TialynnApi['attention']['recentPlans']
-      >,
+    getConfig: () => invokeChannel(attentionGetConfig, undefined as never),
+    updateConfig: (patch) => invokeChannel(attentionUpdateConfig, patch),
+    snapshot: () => invokeChannel(attentionSnapshot, undefined as never),
+    recentPlans: (limit) => invokeChannel(attentionRecentPlans, limit),
     onPlan: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,
@@ -374,14 +430,9 @@ const api: TialynnApi = {
     },
   },
   perception: {
-    getConfig: () =>
-      invoke('perception:get-config') as ReturnType<TialynnApi['perception']['getConfig']>,
-    updateConfig: (patch) =>
-      invoke('perception:update-config', patch) as ReturnType<
-        TialynnApi['perception']['updateConfig']
-      >,
-    recent: (payload) =>
-      invoke('perception:recent', payload) as ReturnType<TialynnApi['perception']['recent']>,
+    getConfig: () => invokeChannel(perceptionGetConfig, undefined as never),
+    updateConfig: (patch) => invokeChannel(perceptionUpdateConfig, patch),
+    recent: (payload) => invokeChannel(perceptionRecent, payload),
     onEvent: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,
@@ -394,55 +445,36 @@ const api: TialynnApi = {
       invoke('perception:trigger-snapshot', reason) as Promise<void>,
   },
   trigger: {
-    decide: (payload) =>
-      invoke('trigger:decide', payload) as ReturnType<TialynnApi['trigger']['decide']>,
-    listRules: () =>
-      invoke('trigger:list-rules') as ReturnType<TialynnApi['trigger']['listRules']>,
-    saveRules: (rules) =>
-      invoke('trigger:save-rules', rules) as ReturnType<TialynnApi['trigger']['saveRules']>,
-    resetDefaults: () =>
-      invoke('trigger:reset-defaults') as ReturnType<TialynnApi['trigger']['resetDefaults']>,
-    resetCooldowns: () =>
-      invoke('trigger:reset-cooldowns') as ReturnType<TialynnApi['trigger']['resetCooldowns']>,
+    decide: (payload) => invokeChannel(triggerDecide, payload),
+    listRules: () => invokeChannel(triggerListRules, undefined as never),
+    saveRules: (rules) => invokeChannel(triggerSaveRules, rules),
+    resetDefaults: () => invokeChannel(triggerResetDefaults, undefined as never),
+    resetCooldowns: () => invokeChannel(triggerResetCooldowns, undefined as never),
   },
   strategy: {
     list: () => invoke('strategy:list') as ReturnType<TialynnApi['strategy']['list']>,
   },
   engine: {
-    list: (filter) => invoke('engine:list', filter) as ReturnType<TialynnApi['engine']['list']>,
-    get: (id: number) => invoke('engine:get', id) as ReturnType<TialynnApi['engine']['get']>,
-    create: (input) =>
-      invoke('engine:create', input) as ReturnType<TialynnApi['engine']['create']>,
-    update: (payload) =>
-      invoke('engine:update', payload) as ReturnType<TialynnApi['engine']['update']>,
-    delete: (id: number) =>
-      invoke('engine:delete', id) as ReturnType<TialynnApi['engine']['delete']>,
-    saveVersion: (payload) =>
-      invoke('engine:save-version', payload) as ReturnType<TialynnApi['engine']['saveVersion']>,
-    listVersions: (entryId: number) =>
-      invoke('engine:list-versions', entryId) as ReturnType<TialynnApi['engine']['listVersions']>,
-    getVersion: (payload) =>
-      invoke('engine:get-version', payload) as ReturnType<TialynnApi['engine']['getVersion']>,
-    recordPlay: (id: number) => invoke('engine:record-play', id) as Promise<void>,
-    setRating: (payload) => invoke('engine:set-rating', payload) as Promise<void>,
-    byEmotion: (payload) =>
-      invoke('engine:by-emotion', payload) as ReturnType<TialynnApi['engine']['byEmotion']>,
-    byContext: (payload) =>
-      invoke('engine:by-context', payload) as ReturnType<TialynnApi['engine']['byContext']>,
-    topRated: (payload) =>
-      invoke('engine:top-rated', payload) as ReturnType<TialynnApi['engine']['topRated']>,
-    sync: (modelDir: string) =>
-      invoke('engine:sync', modelDir) as ReturnType<TialynnApi['engine']['sync']>,
+    list: (filter) => invokeChannel(engineList, filter),
+    get: (id: number) => invokeChannel(engineGet, id),
+    create: (input) => invokeChannel(engineCreate, input),
+    update: (payload) => invokeChannel(engineUpdate, payload),
+    delete: (id: number) => invokeChannel(engineDelete, id),
+    saveVersion: (payload) => invokeChannel(engineSaveVersion, payload),
+    listVersions: (entryId: number) => invokeChannel(engineListVersions, entryId),
+    getVersion: (payload) => invokeChannel(engineGetVersion, payload),
+    recordPlay: (id: number) => invokeChannel(engineRecordPlay, id),
+    setRating: (payload) => invokeChannel(engineSetRating, payload),
+    byEmotion: (payload) => invokeChannel(engineByEmotion, payload),
+    byContext: (payload) => invokeChannel(engineByContext, payload),
+    topRated: (payload) => invokeChannel(engineTopRated, payload),
+    sync: (modelDir: string) => invokeChannel(engineSync, modelDir),
   },
   market: {
-    installZip: (zipPath: string) =>
-      invoke('market:install-zip', zipPath) as ReturnType<TialynnApi['market']['installZip']>,
-    installUrl: (url: string) =>
-      invoke('market:install-url', url) as ReturnType<TialynnApi['market']['installUrl']>,
-    installPath: (path: string) =>
-      invoke('market:install-path', path) as ReturnType<TialynnApi['market']['installPath']>,
-    installPaths: (paths: string[]) =>
-      invoke('market:install-paths', paths) as ReturnType<TialynnApi['market']['installPaths']>,
+    installZip: (zipPath: string) => invokeChannel(marketInstallZip, zipPath),
+    installUrl: (url: string) => invokeChannel(marketInstallUrl, url),
+    installPath: (path: string) => invokeChannel(marketInstallPath, path),
+    installPaths: (paths: string[]) => invokeChannel(marketInstallPaths, paths),
     onInstalled: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,

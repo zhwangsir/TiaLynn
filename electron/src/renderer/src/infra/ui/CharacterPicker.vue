@@ -48,7 +48,7 @@ async function clone(id: string, e: Event): Promise<void> {
   const src = character.all.find((c) => c.id === id)
   if (!src) return
   const r = await character.clone(id)
-  if (r.ok) {
+  if (r.ok && r.character) {
     bus.emit('ui:toast', {
       kind: 'success',
       message: `已克隆 ${src.name} → ${r.character.name}（亲密度重置）`,
