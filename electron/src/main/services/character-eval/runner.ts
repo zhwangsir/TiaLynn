@@ -65,7 +65,9 @@ async function askOne(
       {
         model: cfg.llm_model,
         temperature: 0.7,
-        max_tokens: 800,
+        // v0.8.1 lesson: Qwen3 / DeepSeek-R1 等 thinking 模型 max_tokens 必须够大
+        // 否则思考链占满，没有最终答案 — eval 题虽短，思考可能 4000+ tokens
+        max_tokens: 8000,
       },
       (evt) => {
         if (evt.delta) raw += evt.delta
