@@ -1,5 +1,5 @@
 /**
- * Tool IPC + 审批协议（主进程视角）。
+ * Tool IPC + 审批协议（主进程视角）— type-safe channels (Phase 1 G).
  *
  * 工作流：
  *   1. LLM 在 stream 中产生 tool_use → renderer 调 'tools:run' 把 ToolInvocation 发给主进程
@@ -12,45 +12,52 @@
  */
 import { ipcMain, type BrowserWindow } from 'electron'
 import {
+  mcpListBuiltin,
+  mcpRun,
+  toolsList,
+  toolsPolicyClear,
+  toolsPolicyGet,
+  toolsPolicySet,
+  toolsRun,
+} from '@shared/channels/tools'
+import {
   buildSummary,
   invoke as invokeTool,
   list as listTools,
 } from '../services/tools/registry'
 import * as policy from '../services/tools/policy-store'
 import { registerBuiltins } from '../services/tools/builtin'
-import type { ApprovalDecision, ApprovalRequest, ToolInvocation, ToolResult } from '@shared/tools'
+import type { ApprovalDecision, ApprovalRequest, ToolInvocation } from '@shared/tools'
+import { handleInvoke } from './channel-helpers'
 
 const pendingApprovals = new Map<string, (decision: ApprovalDecision) => void>()
 
 export function registerToolIpc(getWindow: () => BrowserWindow | null): void {
   registerBuiltins()
 
-  ipcMain.handle('tools:list', () => listTools())
+  handleInvoke(toolsList, () => listTools())
 
   // v0.15 D1+D2: MCP 内置工具
-  ipcMain.handle('mcp:list', async () => {
+  handleInvoke(mcpListBuiltin, async () => {
     const { listMCPTools } = await import('../services/mcp-registry')
     return listMCPTools()
   })
-  ipcMain.handle('mcp:run', async (_evt, payload: { name: string; input: Record<string, unknown> }) => {
+  handleInvoke(mcpRun, async (payload) => {
     const { runMCPTool } = await import('../services/mcp-registry')
     return runMCPTool(payload.name, payload.input)
   })
 
-  ipcMain.handle('tools:policy-get', () => policy.load())
-  ipcMain.handle(
-    'tools:policy-set',
-    (_evt, payload: { tool_name: string; decision: 'always_allow' | 'always_deny' | null }) => {
-      policy.setPolicy(payload.tool_name, payload.decision)
-      return policy.load()
-    },
-  )
-  ipcMain.handle('tools:policy-clear', () => {
+  handleInvoke(toolsPolicyGet, () => policy.load())
+  handleInvoke(toolsPolicySet, (payload) => {
+    policy.setPolicy(payload.tool_name, payload.decision)
+    return policy.load()
+  })
+  handleInvoke(toolsPolicyClear, () => {
     policy.clearAll()
     return policy.load()
   })
 
-  ipcMain.handle('tools:run', async (_evt, call: ToolInvocation): Promise<ToolResult> => {
+  handleInvoke(toolsRun, async (call) => {
     const p = policy.get(call.tool_name)
     if (p === 'always_deny') {
       return {
@@ -78,7 +85,7 @@ export function registerToolIpc(getWindow: () => BrowserWindow | null): void {
     return invokeTool(call)
   })
 
-  /** renderer 回应审批 */
+  /** renderer 回应审批 — ipcMain.on (renderer→main 单向 send，不走 invoke channel) */
   ipcMain.on(
     'tools:approval-decision',
     (_evt, payload: { invocation_id: string; decision: ApprovalDecision }) => {

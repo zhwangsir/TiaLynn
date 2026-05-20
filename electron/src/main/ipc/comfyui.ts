@@ -1,29 +1,31 @@
 /**
- * ComfyUI IPC handlers — Phase 2「创作工坊」
+ * ComfyUI IPC handlers — type-safe channels (Phase 1 G).
  *
  * Renderer 可调能力：
- *   - comfyui:status                          探活
- *   - comfyui:list-checkpoints                动态列 ComfyUI 当前 checkpoint
- *   - comfyui:list-loras                      列 LoRA
- *   - comfyui:list-samplers                   列 sampler
- *   - comfyui:list-schedulers                 列 scheduler
- *   - comfyui:list-video-models               列 Wan2 文生视频 model 枚举
- *   - comfyui:upload-image  { srcPath }       复制到 ~/.tialynn/uploads/ 并上传 ComfyUI
- *   - comfyui:generate-image                  通用 T2I（替代/补充 sticker/background）
- *   - comfyui:generate-i2i                    图生图
- *   - comfyui:generate-video-t2v              文生视频
- *   - comfyui:generate-video-i2v              图生视频
- *   - comfyui:generate-sticker                旧 Phase 1（保留）
- *   - comfyui:generate-background             旧 Phase 1（保留）
- *   - comfyui:list-recent                     最近生成的所有文件
- *   - comfyui:cancel                          中断
+ *   - comfyui:status / list-* / upload-image / generate-* / list-recent / cancel
  *
  * 进度事件：webContents.send('comfyui:progress', {kind, state, ...})
  */
-import { ipcMain, type BrowserWindow } from 'electron'
-import { copyFile, mkdir } from 'node:fs/promises'
+import type { BrowserWindow } from 'electron'
+import { copyFile } from 'node:fs/promises'
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
+import {
+  comfyuiCancel,
+  comfyuiGenerateBackground,
+  comfyuiGenerateI2I,
+  comfyuiGenerateImage,
+  comfyuiGenerateSticker,
+  comfyuiGenerateVideoI2V,
+  comfyuiGenerateVideoT2V,
+  comfyuiListCheckpoints,
+  comfyuiListLoras,
+  comfyuiListRecent,
+  comfyuiListSamplers,
+  comfyuiListVideoModels,
+  comfyuiStatus,
+  comfyuiUploadImage,
+} from '@shared/channels/comfyui'
 import { ComfyClient, ComfyError, type ComfyOutputImage } from '../services/comfyui/client'
 import {
   buildBackgroundWorkflow,
@@ -32,15 +34,10 @@ import {
   buildStickerWorkflow,
   buildVideoI2VWorkflow,
   buildVideoT2VWorkflow,
-  type BackgroundParams,
-  type I2IGenParams,
-  type ImageGenParams,
-  type StickerParams,
-  type VideoI2VParams,
-  type VideoT2VParams,
 } from '../services/comfyui/workflows'
 import { loadConfig } from '../services/config-store'
 import { getPaths } from '../services/paths'
+import { handleInvoke } from './channel-helpers'
 
 let activeClient: ComfyClient | null = null
 
@@ -60,18 +57,11 @@ function ensureDir(p: string): string {
   if (!existsSync(p)) mkdirSync(p, { recursive: true })
   return p
 }
-function stickersDir(): string { return ensureDir(join(getPaths().userDataDir, 'stickers')) }
-function backgroundsDir(): string { return ensureDir(join(getPaths().userDataDir, 'backgrounds')) }
-function imagesDir(): string { return ensureDir(join(getPaths().userDataDir, 'images')) }
-function videosDir(): string { return ensureDir(join(getPaths().userDataDir, 'videos')) }
-function uploadsDir(): string { return ensureDir(join(getPaths().userDataDir, 'uploads')) }
-
-interface GenerateOutput {
-  ok: boolean
-  prompt_id?: string
-  files?: string[]
-  error?: string
-}
+const stickersDir = (): string => ensureDir(join(getPaths().userDataDir, 'stickers'))
+const backgroundsDir = (): string => ensureDir(join(getPaths().userDataDir, 'backgrounds'))
+const imagesDir = (): string => ensureDir(join(getPaths().userDataDir, 'images'))
+const videosDir = (): string => ensureDir(join(getPaths().userDataDir, 'videos'))
+const uploadsDir = (): string => ensureDir(join(getPaths().userDataDir, 'uploads'))
 
 /** 把生成结果（图/视频）下载到本地目录 */
 async function downloadAll(
@@ -96,7 +86,11 @@ async function downloadAll(
   return saved
 }
 
-function progressEmitter(getWindow: () => BrowserWindow | null, kind: string, extra: Record<string, unknown> = {}) {
+function progressEmitter(
+  getWindow: () => BrowserWindow | null,
+  kind: string,
+  extra: Record<string, unknown> = {},
+) {
   return (state: 'queued' | 'running' | 'done'): void => {
     const win = getWindow()
     if (win && !win.isDestroyed()) {
@@ -108,11 +102,16 @@ function progressEmitter(getWindow: () => BrowserWindow | null, kind: string, ex
 export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void {
   // ============ 基础 ============
 
-  ipcMain.handle('comfyui:status', async () => {
+  handleInvoke(comfyuiStatus, async () => {
     try {
       const client = getClient()
       const r = await client.status()
-      return { ok: r.ok, endpoint: client.endpoint, detail: r.detail, error: r.error }
+      return {
+        ok: r.ok,
+        endpoint: client.endpoint,
+        detail: r.detail,
+        ...(r.error !== undefined && { error: r.error }),
+      }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -120,41 +119,68 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
 
   // ============ 动态列资源 ============
 
-  ipcMain.handle('comfyui:list-checkpoints', async () => {
+  handleInvoke(comfyuiListCheckpoints, async () => {
     try {
-      const info = await getClient().objectInfo('CheckpointLoaderSimple') as Record<string, { input?: { required?: Record<string, unknown> } }>
-      const enumList = (info.CheckpointLoaderSimple?.input?.required?.ckpt_name as unknown[])?.[0] as string[] | undefined
+      const info = (await getClient().objectInfo('CheckpointLoaderSimple')) as Record<
+        string,
+        { input?: { required?: Record<string, unknown> } }
+      >
+      const enumList = (info.CheckpointLoaderSimple?.input?.required?.ckpt_name as unknown[])?.[0] as
+        | string[]
+        | undefined
       return { ok: true, items: enumList ?? [] }
     } catch (e) {
       return { ok: false, items: [], error: e instanceof Error ? e.message : String(e) }
     }
   })
 
-  ipcMain.handle('comfyui:list-loras', async () => {
+  handleInvoke(comfyuiListLoras, async () => {
     try {
-      const info = await getClient().objectInfo('LoraLoader') as Record<string, { input?: { required?: Record<string, unknown> } }>
-      const enumList = (info.LoraLoader?.input?.required?.lora_name as unknown[])?.[0] as string[] | undefined
+      const info = (await getClient().objectInfo('LoraLoader')) as Record<
+        string,
+        { input?: { required?: Record<string, unknown> } }
+      >
+      const enumList = (info.LoraLoader?.input?.required?.lora_name as unknown[])?.[0] as
+        | string[]
+        | undefined
       return { ok: true, items: enumList ?? [] }
     } catch (e) {
       return { ok: false, items: [], error: e instanceof Error ? e.message : String(e) }
     }
   })
 
-  ipcMain.handle('comfyui:list-samplers', async () => {
+  handleInvoke(comfyuiListSamplers, async () => {
     try {
-      const info = await getClient().objectInfo('KSampler') as Record<string, { input?: { required?: Record<string, unknown> } }>
-      const samplers = (info.KSampler?.input?.required?.sampler_name as unknown[])?.[0] as string[] | undefined
-      const schedulers = (info.KSampler?.input?.required?.scheduler as unknown[])?.[0] as string[] | undefined
+      const info = (await getClient().objectInfo('KSampler')) as Record<
+        string,
+        { input?: { required?: Record<string, unknown> } }
+      >
+      const samplers = (info.KSampler?.input?.required?.sampler_name as unknown[])?.[0] as
+        | string[]
+        | undefined
+      const schedulers = (info.KSampler?.input?.required?.scheduler as unknown[])?.[0] as
+        | string[]
+        | undefined
       return { ok: true, samplers: samplers ?? [], schedulers: schedulers ?? [] }
     } catch (e) {
-      return { ok: false, samplers: [], schedulers: [], error: e instanceof Error ? e.message : String(e) }
+      return {
+        ok: false,
+        samplers: [],
+        schedulers: [],
+        error: e instanceof Error ? e.message : String(e),
+      }
     }
   })
 
-  ipcMain.handle('comfyui:list-video-models', async () => {
+  handleInvoke(comfyuiListVideoModels, async () => {
     try {
-      const info = await getClient().objectInfo('Wan2TextToVideoApi') as Record<string, { input?: { required?: Record<string, unknown> } }>
-      const enumList = (info.Wan2TextToVideoApi?.input?.required?.model as unknown[])?.[0] as string[] | undefined
+      const info = (await getClient().objectInfo('Wan2TextToVideoApi')) as Record<
+        string,
+        { input?: { required?: Record<string, unknown> } }
+      >
+      const enumList = (info.Wan2TextToVideoApi?.input?.required?.model as unknown[])?.[0] as
+        | string[]
+        | undefined
       return { ok: true, items: enumList ?? [] }
     } catch (e) {
       return { ok: false, items: [], error: e instanceof Error ? e.message : String(e) }
@@ -163,7 +189,7 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
 
   // ============ 图片上传 ============
 
-  ipcMain.handle('comfyui:upload-image', async (_evt, payload: { srcPath: string }) => {
+  handleInvoke(comfyuiUploadImage, async (payload) => {
     try {
       // 1) 复制到 ~/.tialynn/uploads/<ts>_<basename>
       const src = payload.srcPath
@@ -174,7 +200,13 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
       const client = getClient()
       const r = await client.uploadImage({ path: dest })
       console.log(`[comfyui] upload-image: ${basename(src)} → ${r.name} (uploads cache: ${dest})`)
-      return { ok: true, localCachePath: dest, comfyName: r.name, subfolder: r.subfolder, type: r.type }
+      return {
+        ok: true,
+        localCachePath: dest,
+        comfyName: r.name,
+        subfolder: r.subfolder,
+        type: r.type,
+      }
     } catch (e) {
       console.error('[comfyui] upload-image failed', e)
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -183,12 +215,14 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
 
   // ============ 生成 endpoints ============
 
-  ipcMain.handle('comfyui:generate-image', async (_evt, payload: ImageGenParams): Promise<GenerateOutput> => {
+  handleInvoke(comfyuiGenerateImage, async (payload) => {
     const progress = progressEmitter(getWindow, 'image', { prompt: payload.prompt.slice(0, 60) })
     try {
       const client = getClient()
       const wf = buildImageWorkflow(payload)
-      console.log(`[comfyui] generate-image checkpoint=${payload.checkpoint} prompt="${payload.prompt.slice(0, 80)}"`)
+      console.log(
+        `[comfyui] generate-image checkpoint=${payload.checkpoint} prompt="${payload.prompt.slice(0, 80)}"`,
+      )
       const r = await client.generate(wf, { onProgress: progress })
       const files = await downloadAll(client, r.images, imagesDir(), 'image')
       return { ok: true, prompt_id: r.promptId, files }
@@ -198,12 +232,14 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
     }
   })
 
-  ipcMain.handle('comfyui:generate-i2i', async (_evt, payload: I2IGenParams): Promise<GenerateOutput> => {
+  handleInvoke(comfyuiGenerateI2I, async (payload) => {
     const progress = progressEmitter(getWindow, 'i2i', { prompt: payload.prompt.slice(0, 60) })
     try {
       const client = getClient()
       const wf = buildI2IWorkflow(payload)
-      console.log(`[comfyui] generate-i2i input=${payload.inputImage} denoise=${payload.denoise ?? 0.55}`)
+      console.log(
+        `[comfyui] generate-i2i input=${payload.inputImage} denoise=${payload.denoise ?? 0.55}`,
+      )
       const r = await client.generate(wf, { onProgress: progress })
       const files = await downloadAll(client, r.images, imagesDir(), 'i2i')
       return { ok: true, prompt_id: r.promptId, files }
@@ -213,8 +249,11 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
     }
   })
 
-  ipcMain.handle('comfyui:generate-video-t2v', async (_evt, payload: VideoT2VParams): Promise<GenerateOutput> => {
-    const progress = progressEmitter(getWindow, 'video-t2v', { prompt: payload.prompt.slice(0, 60), model: payload.model })
+  handleInvoke(comfyuiGenerateVideoT2V, async (payload) => {
+    const progress = progressEmitter(getWindow, 'video-t2v', {
+      prompt: payload.prompt.slice(0, 60),
+      model: payload.model,
+    })
     try {
       const client = getClient()
       const wf = buildVideoT2VWorkflow(payload)
@@ -228,12 +267,14 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
     }
   })
 
-  ipcMain.handle('comfyui:generate-video-i2v', async (_evt, payload: VideoI2VParams): Promise<GenerateOutput> => {
+  handleInvoke(comfyuiGenerateVideoI2V, async (payload) => {
     const progress = progressEmitter(getWindow, 'video-i2v', { input: payload.inputImage })
     try {
       const client = getClient()
       const wf = buildVideoI2VWorkflow(payload)
-      console.log(`[comfyui] generate-video-i2v input=${payload.inputImage} length=${payload.length ?? 81}`)
+      console.log(
+        `[comfyui] generate-video-i2v input=${payload.inputImage} length=${payload.length ?? 81}`,
+      )
       const r = await client.generate(wf, { onProgress: progress, maxWaitMs: 15 * 60_000 })
       const files = await downloadAll(client, r.images, videosDir(), 'i2v')
       return { ok: true, prompt_id: r.promptId, files }
@@ -245,7 +286,7 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
 
   // ============ 旧 Phase 1（保留兼容） ============
 
-  ipcMain.handle('comfyui:generate-sticker', async (_evt, payload: StickerParams): Promise<GenerateOutput> => {
+  handleInvoke(comfyuiGenerateSticker, async (payload) => {
     const progress = progressEmitter(getWindow, 'sticker', { emotion: payload.emotion })
     try {
       const client = getClient()
@@ -258,7 +299,7 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
     }
   })
 
-  ipcMain.handle('comfyui:generate-background', async (_evt, payload: BackgroundParams): Promise<GenerateOutput> => {
+  handleInvoke(comfyuiGenerateBackground, async (payload) => {
     const progress = progressEmitter(getWindow, 'background', { theme: payload.theme })
     try {
       const client = getClient()
@@ -273,7 +314,7 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
 
   // ============ 历史 + 中断 ============
 
-  ipcMain.handle('comfyui:list-recent', (_evt, kind?: 'sticker' | 'background' | 'image' | 'video' | 'all') => {
+  handleInvoke(comfyuiListRecent, (kind) => {
     const k = kind ?? 'all'
     const out: Array<{ kind: string; path: string; mtime: number; size: number }> = []
     const dirs: Array<[string, string]> = []
@@ -289,14 +330,16 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
         try {
           const st = statSync(p)
           out.push({ kind: tag, path: p, mtime: st.mtimeMs, size: st.size })
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
     out.sort((a, b) => b.mtime - a.mtime)
     return out.slice(0, 80)
   })
 
-  ipcMain.handle('comfyui:cancel', async () => {
+  handleInvoke(comfyuiCancel, async () => {
     try {
       await getClient().interrupt()
       return { ok: true }
@@ -305,6 +348,3 @@ export function registerComfyuiIpc(getWindow: () => BrowserWindow | null): void 
     }
   })
 }
-
-// hint to TS: keep mkdir imported (used via ensureDir variant if needed in future)
-void mkdir

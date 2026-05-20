@@ -35,6 +35,8 @@ interface ModelDeepProbe {
 }
 
 export interface ModelLearnings {
+  /** Channel transit allow（让 main service 类型可直接走 IPC Record<string,unknown> 通道） */
+  [k: string]: unknown
   /** 总样本数 */
   total_models: number
   /** 完整模型数（评分 >= 75） */

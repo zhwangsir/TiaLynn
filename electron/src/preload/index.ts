@@ -145,6 +145,76 @@ import {
   agentScroll,
   agentType,
 } from '@shared/channels/automation'
+import {
+  mcpListBuiltin,
+  mcpRun,
+  toolsList,
+  toolsPolicyClear,
+  toolsPolicyGet,
+  toolsPolicySet,
+  toolsRun,
+} from '@shared/channels/tools'
+import {
+  modelsAnalyzeParams,
+  modelsApplyDedup,
+  modelsApplyExpressionPack,
+  modelsApplyPhysicsPreset,
+  modelsAutoFill,
+  modelsCachedDescriptions,
+  modelsClearRecent,
+  modelsComputeLearnings,
+  modelsDescribe,
+  modelsEnrichAbort,
+  modelsEnrichCached,
+  modelsEnrichClear,
+  modelsEnrichStart,
+  modelsEvaluate,
+  modelsFavorites,
+  modelsFindDuplicates,
+  modelsGetLearnings,
+  modelsGetPreference,
+  modelsHeal,
+  modelsListPhysicsPresets,
+  modelsMarkRecent,
+  modelsMergeGroups,
+  modelsSetPreference,
+  modelsToggleFavorite,
+} from '@shared/channels/models'
+import {
+  configLoad,
+  configSave,
+  historyAppend,
+  historyClear,
+  historyListRecent,
+  modelsScan,
+  soulLoad,
+  soulPickDirectory,
+  soulSaveAvatar,
+  soulSystemPrompt,
+  systemCleanPath,
+  systemDiskUsage,
+  systemOpenExternal,
+  systemPaths,
+  systemRevealDataDir,
+  systemRevealModelsDir,
+  systemVersion,
+} from '@shared/channels/system'
+import {
+  comfyuiCancel,
+  comfyuiGenerateBackground,
+  comfyuiGenerateI2I,
+  comfyuiGenerateImage,
+  comfyuiGenerateSticker,
+  comfyuiGenerateVideoI2V,
+  comfyuiGenerateVideoT2V,
+  comfyuiListCheckpoints,
+  comfyuiListLoras,
+  comfyuiListRecent,
+  comfyuiListSamplers,
+  comfyuiListVideoModels,
+  comfyuiStatus,
+  comfyuiUploadImage,
+} from '@shared/channels/comfyui'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -213,16 +283,14 @@ function invokeChannel<P, R>(channel: IpcChannel<P, R>, payload: P): Promise<R> 
 
 const api: TialynnApi = {
   system: {
-    version: () => invoke('system:version') as Promise<string>,
-    paths: () => invoke('system:paths') as ReturnType<TialynnApi['system']['paths']>,
-    revealDataDir: () => invoke('system:reveal-data-dir') as Promise<string>,
-    revealModelsDir: () => invoke('system:reveal-models-dir') as Promise<string>,
-    openExternal: (url: string) =>
-      invoke('system:open-external', url) as Promise<{ ok: boolean; reason?: string }>,
-    diskUsage: (force = false) =>
-      invoke('system:disk-usage', force) as ReturnType<TialynnApi['system']['diskUsage']>,
-    cleanPath: (path: string) =>
-      invoke('system:clean-path', path) as ReturnType<TialynnApi['system']['cleanPath']>,
+    version: () => invokeChannel(systemVersion, undefined as never),
+    paths: () => invokeChannel(systemPaths, undefined as never),
+    revealDataDir: () => invokeChannel(systemRevealDataDir, undefined as never),
+    revealModelsDir: () =>
+      invokeChannel(systemRevealModelsDir, undefined as never).then((v) => v ?? ''),
+    openExternal: (url: string) => invokeChannel(systemOpenExternal, url),
+    diskUsage: (force = false) => invokeChannel(systemDiskUsage, force),
+    cleanPath: (path: string) => invokeChannel(systemCleanPath, path),
     // v0.17 P3: tray menu 点击 → main → 这条事件 → renderer onMenuSelect(id)
     onTrayAction: (cb: (id: string) => void): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, id: string): void => cb(id)
@@ -254,8 +322,8 @@ const api: TialynnApi = {
     },
   },
   config: {
-    load: () => invoke('config:load') as Promise<RuntimeConfig>,
-    save: (dto: RuntimeConfig) => invoke('config:save', dto) as Promise<RuntimeConfig>,
+    load: () => invokeChannel(configLoad, undefined as never),
+    save: (dto: RuntimeConfig) => invokeChannel(configSave, dto),
     onChanged: (cb: (cfg: RuntimeConfig) => void): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, cfg: RuntimeConfig): void => cb(cfg)
       ipcRenderer.on('config:changed', handler)
@@ -263,42 +331,27 @@ const api: TialynnApi = {
     },
   },
   models: {
-    scan: () => invoke('models:scan') as ReturnType<TialynnApi['models']['scan']>,
-    heal: (payload: { model_json_path: string }) =>
-      invoke('models:heal', payload) as ReturnType<TialynnApi['models']['heal']>,
-    findDuplicates: () =>
-      invoke('models:find-duplicates') as ReturnType<TialynnApi['models']['findDuplicates']>,
+    scan: () => invokeChannel(modelsScan, undefined as never),
+    heal: (payload: { model_json_path: string }) => invokeChannel(modelsHeal, payload),
+    findDuplicates: () => invokeChannel(modelsFindDuplicates, undefined as never),
     applyDedup: (payload?: { group_keys?: string[]; dry_run?: boolean }) =>
-      invoke('models:apply-dedup', payload) as ReturnType<TialynnApi['models']['applyDedup']>,
+      invokeChannel(modelsApplyDedup, payload),
     mergeGroups: (payload?: { group_keys?: string[] }) =>
-      invoke('models:merge-groups', payload) as ReturnType<TialynnApi['models']['mergeGroups']>,
-    describe: (payload: {
-      model_dir: string
-      model_json_path: string
-      display: string
-      ip: string
-      motion_count: number
-      expression_count: number
-    }) => invoke('models:describe', payload) as ReturnType<TialynnApi['models']['describe']>,
-    cachedDescriptions: () =>
-      invoke('models:cached-descriptions') as ReturnType<TialynnApi['models']['cachedDescriptions']>,
-    getPreference: (characterId: string) =>
-      invoke('models:get-preference', characterId) as ReturnType<TialynnApi['models']['getPreference']>,
-    setPreference: (payload: { character_id: string; scale: number; offset_y: number }) =>
-      invoke('models:set-preference', payload) as ReturnType<TialynnApi['models']['setPreference']>,
+      invokeChannel(modelsMergeGroups, payload),
+    describe: (payload) => invokeChannel(modelsDescribe, payload),
+    cachedDescriptions: () => invokeChannel(modelsCachedDescriptions, undefined as never),
+    getPreference: (characterId: string) => invokeChannel(modelsGetPreference, characterId),
+    setPreference: (payload) => invokeChannel(modelsSetPreference, payload),
     // v0.12: 收藏 + 最近
-    favorites: () => invoke('models:favorites') as ReturnType<TialynnApi['models']['favorites']>,
-    toggleFavorite: (dir: string) =>
-      invoke('models:toggle-favorite', dir) as ReturnType<TialynnApi['models']['toggleFavorite']>,
-    markRecent: (dir: string) =>
-      invoke('models:mark-recent', dir) as ReturnType<TialynnApi['models']['markRecent']>,
-    clearRecent: () => invoke('models:clear-recent') as ReturnType<TialynnApi['models']['clearRecent']>,
+    favorites: () => invokeChannel(modelsFavorites, undefined as never),
+    toggleFavorite: (dir: string) => invokeChannel(modelsToggleFavorite, dir),
+    markRecent: (dir: string) => invokeChannel(modelsMarkRecent, dir),
+    clearRecent: () => invokeChannel(modelsClearRecent, undefined as never),
     // v0.12: character enrichment
-    enrichCached: () =>
-      invoke('models:enrich-cached') as ReturnType<TialynnApi['models']['enrichCached']>,
-    enrichStart: () => invoke('models:enrich-start') as ReturnType<TialynnApi['models']['enrichStart']>,
-    enrichAbort: () => invoke('models:enrich-abort') as ReturnType<TialynnApi['models']['enrichAbort']>,
-    enrichClear: () => invoke('models:enrich-clear') as ReturnType<TialynnApi['models']['enrichClear']>,
+    enrichCached: () => invokeChannel(modelsEnrichCached, undefined as never),
+    enrichStart: () => invokeChannel(modelsEnrichStart, undefined as never),
+    enrichAbort: () => invokeChannel(modelsEnrichAbort, undefined as never),
+    enrichClear: () => invokeChannel(modelsEnrichClear, undefined as never),
     onEnrichProgress: (cb: (p: import('@shared/api').EnrichProgress) => void): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, p: import('@shared/api').EnrichProgress): void =>
         cb(p)
@@ -306,22 +359,14 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('models:enrich-progress', handler)
     },
     // v0.15+v0.16: 模型 learning / 评分 / 补全
-    computeLearnings: (force = false) =>
-      invoke('models:compute-learnings', force) as ReturnType<TialynnApi['models']['computeLearnings']>,
-    getLearnings: () =>
-      invoke('models:get-learnings') as ReturnType<TialynnApi['models']['getLearnings']>,
-    evaluate: (payload) =>
-      invoke('models:evaluate', payload) as ReturnType<TialynnApi['models']['evaluate']>,
-    autoFill: (payload) =>
-      invoke('models:auto-fill', payload) as ReturnType<TialynnApi['models']['autoFill']>,
-    applyExpressionPack: (payload) =>
-      invoke('models:apply-expression-pack', payload) as ReturnType<TialynnApi['models']['applyExpressionPack']>,
-    listPhysicsPresets: () =>
-      invoke('models:list-physics-presets') as ReturnType<TialynnApi['models']['listPhysicsPresets']>,
-    applyPhysicsPreset: (payload) =>
-      invoke('models:apply-physics-preset', payload) as ReturnType<TialynnApi['models']['applyPhysicsPreset']>,
-    analyzeParams: (payload) =>
-      invoke('models:analyze-params', payload) as ReturnType<TialynnApi['models']['analyzeParams']>,
+    computeLearnings: (force = false) => invokeChannel(modelsComputeLearnings, force),
+    getLearnings: () => invokeChannel(modelsGetLearnings, undefined as never),
+    evaluate: (payload) => invokeChannel(modelsEvaluate, payload),
+    autoFill: (payload) => invokeChannel(modelsAutoFill, payload),
+    applyExpressionPack: (payload) => invokeChannel(modelsApplyExpressionPack, payload),
+    listPhysicsPresets: () => invokeChannel(modelsListPhysicsPresets, undefined as never),
+    applyPhysicsPreset: (payload) => invokeChannel(modelsApplyPhysicsPreset, payload),
+    analyzeParams: (payload) => invokeChannel(modelsAnalyzeParams, payload),
   },
   online: {
     listRecommended: () => invokeChannel(onlineListRecommended, undefined as never),
@@ -388,11 +433,10 @@ const api: TialynnApi = {
     },
   },
   soul: {
-    load: () => invoke('soul:load') as ReturnType<TialynnApi['soul']['load']>,
-    systemPrompt: () => invoke('soul:system-prompt') as Promise<string>,
-    pickDirectory: () => invoke('soul:pick-directory') as Promise<string | null>,
-    saveAvatar: (avatar) =>
-      invoke('soul:save-avatar', avatar) as ReturnType<TialynnApi['soul']['saveAvatar']>,
+    load: () => invokeChannel(soulLoad, undefined as never),
+    systemPrompt: () => invokeChannel(soulSystemPrompt, undefined as never),
+    pickDirectory: () => invokeChannel(soulPickDirectory, undefined as never),
+    saveAvatar: (avatar) => invokeChannel(soulSaveAvatar, avatar),
     onChanged: (cb): (() => void) => {
       const handler = (): void => cb()
       ipcRenderer.on('soul:changed', handler)
@@ -420,10 +464,9 @@ const api: TialynnApi = {
     listRvcVoices: () => invokeChannel(ttsListRvcVoices, undefined as never),
   },
   history: {
-    listRecent: (limit) =>
-      invoke('history:list-recent', limit) as ReturnType<TialynnApi['history']['listRecent']>,
-    append: (turn) => invoke('history:append', turn) as Promise<{ ok: boolean }>,
-    clear: () => invoke('history:clear') as Promise<{ deleted: number }>,
+    listRecent: (limit) => invokeChannel(historyListRecent, limit),
+    append: (turn) => invokeChannel(historyAppend, turn),
+    clear: () => invokeChannel(historyClear, undefined as never),
   },
   motion: {
     summarize: (modelDir: string) => invokeChannel(motionSummarize, modelDir),
@@ -518,12 +561,11 @@ const api: TialynnApi = {
     },
   },
   tools: {
-    list: () => invoke('tools:list') as ReturnType<TialynnApi['tools']['list']>,
-    run: (call) => invoke('tools:run', call) as ReturnType<TialynnApi['tools']['run']>,
-    policyGet: () => invoke('tools:policy-get') as ReturnType<TialynnApi['tools']['policyGet']>,
-    policySet: (payload) =>
-      invoke('tools:policy-set', payload) as ReturnType<TialynnApi['tools']['policySet']>,
-    policyClear: () => invoke('tools:policy-clear') as ReturnType<TialynnApi['tools']['policyClear']>,
+    list: () => invokeChannel(toolsList, undefined as never),
+    run: (call) => invokeChannel(toolsRun, call),
+    policyGet: () => invokeChannel(toolsPolicyGet, undefined as never),
+    policySet: (payload) => invokeChannel(toolsPolicySet, payload),
+    policyClear: () => invokeChannel(toolsPolicyClear, undefined as never),
     onApprovalRequest: (cb): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, req: ApprovalRequest): void => cb(req)
       ipcRenderer.on('tools:approval-request', handler)
@@ -537,28 +579,20 @@ const api: TialynnApi = {
     },
   },
   comfyui: {
-    status: () => invoke('comfyui:status') as ReturnType<TialynnApi['comfyui']['status']>,
-    listCheckpoints: () => invoke('comfyui:list-checkpoints') as ReturnType<TialynnApi['comfyui']['listCheckpoints']>,
-    listLoras: () => invoke('comfyui:list-loras') as ReturnType<TialynnApi['comfyui']['listLoras']>,
-    listSamplers: () => invoke('comfyui:list-samplers') as ReturnType<TialynnApi['comfyui']['listSamplers']>,
-    listVideoModels: () => invoke('comfyui:list-video-models') as ReturnType<TialynnApi['comfyui']['listVideoModels']>,
-    uploadImage: (payload) =>
-      invoke('comfyui:upload-image', payload) as ReturnType<TialynnApi['comfyui']['uploadImage']>,
-    generateImage: (payload) =>
-      invoke('comfyui:generate-image', payload) as ReturnType<TialynnApi['comfyui']['generateImage']>,
-    generateI2I: (payload) =>
-      invoke('comfyui:generate-i2i', payload) as ReturnType<TialynnApi['comfyui']['generateI2I']>,
-    generateVideoT2V: (payload) =>
-      invoke('comfyui:generate-video-t2v', payload) as ReturnType<TialynnApi['comfyui']['generateVideoT2V']>,
-    generateVideoI2V: (payload) =>
-      invoke('comfyui:generate-video-i2v', payload) as ReturnType<TialynnApi['comfyui']['generateVideoI2V']>,
-    generateSticker: (payload) =>
-      invoke('comfyui:generate-sticker', payload) as ReturnType<TialynnApi['comfyui']['generateSticker']>,
-    generateBackground: (payload) =>
-      invoke('comfyui:generate-background', payload) as ReturnType<TialynnApi['comfyui']['generateBackground']>,
-    listRecent: (kind) =>
-      invoke('comfyui:list-recent', kind) as ReturnType<TialynnApi['comfyui']['listRecent']>,
-    cancel: () => invoke('comfyui:cancel') as ReturnType<TialynnApi['comfyui']['cancel']>,
+    status: () => invokeChannel(comfyuiStatus, undefined as never),
+    listCheckpoints: () => invokeChannel(comfyuiListCheckpoints, undefined as never),
+    listLoras: () => invokeChannel(comfyuiListLoras, undefined as never),
+    listSamplers: () => invokeChannel(comfyuiListSamplers, undefined as never),
+    listVideoModels: () => invokeChannel(comfyuiListVideoModels, undefined as never),
+    uploadImage: (payload) => invokeChannel(comfyuiUploadImage, payload),
+    generateImage: (payload) => invokeChannel(comfyuiGenerateImage, payload),
+    generateI2I: (payload) => invokeChannel(comfyuiGenerateI2I, payload),
+    generateVideoT2V: (payload) => invokeChannel(comfyuiGenerateVideoT2V, payload),
+    generateVideoI2V: (payload) => invokeChannel(comfyuiGenerateVideoI2V, payload),
+    generateSticker: (payload) => invokeChannel(comfyuiGenerateSticker, payload),
+    generateBackground: (payload) => invokeChannel(comfyuiGenerateBackground, payload),
+    listRecent: (kind) => invokeChannel(comfyuiListRecent, kind),
+    cancel: () => invokeChannel(comfyuiCancel, undefined as never),
     onProgress: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,

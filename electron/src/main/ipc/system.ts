@@ -1,8 +1,31 @@
 /**
  * 系统级 IPC：配置读写、模型扫描、灵魂加载、历史、缩略图、磁盘。
- * v0.13: TTS 已剥到 ipc/tts.ts (audit architecture HIGH god-file 拆分)
+ * Type-safe channels (Phase 1 G batch 4).
+ *
+ * 拆分历史（v0.13 audit architecture HIGH god-file 拆分）：
+ *   - tts/online/thumbs/models 子域 → 独立 ipc/*.ts
+ *   - models:scan 仍在此（bootstrap 必经路径）
  */
-import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
+import { app, dialog, shell, type BrowserWindow } from 'electron'
+import {
+  configLoad,
+  configSave,
+  historyAppend,
+  historyClear,
+  historyListRecent,
+  modelsScan,
+  soulLoad,
+  soulPickDirectory,
+  soulSaveAvatar,
+  soulSystemPrompt,
+  systemCleanPath,
+  systemDiskUsage,
+  systemOpenExternal,
+  systemPaths,
+  systemRevealDataDir,
+  systemRevealModelsDir,
+  systemVersion,
+} from '@shared/channels/system'
 import { scanModels, toFileUrl } from '../services/model-scanner'
 import { loadSoul } from '../services/soul-loader'
 import { saveAvatar } from '../services/soul-saver'
@@ -11,7 +34,7 @@ import { getPaths } from '../services/paths'
 import { appendTurn, clearAll, listRecent, type StoredTurn } from '../services/history-store'
 import { startAttention, stopAttention } from '../services/attention'
 import { computeDiskUsage, cleanPath } from '../services/disk-usage'
-import type { RuntimeConfig, SoulConfig } from '@shared/types'
+import { handleInvoke } from './channel-helpers'
 
 // v0.13: 跟踪 attention 是否已启动，避免重复 start / 误 stop
 let attentionRunning = false
@@ -20,40 +43,36 @@ export function markAttentionRunning(v: boolean): void {
 }
 
 export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle('system:version', () => app.getVersion())
+  handleInvoke(systemVersion, () => app.getVersion())
+  handleInvoke(systemPaths, () => getPaths())
 
-  ipcMain.handle('system:paths', () => getPaths())
-
-  ipcMain.handle('system:reveal-data-dir', async () => {
+  handleInvoke(systemRevealDataDir, async () => {
     const p = getPaths().userDataDir
     await shell.openPath(p)
     return p
   })
 
-  ipcMain.handle('system:reveal-models-dir', async () => {
+  handleInvoke(systemRevealModelsDir, async () => {
     const list = getPaths().modelSearchPaths
     const target = list[0]
     if (target) await shell.openPath(target)
     return target
   })
+
   // v0.12: 用系统默认浏览器打开外部链接
-  ipcMain.handle('system:open-external', async (_evt, url: string) => {
+  handleInvoke(systemOpenExternal, async (url) => {
     if (!/^https?:\/\//i.test(url)) return { ok: false, reason: 'invalid url' }
     await shell.openExternal(url)
     return { ok: true }
   })
 
   // v0.13: 磁盘占用统计 + 清理（H1 audit）
-  ipcMain.handle('system:disk-usage', async (_evt, force?: boolean) => {
-    return computeDiskUsage(!!force)
-  })
-  ipcMain.handle('system:clean-path', async (_evt, path: string) => {
-    return cleanPath(path)
-  })
+  handleInvoke(systemDiskUsage, (force) => computeDiskUsage(!!force))
+  handleInvoke(systemCleanPath, (path) => cleanPath(path))
 
-  ipcMain.handle('config:load', () => loadConfig())
+  handleInvoke(configLoad, () => loadConfig())
 
-  ipcMain.handle('config:save', (_evt, dto: RuntimeConfig) => {
+  handleInvoke(configSave, (dto) => {
     const merged = saveConfig(dto)
     const win = getWindow()
     if (win && !win.isDestroyed()) {
@@ -73,27 +92,25 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     return merged
   })
 
-  ipcMain.handle('models:scan', () => {
-    return scanModels().map((m) => ({ ...m, file_url: toFileUrl(m.absolute_path) }))
-  })
+  handleInvoke(modelsScan, () =>
+    scanModels().map((m) => ({ ...m, file_url: toFileUrl(m.absolute_path) })),
+  )
 
-  ipcMain.handle('soul:load', () => {
+  handleInvoke(soulLoad, () => {
     const loaded = loadSoul()
     return { config: loaded.config, sources: loaded.sourceFiles }
   })
 
-  ipcMain.handle('soul:system-prompt', () => {
-    return loadSoul().systemPrompt
-  })
+  handleInvoke(soulSystemPrompt, () => loadSoul().systemPrompt)
 
-  ipcMain.handle('history:list-recent', (_evt, limit?: number) => listRecent(limit ?? 50))
-  ipcMain.handle('history:append', (_evt, turn: Omit<StoredTurn, 'session_id'>) => {
-    appendTurn(turn)
+  handleInvoke(historyListRecent, (limit) => listRecent(limit ?? 50))
+  handleInvoke(historyAppend, (turn) => {
+    appendTurn(turn as Omit<StoredTurn, 'session_id'>)
     return { ok: true }
   })
-  ipcMain.handle('history:clear', () => ({ deleted: clearAll() }))
+  handleInvoke(historyClear, () => ({ deleted: clearAll() }))
 
-  ipcMain.handle('soul:save-avatar', (_evt, avatar: Partial<SoulConfig['avatar']>) => {
+  handleInvoke(soulSaveAvatar, (avatar) => {
     const result = saveAvatar(avatar)
     if (result.ok) {
       const win = getWindow()
@@ -104,13 +121,7 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     return result
   })
 
-  // models:* (heal/dedup/describe/preferences/favorites/enrich) IPC 已剥到 ipc/models.ts
-  // online:* IPC 已剥到 ipc/online.ts
-  // thumbs:* IPC 已剥到 ipc/thumbs.ts
-  // tts:* IPC 已剥到 ipc/tts.ts
-  // (v0.13 audit architecture HIGH god-file 拆分)
-
-  ipcMain.handle('soul:pick-directory', async () => {
+  handleInvoke(soulPickDirectory, async () => {
     const win = getWindow() ?? undefined
     const result = await dialog.showOpenDialog(win as BrowserWindow, {
       title: '选择模型目录',
@@ -119,6 +130,4 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     if (result.canceled) return null
     return result.filePaths[0] ?? null
   })
-
-  // tts:* IPC 已剥到 ipc/tts.ts (v0.13 audit architecture HIGH god-file 拆分)
 }
