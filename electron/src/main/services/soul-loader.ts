@@ -15,6 +15,8 @@ import {
 } from '@tialynn/soul-loader'
 import { getPaths } from './paths'
 import { getActiveCharacter, characterSoulDir } from './character-store'
+import { loadEmotionalState } from './emotional-state/store'
+import { emotionalStateToPromptFragment } from './emotional-state/text'
 
 export interface LoadedSoul {
   config: SoulConfig
@@ -96,7 +98,8 @@ export function loadSoul(): LoadedSoul {
 }
 
 /**
- * 在 package 纯函数之上挂 MCP tools 描述（main-process 独有副作用：从 mcp-registry 拉描述）。
+ * 在 package 纯函数之上挂 MCP tools 描述 + 情感状态切片
+ * （main-process 独有副作用：从 mcp-registry / character-store 拉数据）。
  */
 function buildSystemPrompt(soul: SoulConfig): string {
   let toolsDescription = ''
@@ -108,5 +111,21 @@ function buildSystemPrompt(soul: SoulConfig): string {
   } catch {
     /* mcp-registry 加载失败不影响主流程 */
   }
-  return buildSystemPromptPure(soul, { toolsDescription })
+
+  // Phase 1 J: 注入当前情感状态切片 — 让 LLM 在 system 层就感受到"今天什么心情"
+  let emotionalFragment = ''
+  try {
+    const active = getActiveCharacter()
+    if (active) {
+      const state = loadEmotionalState(active.id)
+      emotionalFragment = emotionalStateToPromptFragment(state)
+    }
+  } catch {
+    /* emotional-state 失败不影响主流程 */
+  }
+
+  // 把情感切片合到 toolsDescription 同 slot — buildSystemPromptPure 只暴露 toolsDescription
+  // 字段，先 emotional 后 tools 顺序拼接（情感优先 — LLM 看到的最近 context）
+  const combined = [emotionalFragment, toolsDescription].filter((s) => s.trim()).join('\n\n')
+  return buildSystemPromptPure(soul, { toolsDescription: combined })
 }

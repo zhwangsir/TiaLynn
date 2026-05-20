@@ -29,6 +29,7 @@ import {
   writeCharacterSoulFile,
 } from '../services/character-store'
 import { reopenForActiveCharacter } from '../services/history-store'
+import { onChatTurn as emotionalOnChatTurn } from '../services/emotional-state/store'
 import { handleInvoke } from './channel-helpers'
 
 export function registerCharactersIpc(getWindow: () => BrowserWindow | null): void {
@@ -70,11 +71,13 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
     return r
   })
 
-  /** v0.14 T5: 每轮对话完成后调用，更新 last_chat_at + total_chats + intimacy 成长 */
+  /** v0.14 T5: 每轮对话完成后调用，更新 last_chat_at + total_chats + intimacy 成长。
+   *  Phase 1 J: 同步触发 emotional-state.onChatTurn（清空 missing + 缓解 negative mood） */
   handleInvoke(charactersRecordChat, () => {
     const active = getActiveCharacter()
     if (!active) return { ok: false as const, reason: 'no_active' }
     recordChatInteraction(active.id)
+    emotionalOnChatTurn(active.id)
     const updated = getCharacter(active.id)
     return { ok: true as const, character: updated }
   })
