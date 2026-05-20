@@ -369,27 +369,41 @@ onBeforeUnmount(() => {
         @select="onMenuSelect"
         @close="closeMenu"
       />
-      <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
-      <CreatorStudioPanel v-if="creatorStudioOpen" @close="creatorStudioOpen = false" />
-      <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
+      <ErrorBoundary scope="panel" label="设置面板">
+        <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+      </ErrorBoundary>
+      <ErrorBoundary scope="panel" label="创作工坊">
+        <CreatorStudioPanel v-if="creatorStudioOpen" @close="creatorStudioOpen = false" />
+      </ErrorBoundary>
+      <ErrorBoundary scope="panel" label="资源商店">
+        <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
+      </ErrorBoundary>
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
-      <CharacterPicker
-        v-if="characterPickerOpen"
-        @close="characterPickerOpen = false"
-        @open-creator="() => { characterPickerOpen = false; characterCreatorOpen = true }"
-      />
-      <CharacterCreator
-        v-if="characterCreatorOpen"
-        @close="characterCreatorOpen = false"
-      />
-      <SoulEditor
-        v-if="soulEditorOpen"
-        @close="soulEditorOpen = false"
-      />
-      <ModelHealthDashboard
-        v-if="healthDashboardOpen"
-        @close="healthDashboardOpen = false"
-      />
+      <ErrorBoundary scope="panel" label="角色选择器">
+        <CharacterPicker
+          v-if="characterPickerOpen"
+          @close="characterPickerOpen = false"
+          @open-creator="() => { characterPickerOpen = false; characterCreatorOpen = true }"
+        />
+      </ErrorBoundary>
+      <ErrorBoundary scope="panel" label="角色创建">
+        <CharacterCreator
+          v-if="characterCreatorOpen"
+          @close="characterCreatorOpen = false"
+        />
+      </ErrorBoundary>
+      <ErrorBoundary scope="panel" label="灵魂编辑器">
+        <SoulEditor
+          v-if="soulEditorOpen"
+          @close="soulEditorOpen = false"
+        />
+      </ErrorBoundary>
+      <ErrorBoundary scope="panel" label="模型健康仪表">
+        <ModelHealthDashboard
+          v-if="healthDashboardOpen"
+          @close="healthDashboardOpen = false"
+        />
+      </ErrorBoundary>
       <ApprovalDialog />
       <ToastStack />
       <div v-if="!ready" class="boot-hint">
