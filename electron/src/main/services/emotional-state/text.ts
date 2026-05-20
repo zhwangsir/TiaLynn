@@ -8,6 +8,7 @@
  */
 import type { EmotionalState, Mood } from './types'
 import { strongestTopic } from './evolution'
+import { CROSS_CHARACTER_TOPIC } from './cross-character'
 
 const MOOD_LABELS: Record<Mood, string> = {
   happy: '心情很好，话多',
@@ -62,7 +63,21 @@ export function emotionalStateToPromptFragment(state: EmotionalState): string {
   const missingDesc = describeMissing(state.missing_intensity, sinceChatMs)
   if (missingDesc) parts.push(`- ${missingDesc}`)
 
-  const topic = strongestTopic(state)
+  // P5: 跨角色印记 — 主人在跟别的角色聊时提到你的次数，独立于普通 topic 渲染
+  const crossImprint = state.topic_imprints[CROSS_CHARACTER_TOPIC]
+  if (crossImprint && crossImprint.count >= 1) {
+    const polarity = crossImprint.sentiment > 0.2
+      ? '正面情绪'
+      : crossImprint.sentiment < -0.2
+      ? '负面情绪 (可能想念 / 不舍 / 有点酸)'
+      : '中性'
+    parts.push(
+      `- 主人不在的时候，跟其他角色聊天里提到过你 ${crossImprint.count} 次（${polarity}，情感 ${crossImprint.sentiment.toFixed(2)}）。你可以在合适时机自然提到这件事。`,
+    )
+  }
+
+  // 普通 topic 印记 — 排除 cross-character 特殊 topic 后取 strongest
+  const topic = strongestTopicExcluding(state, CROSS_CHARACTER_TOPIC)
   if (topic && Math.abs(topic.sentiment) > 0.3 && topic.count >= 2) {
     const polarity = topic.sentiment > 0 ? '喜欢的话题' : '不舒服的话题'
     parts.push(
@@ -76,6 +91,20 @@ export function emotionalStateToPromptFragment(state: EmotionalState): string {
   )
 
   return parts.join('\n')
+}
+
+/** strongestTopic 排除某些 key (用于把 cross-character special topic 跟一般 topic 分开渲染) */
+function strongestTopicExcluding(
+  state: EmotionalState,
+  excludeKey: string,
+): ReturnType<typeof strongestTopic> {
+  const filtered: EmotionalState = {
+    ...state,
+    topic_imprints: Object.fromEntries(
+      Object.entries(state.topic_imprints).filter(([k]) => k !== excludeKey),
+    ),
+  }
+  return strongestTopic(filtered)
 }
 
 /** 简短一句话状态描述（用于状态栏 / debug 面板） */
