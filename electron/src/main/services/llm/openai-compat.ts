@@ -15,6 +15,7 @@ import type { ChatMessage, ChatOptions } from '@shared/types'
 import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 import { consumeSse } from './anthropic'
 import { loadConfig } from '../config-store'
+import { enhanceMessagesForChineseModel } from './chinese-models'
 
 /** 哪些错误内容意味着 prompt template 不支持当前 messages 结构 */
 const TEMPLATE_ERROR_PATTERNS = [
@@ -99,7 +100,9 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     // 智能判断：若末尾已是 /v1 就不重复拼
     const base = this.endpoint.replace(/\/+$/, '')
     const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
-    const normalized = normalizeMessages(messages, mergeSystem)
+    // Phase 1 I: 检测国产模型 → 给 system 注入中文人格强化指令（airi 不会做）
+    const enhanced = enhanceMessagesForChineseModel(messages, options.model)
+    const normalized = normalizeMessages(enhanced, mergeSystem)
     console.log(
       `[openai-compat] tryStream merge=${mergeSystem} retry=${isRetry} in=${messages.length} out=${normalized.length} roles=[${normalized.map((m) => `${m.role}:${m.content.trim().length}`).join(',')}]`,
     )
