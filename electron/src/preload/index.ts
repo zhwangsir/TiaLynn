@@ -215,6 +215,12 @@ import {
   comfyuiStatus,
   comfyuiUploadImage,
 } from '@shared/channels/comfyui'
+import {
+  emotionalGetState,
+  emotionalOnReply,
+  emotionalSetMood,
+  emotionalTick,
+} from '@shared/channels/emotional'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -619,6 +625,12 @@ const api: TialynnApi = {
     unregister: (id) => invokeChannel(mcpUnregister, id),
     listTools: (serverId) => invokeChannel(mcpListTools, serverId),
     callTool: (payload) => invokeChannel(mcpCallTool, payload),
+  },
+  emotional: {
+    onReply: (payload) => invokeChannel(emotionalOnReply, payload),
+    getState: () => invokeChannel(emotionalGetState, undefined as never),
+    tick: () => invokeChannel(emotionalTick, undefined as never),
+    setMood: (payload) => invokeChannel(emotionalSetMood, payload),
   },
   agent: {
     halt: (on) => invokeChannel(agentHalt, on),

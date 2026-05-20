@@ -51,6 +51,7 @@ import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { registerMotionEngineIpc } from './ipc/motion-engine'
 import { registerTriggerIpc } from './ipc/trigger'
 import { registerPerceptionIpc } from './ipc/perception'
+import { registerEmotionalIpc } from './ipc/emotional'
 import { startPerception, stopPerception } from './services/perception'
 import { startAttention, stopAttention } from './services/attention'
 import { startLlmHealthLoop } from './services/llm/health-fallback'
@@ -145,6 +146,7 @@ app.whenReady().then(() => {
   registerComfyuiIpc(getMainWindow)
   registerAutomationIpc(getMainWindow)
   registerMcpIpc(getMainWindow)
+  registerEmotionalIpc()
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）

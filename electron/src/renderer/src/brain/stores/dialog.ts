@@ -342,6 +342,21 @@ export const useDialogStore = defineStore('dialog', () => {
     void window.api.characters.recordChat().catch((e) => {
       console.warn('[dialog] recordChat failed:', e)
     })
+    // Phase 1 J: 接通情感演化 — emotion → sentiment / user_text → topic / 顺带 tick
+    void (async () => {
+      try {
+        const userTurn = [...turns.value].reverse().find((t) => t.role === 'user')
+        if (!userTurn?.text) return
+        await window.api.emotional.onReply({
+          user_text: userTurn.text,
+          assistant_text: assistant.text,
+          emotion: parsed.emotion,
+          intensity: parsed.intensity,
+        })
+      } catch (e) {
+        console.warn('[dialog] emotional.onReply failed (non-fatal):', e)
+      }
+    })()
     replying.value = false
     currentStreamId.value = null
     activeAssistantId = null

@@ -772,6 +772,23 @@ export interface TialynnApi {
     }): Promise<{ ok: boolean; result?: unknown; reason?: string }>
   }
 
+  /** Phase 1 J: 情感状态轨迹 — 每轮对话 dialog.ts fire-and-forget onReply */
+  emotional: {
+    onReply(payload: {
+      user_text: string
+      assistant_text: string
+      emotion?: string
+      intensity?: number
+    }): Promise<{ ok: boolean }>
+    getState(): Promise<import('./emotional').EmotionalState | null>
+    tick(): Promise<import('./emotional').EmotionalState | null>
+    setMood(payload: {
+      mood: import('./emotional').Mood
+      intensity: number
+      trigger?: string
+    }): Promise<import('./emotional').EmotionalState | null>
+  }
+
   /** v0.17 E：Agent 自动化 — TiaLynn 操控鼠标 / 键盘 / 截屏 */
   agent: {
     halt(on: boolean): Promise<{ halted: boolean } | { ok: false; error: string }>
