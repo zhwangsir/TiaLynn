@@ -15,6 +15,7 @@ import { readFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadConfig } from '../services/config-store'
+import { validateSidecarUrl } from '../services/url-guard'
 
 const execFileAsync = promisify(execFile)
 
@@ -81,6 +82,11 @@ export function registerTtsIpc(): void {
             : []
         for (let i = 0; i < urls.length; i++) {
           const baseUrl = urls[i]!
+          const guard = validateSidecarUrl(baseUrl)
+          if (!guard.ok) {
+            console.warn(`[tts] URL guard blocked ${baseUrl}: ${guard.reason}`)
+            continue
+          }
           const tryVoice = voiceId
           try {
             const url = `${baseUrl.replace(/\/+$/, '')}/v1/audio/speech`
@@ -139,6 +145,8 @@ export function registerTtsIpc(): void {
     if (!cfg.tts_sidecar_url) return { ok: false, voices: [], reason: 'no-sidecar' }
     const urls = Array.isArray(cfg.tts_sidecar_url) ? cfg.tts_sidecar_url : [cfg.tts_sidecar_url]
     for (const u of urls) {
+      const guard = validateSidecarUrl(u)
+      if (!guard.ok) continue
       try {
         const r = await fetch(`${u.replace(/\/+$/, '')}/v1/rvc/voices`, {
           signal: AbortSignal.timeout(8000),
@@ -161,6 +169,8 @@ export function registerTtsIpc(): void {
     if (!cfg.tts_sidecar_url) return { ok: false, reason: 'no-url' }
     const urls = Array.isArray(cfg.tts_sidecar_url) ? cfg.tts_sidecar_url : [cfg.tts_sidecar_url]
     for (const u of urls) {
+      const guard = validateSidecarUrl(u)
+      if (!guard.ok) continue
       try {
         const r = await fetch(`${u.replace(/\/+$/, '')}/healthz`, {
           signal: AbortSignal.timeout(3000),

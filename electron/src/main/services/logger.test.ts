@@ -90,9 +90,44 @@ describe('redactSensitive', () => {
       const input = '[attention] proactive_monitor tick t=12345'
       expect(redactSensitive(input)).toBe(input)
     })
-    it('URL 不被 redact（用户配置的 endpoint 调试需要）', () => {
-      const input = 'connect to http://127.0.0.1:1234/v1/chat'
+    it('公网 URL 不被 redact', () => {
+      const input = 'connect to https://api.anthropic.com/v1/messages'
       expect(redactSensitive(input)).toBe(input)
+    })
+  })
+
+  // E4 (audit): 内网 endpoint URL 脱敏 — 防止家庭/局域网拓扑信息持久化到日志
+  describe('内网 endpoint URL', () => {
+    it('redact 127.0.0.1', () => {
+      const r = redactSensitive('[llm] start http://127.0.0.1:1234/v1/chat')
+      expect(r).toContain('[REDACTED-LOCAL]')
+      expect(r).not.toContain('127.0.0.1')
+    })
+    it('redact localhost', () => {
+      const r = redactSensitive('connect to http://localhost:8765/v1/audio/speech')
+      expect(r).toContain('[REDACTED-LOCAL]')
+      expect(r).not.toContain('localhost')
+    })
+    it('redact RFC1918 192.168.x.x', () => {
+      const r = redactSensitive('[tts] sidecar ok http://192.168.71.100:8765 dt=120ms')
+      expect(r).toContain('[REDACTED-LAN]')
+      expect(r).not.toContain('192.168.71.100')
+    })
+    it('redact RFC1918 10.x.x.x', () => {
+      expect(redactSensitive('endpoint=http://10.0.0.1:8080')).toContain('[REDACTED-LAN]')
+    })
+    it('redact RFC1918 172.16-172.31', () => {
+      expect(redactSensitive('http://172.20.0.5:3000/api')).toContain('[REDACTED-LAN]')
+    })
+    it('172.32 (不在 RFC1918) 不 redact', () => {
+      expect(redactSensitive('http://172.32.0.1:80')).toContain('172.32.0.1')
+    })
+    it('public IP 不 redact', () => {
+      expect(redactSensitive('connecting to https://1.1.1.1:443/dns')).toContain('1.1.1.1')
+    })
+    it('redact LAN URL 时保留 path/query', () => {
+      const r = redactSensitive('GET http://192.168.1.1:8080/api/data?id=42')
+      expect(r).toMatch(/\[REDACTED-LAN\]\/api\/data\?id=42/)
     })
   })
 })

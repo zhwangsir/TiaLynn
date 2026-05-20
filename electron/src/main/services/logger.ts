@@ -40,6 +40,14 @@ const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   [/sk-proj-[A-Za-z0-9_\-]{16,}/g, 'sk-proj-[REDACTED]'],
   // OpenAI 风格 sk- token (最宽泛，最后兜底)
   [/sk-[A-Za-z0-9_\-]{16,}/g, 'sk-[REDACTED]'],
+  // E4 (audit): 内网 endpoint URL — 暴露用户家/局域网拓扑给日志读者
+  //   注意：放 sk- 后避免 sk-xxx 中的数字段误匹配
+  // localhost / loopback / 0.0.0.0 归 LOCAL
+  [/https?:\/\/(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0)(:\d+)?/g, 'http://[REDACTED-LOCAL]'],
+  // RFC1918 局域网归 LAN
+  [/https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?/g, 'http://[REDACTED-LAN]'],
+  [/https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?/g, 'http://[REDACTED-LAN]'],
+  [/https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?/g, 'http://[REDACTED-LAN]'],
 ]
 
 /** v0.13: 暴露为 export 便于单元测试（也允许其他模块手动 redact 自己的 log） */
