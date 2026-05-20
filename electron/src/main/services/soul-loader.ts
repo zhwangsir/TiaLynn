@@ -12,6 +12,9 @@ import {
   mergeSoulPartials,
   mergeWithDefaults,
   DEFAULT_SOUL,
+  isLegacyV01Schema,
+  migrateV01ToV2,
+  type LegacySoulV01,
 } from '@tialynn/soul-loader'
 import { getPaths } from './paths'
 import { getActiveCharacter, characterSoulDir } from './character-store'
@@ -88,7 +91,18 @@ export function loadSoul(): LoadedSoul {
       }
     }
     const base: SoulConfig = JSON.parse(JSON.stringify(DEFAULT_SOUL))
-    config = singleFile ? mergeWithDefaults(base, singleFile) : base
+    if (singleFile) {
+      // P5: 老 v0.1 schema 自动迁移 → v2.0 partials → 合并
+      if (isLegacyV01Schema(singleFile)) {
+        console.log('[soul] detected legacy v0.1 schema → auto migrating to v2.0')
+        const migrated = migrateV01ToV2(singleFile as LegacySoulV01)
+        config = mergeSoulPartials(migrated)
+      } else {
+        config = mergeWithDefaults(base, singleFile)
+      }
+    } else {
+      config = base
+    }
   } else {
     config = mergeSoulPartials(partials)
   }

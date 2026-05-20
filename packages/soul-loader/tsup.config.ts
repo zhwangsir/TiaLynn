@@ -1,7 +1,13 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/types.ts', 'src/merger.ts', 'src/system-prompt.ts'],
+  entry: [
+    'src/index.ts',
+    'src/types.ts',
+    'src/merger.ts',
+    'src/system-prompt.ts',
+    'src/migrate.ts',
+  ],
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

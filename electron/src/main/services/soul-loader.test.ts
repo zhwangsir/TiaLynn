@@ -138,8 +138,7 @@ master: !!js/function "function () { throw new Error('RCE') }"`
     warnSpy.mockRestore()
   })
 
-  it('default.yaml 单文件兼容（旧 v0.1 格式）', () => {
-    // 4 yaml 都没 → fallback 找 default.yaml
+  it('default.yaml 单文件兼容（v2 平铺字段）', () => {
     writeSoulYaml(
       'default.yaml',
       `name: Legacy
@@ -150,6 +149,41 @@ speech_style:
     const loaded = loadSoul()
     expect(loaded.config.name).toBe('Legacy')
     expect(loaded.config.speech_style.catchphrases).toContain('legacy')
+  })
+
+  it('P5: default.yaml 是 v0.1 schema → 自动迁移', () => {
+    writeSoulYaml(
+      'default.yaml',
+      `identity:
+  name: OldChar
+  master: OldM
+appearance:
+  live2d_model_dir: 'Old-Live2D'
+  model_file: 'old.model3.json'
+  anchor:
+    scale: 0.45
+    y_offset: 30
+personality:
+  layer1_core: '迁移底色'
+  layer3_volatility:
+    flip_probability: 0.3
+    flip_modes: ['突然害羞', '突然冷淡']
+speech_style:
+  signature_lines: ['老口头禅']
+  call_master_as: '大人'`,
+    )
+    const loaded = loadSoul()
+    expect(loaded.config.name).toBe('OldChar')
+    expect(loaded.config.master).toBe('OldM')
+    expect(loaded.config.call_master_as).toBe('大人')
+    expect(loaded.config.avatar.model_dir).toBe('Old-Live2D')
+    expect(loaded.config.avatar.scale).toBe(0.45)
+    expect(loaded.config.avatar.offset_y).toBe(30)
+    expect(loaded.config.layer1_core).toBe('迁移底色')
+    expect(loaded.config.flip_probability).toBe(0.3)
+    expect(loaded.config.layer3_volatility_prompt).toContain('30%')
+    expect(loaded.config.layer3_volatility_prompt).toContain('突然害羞')
+    expect(loaded.config.speech_style.catchphrases).toEqual(['老口头禅'])
   })
 
   it('personality 嵌套形式 layer1_core 也能识别', () => {
