@@ -53,3 +53,21 @@ export interface ToolPolicy {
   /** key = tool_name, value = always_allow / always_deny / null（每次问） */
   [toolName: string]: 'always_allow' | 'always_deny' | undefined
 }
+
+/**
+ * 把 MCP server 的 inputSchema（可能是完整 JSON Schema 或 undefined）
+ * 适配成 ToolDefinition.input_schema 的子集。MCP 协议未约束 inputSchema 形状，
+ * 但实际 server 多用 { type: 'object', properties, required } 子集。
+ * 留在 shared/ 是因为返回类型属于 ToolDefinition；未来 SSE/HTTP MCP adapter 可复用。
+ */
+export function adaptMcpInputSchema(raw: unknown): ToolDefinition['input_schema'] {
+  if (raw && typeof raw === 'object' && 'properties' in raw) {
+    const r = raw as { properties?: Record<string, unknown>; required?: string[] }
+    return {
+      type: 'object',
+      properties: (r.properties as ToolDefinition['input_schema']['properties']) ?? {},
+      ...(Array.isArray(r.required) ? { required: r.required } : {}),
+    }
+  }
+  return { type: 'object', properties: {} }
+}

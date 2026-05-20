@@ -135,6 +135,47 @@ renderer Vue 组件在 `<script setup>` **顶层**直接调 `bus.on(...)` 会在
 
 `loadConfig()` 读 `~/.tialynn/config.json` 后 spread 默认值。新增字段在 `DEFAULT` 加；旧默认值需要替换时（如 `emotion_voice_map` 从单 voice 改成 8 voice）写 migration 判断条件——**只在旧默认状态精确匹配时覆盖**，不能假设"看起来像默认"就覆盖（会丢用户自定义）。
 
+### M2 长期记忆完整闭环（v0.17）
+
+跨会话陪伴的核心数据层。三段链路全部接通：
+
+```
+对话结束 → memory:extract-from-turn (LLM 抽 fact/preference/event) → SQLite per-character memory.db
+   ↑                                                                          ↓
+   └─ dialog.send → memory:rag-context (embedding 检索 top-k) ← prepend system prompt
+```
+
+- 存储：`main/services/memory-store.ts` → `~/.tialynn/characters/<id>/memory.db`（per-character 隔离，better-sqlite3 WAL）
+- 抽取：`main/services/memory-extractor.ts` → reply-end 后 fire-and-forget，LLM 启发式提取
+- 检索：`dialog.ts send` 前 `fetchRagContext(userText)` Promise.race **800ms timeout**，失败/超时静默 fall through 到无 context 流程，**永不阻塞对话**
+- prepend 位置：system prompt 末尾 `## 你记得的关于 master 的事（仅供你回忆参考，不要直接复述）\n${context}`
+- IPC：`memory:{list,count,add,delete,search,extractFromTurn,ragContext,dailyReflection}` 8 个 handler；preload `window.api.memory.*` 暴露
+
+### MCP 外部工具（v0.17 P）
+
+手写 stdio JSON-RPC 客户端（**不引入 `@modelcontextprotocol/sdk` 依赖**）：`main/services/mcp-client.ts`。
+
+**完整闭环路径**：
+1. Settings → 🔌 MCP tab → register 一个 server（command + args）
+2. `mcp-client.registerServer` → spawn(stdio) → `initialize` + `notifications/initialized` 握手 → `tools/list`
+3. 拉到的工具自动注入 `tools/registry.ts`：name 前缀 `mcp__<serverId>__<toolName>` 避免冲突
+4. dialog.ts **每次 send 前重拉 tools.list**（MCP server 运行时可 register/unregister，缓存会陈旧）
+5. LLM `tool_use { name: "mcp__filesystem__read_file" }` → `tools:run` IPC → 走 policy 审批 → registry.invoke → 转发 `mcp-client.callTool` → JSON-RPC `tools/call`
+6. MCP 返回 `{ content: [{ type: 'text', text }] }` → 自动 join 字符串 → 回流 LLM
+
+**关键约束**：
+- `tools/registry.ts` 有 `register` + `unregister`（v0.17 加的）— MCP server 关停时联动清理
+- RPC 超时 15s，child crash 时 pending promises 全部 reject
+- `app.before-quit` 调 `shutdownMcp()` 关停所有 child
+
+### UI 缩放（v0.17）
+
+全局 `Cmd+= / - / 0` 改 `:root --ui-scale`（0.7-1.6）。**实现细节**：
+- `global.css` 末尾对 `.fp-panel / .ctx-menu / .lightbox / .overlay > .card / .overlay > .panel` 加 `transform: scale(var(--ui-scale, 1))`
+- `.bubble` 例外：自己在 scoped 内合写 `transform: translateX(-50%) scale(var(--ui-scale, 1))`（global rule 会覆盖 translateX，CSS transform 不叠加）
+- 不缩 Live2D canvas / SceneBackground / EmotionParticles — 避免 WebGL 模糊
+- 用 `transform: scale` 而非 CSS `zoom` — zoom 会让 fixed children 相对 zoom 元素而非 viewport（破坏关闭按钮 click 路径）
+
 ## Sidecar (TTS/RVC)
 
 可选 Python sidecar，路径 `sidecar/qwen-tts-server/`。安装：`bash sidecar/install.sh`（完整）/ `--minimal`（只装 edge-tts）。启动后默认监听 `http://127.0.0.1:8765`，设置面板填这个 URL。
@@ -148,3 +189,6 @@ TTS IPC（`main/ipc/tts.ts`）走 `tts_sidecar_url` 数组顺序重试，超时 
 - 不要给非 model3.json (Cubism 4) 模型加支持——Cubism 2 已弃用，加载时自动 fallback 到 cubism4 模型。
 - 不要把 `LSUIElement: true` 从 `electron/package.json` build.mac.extendInfo 里去掉——打包后桌宠在 Dock 显示就破功了。
 - 不要把 `setVisibleOnAllWorkspaces` 的 `skipTransformProcessType: true` 去掉。
+- 不要写 `.ui-overlay-layer { pointer-events: none } > * { pointer-events: auto }` wrapper — 会把 StickerOverlay 的 `pointer-events: none` 强制覆盖，全屏挡住立绘拖动 + 穿透。
+- 不要 `await window.api.memory.ragContext(...)` 不带 timeout — slow embedding endpoint 会卡住每个发送。一律走 `fetchRagContext` 的 800ms `Promise.race`。
+- 不要直接 import `@modelcontextprotocol/sdk` — 我们手写 stdio JSON-RPC 是有意为之（避免依赖膨胀 + 控制 timeout）。

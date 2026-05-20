@@ -158,10 +158,13 @@ export const useDialogStore = defineStore('dialog', () => {
       return
     }
 
-    // v0.17 P：每次 send 前重拉 tools list（MCP server 可能在运行时 register/unregister）
+    // 每次 send 前重拉 tools list — MCP server 可能在运行时 register/unregister。
+    // TODO(perf): 改 push-driven（main 推 tools:changed 事件）消除 send 热路径 IPC。
     try {
       availableTools.value = await window.api.tools.list()
-    } catch { /* keep stale list */ }
+    } catch (e) {
+      console.warn('[dialog] tools.list refresh failed, using stale list', e)
+    }
 
     const userTurn: DialogTurn = {
       id: uid(),
