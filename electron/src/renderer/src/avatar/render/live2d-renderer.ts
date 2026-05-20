@@ -34,6 +34,8 @@ export class Live2DRenderer {
   private gazeX = 0
   private gazeY = 0
   private lipsyncValue = 0
+  /** Phase 1 W3: wlipsync 输出的元音权重，驱动 ParamMouthForm + ParamMouthA/E/I/O/U */
+  private vowelWeights: { A: number; E: number; I: number; O: number; U: number } = { A: 0, E: 0, I: 0, O: 0, U: 0 }
   private destroyed = false
   /** 自增加载序号，用于在并发加载时识别「最新一次请求」，丢弃过期结果 */
   private loadSeq = 0
@@ -205,9 +207,25 @@ export class Live2DRenderer {
     }
   }
 
-  /** 嘴型 0~1 */
+  /** 嘴型 0~1 (mouthOpen) */
   setLipsync(value: number): void {
     this.lipsyncValue = clamp(value, 0, 1)
+  }
+
+  /**
+   * Phase 1 W3: wlipsync 输出的 AEIOU 元音权重 — 驱动嘴型形状不只是开合。
+   * tick 每帧把权重写入：
+   *   - ParamMouthForm: 元音形状 (-1 圆 O/A ~ +1 扁 I/E)
+   *   - ParamMouthA/E/I/O/U: VRoid 风格模型独立参数 (Cubism 4 模型多数没有，但 SDK 静默忽略未知 param)
+   */
+  setVowelWeights(weights: { A: number; E: number; I: number; O: number; U: number }): void {
+    this.vowelWeights = {
+      A: clamp(weights.A, 0, 1),
+      E: clamp(weights.E, 0, 1),
+      I: clamp(weights.I, 0, 1),
+      O: clamp(weights.O, 0, 1),
+      U: clamp(weights.U, 0, 1),
+    }
   }
 
   /**
@@ -457,9 +475,22 @@ export class Live2DRenderer {
     // 我们只覆盖嘴型 —— 其它参数（眨眼、视线、姿态）走 SDK 默认链路
     try {
       const cm = (this.model as ExtLive2DModel).internalModel?.coreModel
-      if (cm && typeof cm.setParameterValueById === 'function') {
-        cm.setParameterValueById('ParamMouthOpenY', this.lipsyncValue)
-      }
+      if (!cm || typeof cm.setParameterValueById !== 'function') return
+      cm.setParameterValueById('ParamMouthOpenY', this.lipsyncValue)
+      // Phase 1 W3: AEIOU → ParamMouthForm
+      //   A/O: 圆嘴 → form 负
+      //   I/E: 扁嘴 → form 正
+      //   U: 中性偏负（撅嘴）
+      //   SDK 对未知 param silent ignore，所以可以无脑全 set
+      const v = this.vowelWeights
+      const form = (v.I + v.E * 0.5) - (v.O + v.A * 0.3) - v.U * 0.4
+      cm.setParameterValueById('ParamMouthForm', clamp(form, -1, 1))
+      // VRoid / 高级模型独立 AEIOU 参数（Cubism 4 标准模型通常没有，SDK 静默 ignore）
+      cm.setParameterValueById('ParamMouthA', v.A)
+      cm.setParameterValueById('ParamMouthE', v.E)
+      cm.setParameterValueById('ParamMouthI', v.I)
+      cm.setParameterValueById('ParamMouthO', v.O)
+      cm.setParameterValueById('ParamMouthU', v.U)
     } catch {
       /* ignore */
     }

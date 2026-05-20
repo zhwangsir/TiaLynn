@@ -49,6 +49,12 @@ onMounted(async () => {
   }
   bus.on('avatar:lipsync', lipsyncHandler)
 
+  // Phase 1 W3: AEIOU 元音权重驱动 ParamMouthForm + 多参数（VRoid 风格）
+  const vowelHandler = (w: { A: number; E: number; I: number; O: number; U: number }): void => {
+    renderer?.setVowelWeights(w)
+  }
+  bus.on('avatar:vowel-weights', vowelHandler)
+
   // v0.15 A3: 情绪变化驱动 stage 整体呼吸节奏
   const emotionHandler = ({ emotion, intensity }: { emotion: string; intensity: number }): void => {
     currentEmotion.value = emotion
@@ -79,6 +85,7 @@ onMounted(async () => {
   bus.on('avatar:mouse-inside', hoverHandler)
   cleanupHandlers.push(() => {
     bus.off('avatar:lipsync', lipsyncHandler)
+    bus.off('avatar:vowel-weights', vowelHandler)
     bus.off('brain:emotion-changed', emotionHandler)
     bus.off('avatar:mouse-inside', hoverHandler)
   })
