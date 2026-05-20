@@ -5,8 +5,9 @@
  * 主进程通过 webContents.send('llm:chunk', { streamId, delta | done | error }) 回推。
  */
 import { ipcMain, type BrowserWindow } from 'electron'
-import type { ChatMessage, ChatOptions, IpcStreamChunk, LlmProvider } from '@shared/types'
-import type { ToolDefinition } from '@shared/tools'
+import type { IpcStreamChunk, LlmProvider } from '@shared/types'
+import { llmChatStream } from '@shared/channels/llm'
+import { handleInvoke } from './channel-helpers'
 import { buildProvider } from '../services/llm'
 import { loadConfig } from '../services/config-store'
 import { runHealthCheck, type FullHealthReport } from '../services/llm/health-check'
@@ -14,19 +15,8 @@ import { runHealthCheck, type FullHealthReport } from '../services/llm/health-ch
 const aborts = new Map<string, AbortController>()
 
 export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle(
-    'llm:chat-stream',
-    async (
-      _evt,
-      payload: {
-        streamId: string
-        messages: ChatMessage[]
-        options?: Partial<ChatOptions>
-        provider_override?: { provider?: LlmProvider; endpoint?: string; api_key?: string; model?: string }
-        tools?: ToolDefinition[]
-        tool_results?: Array<{ tool_use_id: string; content: string; is_error?: boolean }>
-      },
-    ) => {
+  // Phase 1 试点: 走 type-safe channel — payload + 返回值类型从 llmChatStream 自动推
+  handleInvoke(llmChatStream, async (payload) => {
       const cfg = loadConfig()
       const provider = payload.provider_override?.provider ?? cfg.llm_provider
       const endpoint = payload.provider_override?.endpoint ?? cfg.llm_endpoint
@@ -113,8 +103,7 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       } finally {
         aborts.delete(payload.streamId)
       }
-    },
-  )
+    })
 
   ipcMain.handle('llm:abort', (_evt, streamId: string) => {
     const c = aborts.get(streamId)

@@ -17,6 +17,7 @@ import type {
 } from '@shared/types'
 import type { ApprovalRequest } from '@shared/tools'
 import type { TialynnApi } from '@shared/api'
+import { llmChatStream } from '@shared/channels/llm'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -76,6 +77,12 @@ const invoke = (channel: string, ...args: unknown[]): Promise<unknown> =>
 
 const send = (channel: string, ...args: unknown[]): void =>
   ipcRenderer.send(channel, ...args.map(deepPlain))
+
+// Phase 1: type-safe channel wrapper — 通过 IpcChannel<P,R> 自动推 payload + 返回值类型
+import type { IpcChannel } from '@shared/ipc-channel'
+function invokeChannel<P, R>(channel: IpcChannel<P, R>, payload: P): Promise<R> {
+  return ipcRenderer.invoke(channel.name, deepPlain(payload)) as Promise<R>
+}
 
 const api: TialynnApi = {
   system: {
@@ -272,8 +279,8 @@ const api: TialynnApi = {
     },
   },
   llm: {
-    chatStream: (payload) =>
-      invoke('llm:chat-stream', payload) as Promise<{ ok: boolean; reason?: string }>,
+    // Phase 1 试点：走 type-safe channel
+    chatStream: (payload) => invokeChannel(llmChatStream, payload),
     abort: (streamId: string) => invoke('llm:abort', streamId) as Promise<{ ok: boolean }>,
     test: (payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string }) =>
       invoke('llm:test', payload) as Promise<{ ok: boolean; message: string }>,
