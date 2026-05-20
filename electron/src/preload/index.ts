@@ -221,6 +221,12 @@ import {
   emotionalSetMood,
   emotionalTick,
 } from '@shared/channels/emotional'
+import {
+  evalAbort,
+  evalClearHistory,
+  evalHistory,
+  evalRun,
+} from '@shared/channels/eval'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -631,6 +637,24 @@ const api: TialynnApi = {
     getState: () => invokeChannel(emotionalGetState, undefined as never),
     tick: () => invokeChannel(emotionalTick, undefined as never),
     setMood: (payload) => invokeChannel(emotionalSetMood, payload),
+  },
+  eval: {
+    run: (payload) => invokeChannel(evalRun, payload),
+    abort: () => invokeChannel(evalAbort, undefined as never),
+    history: () => invokeChannel(evalHistory, undefined as never),
+    clearHistory: () => invokeChannel(evalClearHistory, undefined as never),
+    onProgress: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: {
+          done: number
+          total: number
+          current?: { question_id: string; category: string; score: number }
+        },
+      ): void => cb(p)
+      ipcRenderer.on('eval:progress', handler)
+      return () => ipcRenderer.off('eval:progress', handler)
+    },
   },
   agent: {
     halt: (on) => invokeChannel(agentHalt, on),

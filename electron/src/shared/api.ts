@@ -772,6 +772,25 @@ export interface TialynnApi {
     }): Promise<{ ok: boolean; result?: unknown; reason?: string }>
   }
 
+  /** Phase 1 K: 角色一致性测试框架 — settings 面板触发跑 50 题 */
+  eval: {
+    run(payload?: { limit?: number }): Promise<{
+      ok: boolean
+      report?: import('./channels/eval').EvalReportShape
+      reason?: string
+    }>
+    abort(): Promise<{ ok: boolean }>
+    history(): Promise<import('./channels/eval').EvalHistoryEntryShape[]>
+    clearHistory(): Promise<{ ok: boolean }>
+    onProgress(
+      cb: (p: {
+        done: number
+        total: number
+        current?: { question_id: string; category: string; score: number }
+      }) => void,
+    ): () => void
+  }
+
   /** Phase 1 J: 情感状态轨迹 — 每轮对话 dialog.ts fire-and-forget onReply */
   emotional: {
     onReply(payload: {
