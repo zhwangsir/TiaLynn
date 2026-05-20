@@ -16,6 +16,13 @@ export interface Live2DEyeBlink {
   setBlinkingInterval?: (ms: number) => void
 }
 
+export interface Live2DExpressionRef {
+  Name?: string
+  name?: string
+  File?: string
+  file?: string
+}
+
 export interface Live2DInternalModel {
   coreModel?: Live2DCoreModel
   eyeBlink?: Live2DEyeBlink
@@ -23,10 +30,17 @@ export interface Live2DInternalModel {
   originalHeight?: number
   settings?: {
     motions?: Record<string, unknown[]>
+    expressions?: Array<string | Live2DExpressionRef>
     json?: {
       FileReferences?: {
         Motions?: Record<string, unknown[]>
+        Expressions?: Array<string | Live2DExpressionRef>
       }
+    }
+  }
+  motionManager?: {
+    expressionManager?: {
+      setExpression?: (idOrName: string) => unknown
     }
   }
 }
@@ -34,6 +48,8 @@ export interface Live2DInternalModel {
 export interface Live2DModelInternal {
   internalModel?: Live2DInternalModel
   motion?: (group: string, index?: number, priority?: number) => void
+  /** pixi-live2d-display 暴露的 expression setter — 接受 expression name/index */
+  expression?: (idx: string | number) => boolean | Promise<boolean>
 }
 
 /** Live2DModel 附带 internalModel 字段的扩展类型。 */

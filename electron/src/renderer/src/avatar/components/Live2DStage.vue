@@ -56,9 +56,20 @@ onMounted(async () => {
   bus.on('avatar:vowel-weights', vowelHandler)
 
   // v0.15 A3: 情绪变化驱动 stage 整体呼吸节奏
+  // P5: 同时尝试切换 Live2D expression — 若模型有匹配的 expression，
+  // 立刻播让情绪在脸上"看得到"。intensity > 0.3 才触发避免微调闪烁
   const emotionHandler = ({ emotion, intensity }: { emotion: string; intensity: number }): void => {
     currentEmotion.value = emotion
     currentIntensity.value = intensity
+    if (renderer && intensity > 0.3) {
+      void import('../render/expression-matcher').then(({ matchExpression }) => {
+        const available = renderer!.listExpressions()
+        const matched = matchExpression(emotion, available)
+        if (matched) {
+          renderer!.setExpression(matched)
+        }
+      })
+    }
   }
   bus.on('brain:emotion-changed', emotionHandler)
 

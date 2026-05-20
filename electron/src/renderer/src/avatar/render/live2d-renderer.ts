@@ -254,6 +254,67 @@ export class Live2DRenderer {
   }
 
   /**
+   * P5: 列出模型所有 expression id (优先 settings.expressions 数组；fallback FileReferences.Expressions)。
+   * 返回 expressionId/filename 列表 — pixi-live2d-display setExpression() 接受这些。
+   */
+  listExpressions(): string[] {
+    if (!this.model) return []
+    try {
+      const m = this.model as ExtLive2DModel
+      const settings = m.internalModel?.settings
+      // 多种来源兼容（Cubism 4 标准在 FileReferences.Expressions, 旧版在 settings.expressions）
+      const raw =
+        settings?.expressions ??
+        settings?.json?.FileReferences?.Expressions ??
+        []
+      const list = Array.isArray(raw) ? raw : []
+      return list
+        .map((e: unknown) => {
+          if (typeof e === 'string') return e
+          if (e && typeof e === 'object') {
+            const obj = e as { Name?: string; name?: string; File?: string; file?: string }
+            return obj.Name ?? obj.name ?? obj.File ?? obj.file ?? ''
+          }
+          return ''
+        })
+        .filter((s) => s.length > 0)
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * P5: 切换到指定 expression。
+   * @param idOrName  expression id/name/File，跟 listExpressions 返回的一致
+   * @returns true 表示触发成功
+   */
+  setExpression(idOrName: string): boolean {
+    if (!this.model || !idOrName) return false
+    try {
+      const m = this.model as ExtLive2DModel
+      // pixi-live2d-display 顶层 .expression(name) API (Live2DModelInternal type)
+      if (typeof m.expression === 'function') {
+        const r = m.expression(idOrName)
+        // r 可能是 boolean 或 Promise<boolean>；同步 false 视为失败，
+        // Promise 视为已触发（异步 set 通常会完成）
+        console.log(`[live2d] setExpression "${idOrName}" via .expression()`)
+        return typeof r === 'boolean' ? r : true
+      }
+      // fallback: 内部 expressionManager
+      const em = m.internalModel?.motionManager?.expressionManager
+      if (em && typeof em.setExpression === 'function') {
+        em.setExpression(idOrName)
+        console.log(`[live2d] setExpression "${idOrName}" via expressionManager`)
+        return true
+      }
+      return false
+    } catch (e) {
+      console.warn('[live2d] setExpression failed', idOrName, e)
+      return false
+    }
+  }
+
+  /**
    * 强制写入一个参数（每帧自定义动作的入口）。
    * v0.7.4：motion-player 用这个来播 MotionDraft。
    */
