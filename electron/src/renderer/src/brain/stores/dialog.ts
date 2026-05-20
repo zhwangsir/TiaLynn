@@ -86,12 +86,24 @@ export const useDialogStore = defineStore('dialog', () => {
       console.warn('[dialog] history restore failed:', e)
     }
     // 拉取 tools，供 LLM 用
+    await refreshTools()
+    // v0.17: 订阅 main 的 tools:changed (MCP register/unregister 时推送) — push-driven 替代 send 热路径 IPC pre-flight
+    if (!toolsChangedUnsub) {
+      toolsChangedUnsub = window.api.tools.onChanged(() => {
+        void refreshTools()
+      })
+    }
+  }
+
+  async function refreshTools(): Promise<void> {
     try {
       availableTools.value = await window.api.tools.list()
     } catch (e) {
       console.warn('[dialog] tools.list failed:', e)
     }
   }
+
+  let toolsChangedUnsub: (() => void) | null = null
 
   async function persist(t: DialogTurn): Promise<void> {
     try {
@@ -156,14 +168,6 @@ export const useDialogStore = defineStore('dialog', () => {
     if (!cfg.config) {
       bus.emit('ui:toast', { kind: 'error', message: '配置未加载，无法发送' })
       return
-    }
-
-    // 每次 send 前重拉 tools list — MCP server 可能在运行时 register/unregister。
-    // TODO(perf): 改 push-driven（main 推 tools:changed 事件）消除 send 热路径 IPC。
-    try {
-      availableTools.value = await window.api.tools.list()
-    } catch (e) {
-      console.warn('[dialog] tools.list refresh failed, using stale list', e)
     }
 
     const userTurn: DialogTurn = {

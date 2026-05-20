@@ -136,7 +136,7 @@ app.whenReady().then(() => {
   registerPerceptionIpc()
   registerComfyuiIpc(getMainWindow)
   registerAutomationIpc(getMainWindow)
-  registerMcpIpc()
+  registerMcpIpc(getMainWindow)
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）

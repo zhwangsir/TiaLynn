@@ -8,7 +8,7 @@
  *
  * 配合 main/services/mcp-client.ts。
  */
-import { ipcMain } from 'electron'
+import { ipcMain, type BrowserWindow } from 'electron'
 import {
   callTool,
   listServers,
@@ -18,16 +18,29 @@ import {
   type McpServerSpec,
 } from '../services/mcp-client'
 
-export function registerMcpIpc(): void {
+export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
+  /** 通知 renderer tools registry 内容变了 — 避免 dialog send 热路径 IPC pre-flight。 */
+  const notifyToolsChanged = (): void => {
+    const win = getWindow()
+    if (win && !win.isDestroyed()) win.webContents.send('tools:changed')
+  }
+
   ipcMain.handle('mcp:list-servers', () => listServers())
 
   ipcMain.handle('mcp:register', async (_evt, payload: McpServerSpec) => {
     const r = await registerServer(payload)
-    if (r.ok) return { ok: true, toolCount: r.toolCount }
+    if (r.ok) {
+      notifyToolsChanged()
+      return { ok: true, toolCount: r.toolCount }
+    }
     return { ok: false, reason: r.reason }
   })
 
-  ipcMain.handle('mcp:unregister', (_evt, id: string) => unregisterServer(id))
+  ipcMain.handle('mcp:unregister', (_evt, id: string) => {
+    const r = unregisterServer(id)
+    if (r.ok) notifyToolsChanged()
+    return r
+  })
 
   ipcMain.handle('mcp:list-tools', (_evt, serverId: string) => listTools(serverId))
 

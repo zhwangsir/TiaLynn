@@ -452,6 +452,11 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('tools:approval-request', handler)
     },
     sendApprovalDecision: (payload) => send('tools:approval-decision', payload),
+    onChanged: (cb): (() => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('tools:changed', handler)
+      return () => ipcRenderer.off('tools:changed', handler)
+    },
   },
   comfyui: {
     status: () => invoke('comfyui:status') as ReturnType<TialynnApi['comfyui']['status']>,

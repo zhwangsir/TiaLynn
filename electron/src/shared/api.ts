@@ -517,6 +517,8 @@ export interface TialynnApi {
     policyClear(): Promise<ToolPolicy>
     onApprovalRequest(cb: (req: ApprovalRequest) => void): () => void
     sendApprovalDecision(payload: { invocation_id: string; decision: ApprovalDecision }): void
+    /** v0.17: MCP server register/unregister 后主进程推送，让 renderer 重拉 tools list */
+    onChanged(cb: () => void): () => void
   }
   tts: {
     speak(payload: { text: string; voice?: string; emotion?: string }): Promise<{
