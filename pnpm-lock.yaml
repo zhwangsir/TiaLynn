@@ -19,6 +19,9 @@ importers:
       '@nut-tree-fork/nut-js':
         specifier: ^4.2.6
         version: 4.2.6(encoding@0.1.13)
+      '@tialynn/motion-factory':
+        specifier: workspace:*
+        version: link:../packages/motion-factory
       adm-zip:
         specifier: ^0.5.16
         version: 0.5.17
@@ -101,6 +104,8 @@ importers:
       vue-tsc:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.9.3)
+
+  packages/motion-factory: {}
 
 packages:
 

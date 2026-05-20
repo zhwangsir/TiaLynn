@@ -15,6 +15,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { MotionDraft, KeyframeTrack, ParamInfo, ModelMotionSummary } from '@shared/motion'
+// Phase 1 W5 C: 纯函数 draftToMotion3Json + trackToSegments 现在来自 @tialynn/motion-factory
+// 本文件保留 IO 函数 (parseMotion3 / summarizeModelMotions) — 依赖 fs
+import { draftToMotion3Json as _draftToMotion3Json } from '@tialynn/motion-factory'
+export { draftToMotion3Json } from '@tialynn/motion-factory'
 
 interface RawMotion3 {
   Version: number
@@ -45,67 +49,8 @@ interface RawModel3 {
   }
 }
 
-/** 把 LLM 输出的 MotionDraft 编码成 motion3.json 字符串 */
-export function draftToMotion3Json(draft: MotionDraft): string {
-  const fps = draft.fps ?? 30
-  let totalSegmentCount = 0
-  let totalPointCount = 0
-
-  const curves = draft.tracks.map((t) => {
-    const seg = trackToSegments(t)
-    totalSegmentCount += seg.segmentCount
-    totalPointCount += seg.pointCount
-    return {
-      Target: 'Parameter' as const,
-      Id: t.param,
-      Segments: seg.segments,
-    }
-  })
-
-  const data: RawMotion3 = {
-    Version: 3,
-    Meta: {
-      Duration: draft.duration,
-      Fps: fps,
-      Loop: draft.loop,
-      CurveCount: curves.length,
-    },
-    Curves: curves,
-    ...(draft.description
-      ? { UserData: [{ Time: 0, Value: draft.description }] }
-      : {}),
-  }
-  data.Meta.AreBeziersRestricted = true
-  data.Meta.TotalSegmentCount = totalSegmentCount
-  data.Meta.TotalPointCount = totalPointCount
-  data.Meta.UserDataCount = draft.description ? 1 : 0
-  data.Meta.TotalUserDataSize = draft.description?.length ?? 0
-
-  return JSON.stringify(data, null, 2)
-}
-
-/** 一条轨道 → segments 数组 */
-function trackToSegments(t: KeyframeTrack): {
-  segments: number[]
-  segmentCount: number
-  pointCount: number
-} {
-  if (t.keyframes.length === 0) {
-    return { segments: [0, 0], segmentCount: 0, pointCount: 1 }
-  }
-  const sorted = [...t.keyframes].sort((a, b) => a[0] - b[0])
-  const first = sorted[0]
-  if (!first) return { segments: [0, 0], segmentCount: 0, pointCount: 1 }
-  const out: number[] = [first[0], first[1]]
-  let segCount = 0
-  for (let i = 1; i < sorted.length; i++) {
-    const kf = sorted[i]
-    if (!kf) continue
-    out.push(0, kf[0], kf[1]) // type=0 Linear
-    segCount++
-  }
-  return { segments: out, segmentCount: segCount, pointCount: sorted.length }
-}
+// draftToMotion3Json + trackToSegments 已搬到 @tialynn/motion-factory 包，本文件 re-export
+void _draftToMotion3Json  // 防 unused import warn (export 已在顶部)
 
 /** 解析 motion3.json → 提取参数 id + 估算值范围 */
 export function parseMotion3(filePath: string): {
