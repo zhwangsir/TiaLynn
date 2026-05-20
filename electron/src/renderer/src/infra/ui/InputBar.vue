@@ -1,12 +1,46 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
+import { SttSession } from '../../presence/stt/web-speech'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const dialog = useDialogStore()
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// F: STT — Electron Chromium 原生支持 SpeechRecognition
+const sttSupported = ref(SttSession.isSupported())
+const sttListening = ref(false)
+const sttError = ref('')
+let sttSession: SttSession | null = null
+
+function toggleStt(): void {
+  if (!sttSupported.value) return
+  if (sttSession?.isActive()) {
+    sttSession.stop()
+    return
+  }
+  sttError.value = ''
+  sttSession = new SttSession({
+    onStart: () => { sttListening.value = true },
+    onInterim: (t) => { text.value = t },  // 实时显示在 input
+    onFinal: (t) => {
+      text.value = t
+      // 用户停顿即自动发 — 桌宠对话场景下"说完即发"更自然
+      void submit()
+    },
+    onError: (err) => {
+      sttListening.value = false
+      // not-allowed = 麦克风权限被拒；no-speech = 没说话不算错
+      if (err !== 'no-speech' && err !== 'aborted') {
+        sttError.value = err === 'not-allowed' ? '请授权麦克风' : `STT 错误: ${err}`
+      }
+    },
+    onEnd: () => { sttListening.value = false },
+  }, { lang: 'zh-CN' })
+  sttSession.start()
+}
 
 async function submit(): Promise<void> {
   const v = text.value.trim()
@@ -35,7 +69,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  // 中止流式对话（如有）
+  sttSession?.abort()
   if (dialog.replying) dialog.abort()
 })
 </script>
@@ -46,12 +80,31 @@ onBeforeUnmount(() => {
       <textarea
         ref="inputRef"
         v-model="text"
-        :placeholder="dialog.replying ? '主人正在等回应……' : '想说点什么？  Enter 发送 · Esc 关闭'"
+        :placeholder="
+          sttListening ? '正在听 ……'
+          : dialog.replying ? '主人正在等回应……'
+          : sttError ? sttError
+          : '想说点什么？  Enter 发送 · Esc 关闭'
+        "
         :disabled="dialog.replying"
         rows="1"
         class="input"
         @keydown="onKey"
       />
+      <button
+        v-if="sttSupported && !dialog.replying"
+        class="mic"
+        :class="{ listening: sttListening }"
+        :title="sttListening ? '停止录音' : '语音输入 (中文识别)'"
+        @click="toggleStt"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="2" width="6" height="11" rx="3" />
+          <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+        </svg>
+      </button>
       <button
         v-if="!dialog.replying"
         class="send"
@@ -159,6 +212,34 @@ onBeforeUnmount(() => {
 @keyframes abort-pulse {
   0%, 100% { box-shadow: 0 0 0 0 oklch(60% 0.22 25 / 0); }
   50% { box-shadow: 0 0 0 6px oklch(60% 0.22 25 / 0.15); }
+}
+.mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  border: 1px solid var(--color-bubble-border);
+  flex-shrink: 0;
+  transition: all 150ms;
+}
+.mic:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: oklch(95% 0.05 25 / 0.3);
+}
+.mic.listening {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+  animation: mic-pulse 1.2s var(--ease-in-out) infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(72% 0.18 18 / 0); }
+  50% { box-shadow: 0 0 0 8px oklch(72% 0.18 18 / 0.15); }
 }
 .close {
   display: inline-flex;
