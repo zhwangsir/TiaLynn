@@ -5,11 +5,13 @@
   "type": "module",
   "description": "TiaLynn — Electron + Vue 3 桌面 AI 伴侣（Live2D + 本地 LLM + RVC 语音）",
   "scripts": {
-    "dev": "pnpm -F tialynn-electron dev",
-    "build": "pnpm -F tialynn-electron build",
-    "typecheck": "pnpm -F tialynn-electron typecheck",
-    "package:mac": "pnpm -F tialynn-electron package:mac",
-    "package:win": "pnpm -F tialynn-electron package:win",
-    "package:linux": "pnpm -F tialynn-electron package:linux"
+    "dev": "pnpm build:packages && pnpm -F tialynn-electron dev",
+    "build": "pnpm build:packages && pnpm -F tialynn-electron build",
+    "build:packages": "pnpm -r --filter './packages/*' build",
+    "typecheck": "pnpm build:packages && pnpm -F tialynn-electron typecheck",
+    "test": "pnpm -F tialynn-electron test && pnpm -r --filter './packages/*' test --if-present",
+    "package:mac": "pnpm build:packages && pnpm -F tialynn-electron package:mac",
+    "package:win": "pnpm build:packages && pnpm -F tialynn-electron package:win",
+    "package:linux": "pnpm build:packages && pnpm -F tialynn-electron package:linux"
   }
 }
