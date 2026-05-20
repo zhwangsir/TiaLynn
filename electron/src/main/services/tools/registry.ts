@@ -22,6 +22,11 @@ export function register(def: ToolDefinition, impl: ToolImpl): void {
   tools.set(def.name, { def, impl })
 }
 
+/** v0.17 P：MCP server 关停时移除该 server 暴露过的工具 */
+export function unregister(name: string): boolean {
+  return tools.delete(name)
+}
+
 export function list(): ToolDefinition[] {
   return [...tools.values()].map((t) => t.def)
 }

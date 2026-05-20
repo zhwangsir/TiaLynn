@@ -158,6 +158,11 @@ export const useDialogStore = defineStore('dialog', () => {
       return
     }
 
+    // v0.17 P：每次 send 前重拉 tools list（MCP server 可能在运行时 register/unregister）
+    try {
+      availableTools.value = await window.api.tools.list()
+    } catch { /* keep stale list */ }
+
     const userTurn: DialogTurn = {
       id: uid(),
       role: 'user',

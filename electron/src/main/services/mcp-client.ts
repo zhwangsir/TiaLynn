@@ -15,6 +15,26 @@
  *   - SSE / HTTP transport（只 stdio）
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { register as registerTool, unregister as unregisterTool } from './tools/registry'
+import type { ToolDefinition } from '@shared/tools'
+
+/** MCP tool name 转 registry name — 加 server 前缀避免不同 server 同名冲突 */
+function mcpToolRegistryName(serverId: string, toolName: string): string {
+  return `mcp__${serverId}__${toolName}`
+}
+
+/** MCP inputSchema → ToolDefinition input_schema — MCP 可能给完整 JSON Schema，我们只取 properties + required */
+function adaptInputSchema(raw: unknown): ToolDefinition['input_schema'] {
+  if (raw && typeof raw === 'object' && 'properties' in raw) {
+    const r = raw as { properties?: Record<string, unknown>; required?: string[] }
+    return {
+      type: 'object',
+      properties: (r.properties as ToolDefinition['input_schema']['properties']) ?? {},
+      ...(Array.isArray(r.required) ? { required: r.required } : {}),
+    }
+  }
+  return { type: 'object', properties: {} }
+}
 
 export interface McpServerSpec {
   id: string
@@ -165,6 +185,29 @@ export async function registerServer(spec: McpServerSpec): Promise<{ ok: true; t
     // 2. tools/list
     const toolsResult = await sendRpc<{ tools?: McpToolDef[] }>(srv, 'tools/list')
     srv.tools = toolsResult?.tools ?? []
+    // v0.17 P：把 MCP 工具注入全局 tools registry，让 LLM 能 tool_use 调到
+    for (const t of srv.tools) {
+      const registryName = mcpToolRegistryName(spec.id, t.name)
+      registerTool(
+        {
+          name: registryName,
+          description: t.description || `MCP tool from ${spec.name}`,
+          input_schema: adaptInputSchema(t.inputSchema),
+          risk: 'medium',
+          category: 'other',
+        },
+        async (input) => {
+          const r = await callTool(spec.id, t.name, input)
+          if (r.ok) {
+            // MCP result 是 { content: [{ type: 'text', text }] } 标准格式
+            const content = (r.result as { content?: Array<{ type: string; text?: string }> })?.content ?? []
+            const texts = content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n')
+            return texts || JSON.stringify(r.result)
+          }
+          throw new Error(r.reason)
+        },
+      )
+    }
     return { ok: true, toolCount: srv.tools.length }
   } catch (e) {
     srv.status = 'error'
@@ -177,6 +220,10 @@ export async function registerServer(spec: McpServerSpec): Promise<{ ok: true; t
 export function unregisterServer(id: string): { ok: boolean } {
   const srv = servers.get(id)
   if (!srv) return { ok: false }
+  // v0.17 P：从全局 tools registry 移除该 server 注入的所有工具
+  for (const t of srv.tools) {
+    unregisterTool(mcpToolRegistryName(id, t.name))
+  }
   try { srv.child?.kill() } catch { /* skip */ }
   servers.delete(id)
   return { ok: true }

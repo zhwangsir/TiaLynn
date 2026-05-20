@@ -15,6 +15,7 @@
   - ✅ 视觉融入感（drop-shadow + 漫画气泡 + scene 浓度降低）
   - ✅ AI 行为协同（TTS 8 voice + rules play_group + reactive trigger + LLM budget 6/min）
   - ✅ MCP server UI（设置面板 🔌 MCP tab — 添加/列表/展开 tools/移除）
+  - ✅ MCP tools 接入 LLM tool_use 链路（register 后自动注入 registry，前缀 `mcp__<id>__<tool>`，LLM 可直接调用外部 MCP 工具）
   - ✅ RAG context 接入 chat 前置流程（send 前 800ms timeout 拉记忆 prepend system）
   - ❌ 图层切割（PSD 解析 + Cubism Editor 自动化超范围 — 推迟 v0.18）
 
