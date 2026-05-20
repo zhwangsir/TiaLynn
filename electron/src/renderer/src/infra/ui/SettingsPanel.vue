@@ -42,6 +42,7 @@ function blankConfig(): RuntimeConfig {
     embedding_endpoint: '',
     embedding_model: '',
     openai_compat_merge_system: true,
+    chinese_llm_enhance: true,
   }
 }
 
@@ -621,6 +622,24 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
             <span class="check-label">
               合并 system 到 user
               <span class="check-hint">LM Studio / Qwen MoE / 其它 jinja template 兼容性差的模型必开。OpenAI 真版可关。</span>
+            </span>
+          </div>
+        </label>
+        <label>
+          <span>中文增强</span>
+          <div class="check-row">
+            <input
+              type="checkbox"
+              :checked="form.chinese_llm_enhance !== false"
+              @change="(e) => { form.chinese_llm_enhance = (e.target as HTMLInputElement).checked; markDirty() }"
+            />
+            <span class="check-label">
+              国产 LLM 反 SFT bias 提示
+              <span class="check-hint">
+                自动检测 Qwen / DeepSeek / Kimi / GLM / Yi / Hunyuan / Doubao，给 system 注入
+                "不要切 AI 助手腔 / 不要 markdown / 维持角色" 提示。50 题角色保真测得分 99/100。
+                关闭后用纯 soul prompt 测 baseline。
+              </span>
             </span>
           </div>
         </label>
