@@ -4,6 +4,7 @@
 import type { ChatMessage, ChatOptions } from '@shared/types'
 import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 import { enhanceMessagesForChineseModel } from './chinese-models'
+import { loadConfig } from '../config-store'
 
 export class OllamaProvider implements LlmProviderImpl {
   readonly name = 'ollama' as const
@@ -20,8 +21,12 @@ export class OllamaProvider implements LlmProviderImpl {
     _extra?: ChatExtraOptions,
   ): Promise<void> {
     const url = `${this.endpoint.replace(/\/+$/, '')}/api/chat`
-    // Phase 1 I: 检测国产模型 → 给 system 注入中文人格强化指令
-    const enhanced = enhanceMessagesForChineseModel(messages, options.model)
+    // Phase 1 I: 检测国产模型 → 给 system 注入中文人格强化指令（可在 settings 关）
+    const cfg = loadConfig()
+    const enhanced =
+      cfg.chinese_llm_enhance === false
+        ? messages
+        : enhanceMessagesForChineseModel(messages, options.model)
     const body = {
       model: options.model,
       stream: true,

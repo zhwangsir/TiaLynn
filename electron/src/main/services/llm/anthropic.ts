@@ -11,6 +11,7 @@ import type { ChatMessage, ChatOptions } from '@shared/types'
 import type { ToolDefinition } from '@shared/tools'
 import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 import { enhanceMessagesForChineseModel } from './chinese-models'
+import { loadConfig } from '../config-store'
 
 interface PendingToolUse {
   id: string
@@ -46,7 +47,12 @@ export class AnthropicProvider implements LlmProviderImpl {
 
     // Phase 1 I (P3): 国产模型检测增强 — 用户通过 OpenRouter / anthropic-compat
     // 代理 GLM / Qwen 等国产模型时仍能命中（不止 openai_compat 路径）
-    const enhanced = enhanceMessagesForChineseModel(messages, options.model)
+    // 用户可在 settings.chinese_llm_enhance=false 关闭
+    const cfg = loadConfig()
+    const enhanced =
+      cfg.chinese_llm_enhance === false
+        ? messages
+        : enhanceMessagesForChineseModel(messages, options.model)
 
     let system = ''
     const msgs: Array<{ role: 'user' | 'assistant'; content: unknown }> = []

@@ -101,7 +101,12 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     const base = this.endpoint.replace(/\/+$/, '')
     const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
     // Phase 1 I: 检测国产模型 → 给 system 注入中文人格强化指令（airi 不会做）
-    const enhanced = enhanceMessagesForChineseModel(messages, options.model)
+    // 用户可在 settings.chinese_llm_enhance=false 关闭
+    const innerCfg = loadConfig()
+    const enhanced =
+      innerCfg.chinese_llm_enhance === false
+        ? messages
+        : enhanceMessagesForChineseModel(messages, options.model)
     const normalized = normalizeMessages(enhanced, mergeSystem)
     console.log(
       `[openai-compat] tryStream merge=${mergeSystem} retry=${isRetry} in=${messages.length} out=${normalized.length} roles=[${normalized.map((m) => `${m.role}:${m.content.trim().length}`).join(',')}]`,

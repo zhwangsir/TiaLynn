@@ -52,6 +52,12 @@ export interface RuntimeConfig {
    * 真 OpenAI / SiliconFlow 可关掉（它们对 system 支持完美）。
    */
   openai_compat_merge_system?: boolean
+  /**
+   * Phase 1 I: 国产 LLM 中文场景增强（Qwen/DeepSeek/Kimi/GLM/Yi/Hunyuan/Doubao）。
+   * 默认 true — 检测到国产模型时自动注入反 SFT bias 提示。
+   * 用户若想完全控制 system prompt 可关。
+   */
+  chinese_llm_enhance?: boolean
   /** v0.8.2: 视觉感知 — 启动时透传给 PerceptionConfig，可独立配 endpoint/model */
   vision_enabled?: boolean
   vision_endpoint?: string
