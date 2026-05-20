@@ -15,7 +15,7 @@ import {
   listTools,
   registerServer,
   unregisterServer,
-  type McpServerSpec,
+  validateMcpServerSpec,
 } from '../services/mcp-client'
 
 export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
@@ -27,8 +27,11 @@ export function registerMcpIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('mcp:list-servers', () => listServers())
 
-  ipcMain.handle('mcp:register', async (_evt, payload: McpServerSpec) => {
-    const r = await registerServer(payload)
+  ipcMain.handle('mcp:register', async (_evt, payload: unknown) => {
+    // C1: renderer 传来的 spec 必须先过白名单 — 防 XSS 触发 RCE
+    const v = validateMcpServerSpec(payload)
+    if (!v.ok) return { ok: false, reason: v.reason }
+    const r = await registerServer(v.spec)
     if (r.ok) {
       notifyToolsChanged()
       return { ok: true, toolCount: r.toolCount }

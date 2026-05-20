@@ -119,3 +119,39 @@ function requestApproval(
     }, 60_000)
   })
 }
+
+/**
+ * C2: agent:run-task 入口审批 — 一次性弹窗确认整个 task goal。
+ * 复用 tools 审批弹窗 UI（同一个 ApprovalRequest 通道），
+ * 用 invocation_id 前缀 `agent-task-` 区分。
+ * 返回 true = allow，false = deny。120s 超时拒绝。
+ */
+export function requestAgentTaskApproval(
+  getWindow: BrowserWindow | (() => BrowserWindow | null) | null,
+  goal: string,
+  maxSteps: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const win = typeof getWindow === 'function' ? getWindow() : getWindow
+    if (!win || win.isDestroyed()) return resolve(false)
+    const id = `agent-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const req: ApprovalRequest = {
+      invocation_id: id,
+      tool_name: 'agent:run-task',
+      description: `Agent 自主操控鼠标/键盘最多 ${maxSteps} 步`,
+      risk: 'high',
+      input: { goal, max_steps: maxSteps },
+      summary: `🤖 TiaLynn 想自己操作电脑：${goal.slice(0, 100)}`,
+    }
+    pendingApprovals.set(id, (decision) => {
+      resolve(decision === 'allow_once' || decision === 'allow_always')
+    })
+    win.webContents.send('tools:approval-request', req)
+    setTimeout(() => {
+      if (pendingApprovals.has(id)) {
+        pendingApprovals.delete(id)
+        resolve(false)
+      }
+    }, 120_000)
+  })
+}

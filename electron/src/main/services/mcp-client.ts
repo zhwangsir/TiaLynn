@@ -97,6 +97,64 @@ interface McpServer {
 const servers = new Map<string, McpServer>()
 const RPC_TIMEOUT_MS = 15_000
 
+/**
+ * MCP spec 校验 — 防止 renderer XSS 触发任意 RCE (审计 C1)。
+ * command: 仅允许字母/数字/`_-./`，禁止 shell 元字符 (|;&$<>` 反引号 引号 空格 newline)
+ * args: 每项必须是 string
+ * env: 屏蔽动态库注入 (LD_PRELOAD / DYLD_INSERT_LIBRARIES / DYLD_FORCE_FLAT_NAMESPACE)
+ *
+ * 注意：这只是 defense-in-depth，**用户仍需自己判断**填入的 command 是否可信
+ * （MCP 设计前提是用户主动添加 server）— 但 XSS 不应能绕过用户主动确认。
+ */
+const MCP_CMD_ALLOWED_RE = /^[A-Za-z0-9_\-./]+$/
+const MCP_ENV_BLOCKED_KEYS = new Set([
+  'LD_PRELOAD',
+  'LD_LIBRARY_PATH',
+  'DYLD_INSERT_LIBRARIES',
+  'DYLD_LIBRARY_PATH',
+  'DYLD_FORCE_FLAT_NAMESPACE',
+  'DYLD_FALLBACK_LIBRARY_PATH',
+])
+
+export function validateMcpServerSpec(spec: unknown): { ok: true; spec: McpServerSpec } | { ok: false; reason: string } {
+  if (!spec || typeof spec !== 'object') return { ok: false, reason: 'spec 不是 object' }
+  const s = spec as Record<string, unknown>
+  if (typeof s.id !== 'string' || !s.id.trim()) return { ok: false, reason: 'id 必须是非空 string' }
+  if (typeof s.name !== 'string') return { ok: false, reason: 'name 必须是 string' }
+  if (typeof s.command !== 'string' || !s.command.trim()) return { ok: false, reason: 'command 必须是非空 string' }
+  if (!MCP_CMD_ALLOWED_RE.test(s.command)) {
+    return { ok: false, reason: `command "${s.command}" 含非法字符 (仅允许 A-Z a-z 0-9 _-./)` }
+  }
+  let args: string[] | undefined
+  if (s.args !== undefined) {
+    if (!Array.isArray(s.args)) return { ok: false, reason: 'args 必须是 string[]' }
+    if (!s.args.every((a) => typeof a === 'string')) return { ok: false, reason: 'args 每项必须是 string' }
+    args = s.args as string[]
+  }
+  let env: Record<string, string> | undefined
+  if (s.env !== undefined) {
+    if (typeof s.env !== 'object' || s.env === null) return { ok: false, reason: 'env 必须是 object' }
+    env = {}
+    for (const [k, v] of Object.entries(s.env)) {
+      if (MCP_ENV_BLOCKED_KEYS.has(k)) {
+        return { ok: false, reason: `env 含动态库注入键 "${k}" — 已屏蔽` }
+      }
+      if (typeof v !== 'string') return { ok: false, reason: `env["${k}"] 必须是 string` }
+      env[k] = v
+    }
+  }
+  return {
+    ok: true,
+    spec: {
+      id: s.id.trim(),
+      name: s.name,
+      command: s.command,
+      ...(args !== undefined ? { args } : {}),
+      ...(env !== undefined ? { env } : {}),
+    },
+  }
+}
+
 function sendRpc<T = unknown>(srv: McpServer, method: string, params?: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (!srv.child || srv.status !== 'running') {

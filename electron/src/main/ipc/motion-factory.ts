@@ -26,9 +26,13 @@ export function registerMotionFactoryIpc(getWindow: () => BrowserWindow | null):
     return introspect(modelDir)
   })
 
-  ipcMain.handle('motion:introspect-debug', (_evt, modelDir: string): string => {
-    return dumpIntrospection(modelDir)
-  })
+  // E5 (audit): debug-only IPC — 仅在 TIALYNN_DEBUG=1 / MAIN_APP_DEBUG=1 时注册，
+  // 不在 prod 暴露调试工具到 IPC 面
+  if (process.env.TIALYNN_DEBUG === '1' || process.env.MAIN_APP_DEBUG === '1') {
+    ipcMain.handle('motion:introspect-debug', (_evt, modelDir: string): string => {
+      return dumpIntrospection(modelDir)
+    })
+  }
 
   // === LLM 生成 ===
   ipcMain.handle(
