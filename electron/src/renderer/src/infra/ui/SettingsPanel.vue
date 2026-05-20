@@ -54,7 +54,7 @@ const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 /** v0.13: 磁盘占用统计 dialog */
 const diskUsageOpen = ref(false)
 /** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
-type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul'
+type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
 const activeTab = ref<SettingsTab>('llm')
 const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'llm', label: '大脑', icon: '🧠' },
@@ -63,7 +63,77 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'tts', label: '声音', icon: '🎙️' },
   { id: 'rvc', label: 'RVC', icon: '🎚️' },
   { id: 'soul', label: '灵魂', icon: '💎' },
+  { id: 'mcp', label: 'MCP', icon: '🔌' },
 ]
+
+/** v0.17 P：MCP server 管理 — UI 状态 */
+interface McpServerRow {
+  id: string
+  name: string
+  command: string
+  status: 'running' | 'stopped' | 'error'
+  toolCount: number
+}
+const mcpServers = ref<McpServerRow[]>([])
+const mcpForm = ref<{ id: string; name: string; command: string; argsRaw: string }>({
+  id: '',
+  name: '',
+  command: '',
+  argsRaw: '',
+})
+const mcpAdding = ref(false)
+const mcpExpanded = ref<Set<string>>(new Set())
+const mcpTools = ref<Record<string, Array<{ name: string; description: string }>>>({})
+
+async function loadMcpServers(): Promise<void> {
+  try {
+    mcpServers.value = await window.api.mcp.listServers()
+  } catch (e) {
+    console.warn('[mcp ui] list failed', e)
+  }
+}
+
+async function addMcpServer(): Promise<void> {
+  const f = mcpForm.value
+  if (!f.id.trim() || !f.command.trim()) return
+  mcpAdding.value = true
+  try {
+    const args = f.argsRaw.trim() ? f.argsRaw.split(/\s+/) : []
+    const r = await window.api.mcp.register({
+      id: f.id.trim(),
+      name: f.name.trim() || f.id.trim(),
+      command: f.command.trim(),
+      args,
+    })
+    if (r.ok) {
+      mcpForm.value = { id: '', name: '', command: '', argsRaw: '' }
+      await loadMcpServers()
+    } else {
+      alert(`注册失败：${r.reason}`)
+    }
+  } finally {
+    mcpAdding.value = false
+  }
+}
+
+async function removeMcpServer(id: string): Promise<void> {
+  if (!confirm(`关停并移除 MCP server "${id}"？`)) return
+  await window.api.mcp.unregister(id)
+  mcpExpanded.value.delete(id)
+  delete mcpTools.value[id]
+  await loadMcpServers()
+}
+
+async function toggleMcpTools(id: string): Promise<void> {
+  if (mcpExpanded.value.has(id)) {
+    mcpExpanded.value.delete(id)
+    return
+  }
+  mcpExpanded.value.add(id)
+  if (!mcpTools.value[id]) {
+    mcpTools.value[id] = await window.api.mcp.listTools(id)
+  }
+}
 
 function loadFromStore(): void {
   if (cfg.config) Object.assign(form, JSON.parse(JSON.stringify(cfg.config)))
@@ -76,6 +146,7 @@ loadFromStore()
 // 打开面板时自动 rescan，确保 model meta 是最新的（v0.6.9 加了 meta 字段）
 onMounted(() => {
   void cfg.rescanModels()
+  void loadMcpServers()
 })
 
 // 用户没动过表单时，store 变化可以镜像回 form（避免显示陈旧值）
@@ -723,6 +794,51 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       </div>
 
+      <!-- v0.17 P：外部 MCP server 管理 -->
+      <div v-show="activeTab === 'mcp'">
+        <section>
+          <h3>外部 MCP server <span class="beta-tag">实验</span></h3>
+          <p class="hint">
+            连接任意实现 Model Context Protocol 的 stdio server，TiaLynn 可以调用它们暴露的工具。
+            示例：<code>npx -y @modelcontextprotocol/server-filesystem /path</code>
+          </p>
+
+          <div class="mcp-list">
+            <div v-if="mcpServers.length === 0" class="mcp-empty">
+              还没注册任何外部 MCP server
+            </div>
+            <div v-for="s in mcpServers" :key="s.id" class="mcp-row">
+              <div class="mcp-row-head" @click="toggleMcpTools(s.id)">
+                <span :class="['mcp-dot', s.status]" :title="s.status" />
+                <span class="mcp-name">{{ s.name }}</span>
+                <span class="mcp-id">({{ s.id }})</span>
+                <span class="mcp-tool-count">{{ s.toolCount }} 工具</span>
+                <button class="mcp-del" @click.stop="removeMcpServer(s.id)" title="关停并移除">✕</button>
+              </div>
+              <code class="mcp-cmd">{{ s.command }}</code>
+              <div v-if="mcpExpanded.has(s.id)" class="mcp-tools">
+                <div v-if="!mcpTools[s.id]?.length" class="mcp-empty">该 server 未暴露工具</div>
+                <div v-for="t in mcpTools[s.id]" :key="t.name" class="mcp-tool">
+                  <code class="mcp-tool-name">{{ t.name }}</code>
+                  <span class="mcp-tool-desc">{{ t.description }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h4 class="mcp-add-title">添加 server</h4>
+          <div class="mcp-form">
+            <input v-model="mcpForm.id" placeholder="ID (kebab-case, 唯一)" />
+            <input v-model="mcpForm.name" placeholder="显示名（可选）" />
+            <input v-model="mcpForm.command" placeholder="命令 (如 npx / python / uvx)" />
+            <input v-model="mcpForm.argsRaw" placeholder="参数（空格分隔，可选）" />
+            <button class="primary" :disabled="mcpAdding || !mcpForm.id || !mcpForm.command" @click="addMcpServer">
+              {{ mcpAdding ? '启动中…' : '注册并启动' }}
+            </button>
+          </div>
+        </section>
+      </div>
+
       <footer>
         <span v-if="saveStatus" :class="['save-status', saveStatus.ok ? 'ok' : 'bad']">
           {{ saveStatus.ok ? '✓' : '✗' }} {{ saveStatus.message }}
@@ -1041,4 +1157,99 @@ footer {
   border-bottom: 1px solid oklch(88% 0.02 250 / 0.4);
 }
 .advanced label { margin-top: 8px; }
+
+/* v0.17 P: MCP server tab */
+.beta-tag {
+  font-size: 10px; padding: 1px 8px;
+  background: oklch(70% 0.18 80 / 0.25);
+  color: oklch(50% 0.18 80);
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.mcp-list {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 12px 0;
+}
+.mcp-empty {
+  padding: 10px 12px;
+  color: oklch(55% 0.04 250);
+  font-size: 12px;
+  font-style: italic;
+}
+.mcp-row {
+  padding: 8px 10px;
+  background: oklch(98% 0.008 250 / 0.6);
+  border: 1px solid oklch(88% 0.015 250 / 0.5);
+  border-radius: 8px;
+}
+.mcp-row-head {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer;
+}
+.mcp-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.mcp-dot.running { background: oklch(60% 0.2 145); box-shadow: 0 0 4px oklch(60% 0.2 145 / 0.5); }
+.mcp-dot.stopped { background: oklch(60% 0.05 250); }
+.mcp-dot.error { background: oklch(60% 0.22 25); box-shadow: 0 0 4px oklch(60% 0.22 25 / 0.5); }
+.mcp-name { font-weight: 600; font-size: 13px; }
+.mcp-id { font-size: 11px; color: oklch(55% 0.04 250); font-family: ui-monospace, monospace; }
+.mcp-tool-count {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+  background: oklch(94% 0.04 250);
+  color: oklch(40% 0.12 250);
+  border-radius: 999px;
+}
+.mcp-del {
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  background: oklch(95% 0.04 25);
+  color: oklch(50% 0.18 25);
+  font-size: 10px;
+}
+.mcp-del:hover { background: oklch(90% 0.08 25); }
+.mcp-cmd {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: oklch(45% 0.04 250);
+  padding: 4px 8px;
+  background: oklch(96% 0.008 250);
+  border-radius: 5px;
+  word-break: break-all;
+}
+.mcp-tools {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed oklch(88% 0.015 250 / 0.5);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.mcp-tool {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 12px;
+}
+.mcp-tool-name { color: oklch(40% 0.15 250); flex-shrink: 0; }
+.mcp-tool-desc { color: oklch(50% 0.04 250); font-size: 11px; }
+.mcp-add-title {
+  margin: 16px 0 6px;
+  font-size: 12px; font-weight: 600;
+  color: oklch(40% 0.04 250);
+}
+.mcp-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.mcp-form input {
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid oklch(85% 0.015 250 / 0.7);
+  border-radius: 6px;
+  background: oklch(99% 0.002 250);
+}
+.mcp-form button { grid-column: 1 / -1; margin-top: 4px; }
 </style>

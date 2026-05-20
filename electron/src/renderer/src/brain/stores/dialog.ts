@@ -116,9 +116,13 @@ export const useDialogStore = defineStore('dialog', () => {
     unsubInjectUtterance = null
   }
 
-  function buildMessages(userText: string): ChatMessage[] {
+  function buildMessages(userText: string, ragContext?: string): ChatMessage[] {
     const cfg = useConfigStore()
-    const system = cfg.systemPrompt
+    let system = cfg.systemPrompt
+    // v0.17 M2：把 RAG 检索到的长期记忆 prepend 到 system prompt
+    if (ragContext && ragContext.trim()) {
+      system = `${system}\n\n## 你记得的关于 master 的事（仅供你回忆参考，不要直接复述）\n${ragContext}`
+    }
     const history: ChatMessage[] = turns.value
       .filter((t) => !t.error && t.role !== 'system' && t.id !== activeAssistantId)
       .slice(-MAX_HISTORY)
@@ -128,6 +132,22 @@ export const useDialogStore = defineStore('dialog', () => {
       ...history,
       { role: 'user', content: userText },
     ]
+  }
+
+  /** v0.17 M2：发请求前调 memory.ragContext 拿长期记忆 — 800ms timeout，失败/超时静默 */
+  async function fetchRagContext(userText: string): Promise<string> {
+    try {
+      const r = await Promise.race([
+        window.api.memory.ragContext({ query_text: userText, k: 5 }),
+        new Promise<{ ok: false; reason: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, reason: 'timeout' }), 800),
+        ),
+      ])
+      if (r.ok && 'context' in r && r.context) return r.context
+      return ''
+    } catch {
+      return ''
+    }
   }
 
   async function send(text: string): Promise<void> {
@@ -162,7 +182,9 @@ export const useDialogStore = defineStore('dialog', () => {
     pendingToolUses = []
     pendingNeedsTools = false
 
-    const messages = buildMessages(userTurn.text)
+    // v0.17 M2：异步拉 RAG context（800ms timeout），失败/超时 fall through 到无 context 流程
+    const ragContext = await fetchRagContext(userTurn.text)
+    const messages = buildMessages(userTurn.text, ragContext)
     await runOneRound(messages, undefined)
     await loopUntilDone(messages, assistantTurn, cfg.config.llm_provider === 'anthropic')
 

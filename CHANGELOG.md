@@ -14,8 +14,8 @@
   - ✅ M2 长期记忆 IPC 桥接通（main 端早已存在，preload 暴露 + dialog typed 调用）
   - ✅ 视觉融入感（drop-shadow + 漫画气泡 + scene 浓度降低）
   - ✅ AI 行为协同（TTS 8 voice + rules play_group + reactive trigger + LLM budget 6/min）
-  - ⏳ MCP server UI（设置面板入口）
-  - ⏳ RAG context 接入 chat 前置流程
+  - ✅ MCP server UI（设置面板 🔌 MCP tab — 添加/列表/展开 tools/移除）
+  - ✅ RAG context 接入 chat 前置流程（send 前 800ms timeout 拉记忆 prepend system）
   - ❌ 图层切割（PSD 解析 + Cubism Editor 自动化超范围 — 推迟 v0.18）
 
 ---
