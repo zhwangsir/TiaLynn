@@ -146,9 +146,7 @@ function onModelError(payload: { reason: string }): void {
   loadingDir.value = null
   loadError.value = payload.reason
 }
-bus.on('avatar:model-loaded', onModelLoaded)
-bus.on('avatar:model-error', onModelError)
-
+// v0.17：bus 监听 + 清理（注册在下方主 onMounted 内防止 listener 累积泄漏）
 onBeforeUnmount(() => {
   bus.off('avatar:model-loaded', onModelLoaded)
   bus.off('avatar:model-error', onModelError)
@@ -161,6 +159,52 @@ const gradeFilter = ref<'all' | 'A' | 'B' | 'C' | 'D'>('all')
 const hideUnusable = ref(true)
 const sortBy = ref<'motion' | 'expression' | 'name' | 'grade'>('motion')
 const focused = ref<typeof cfg.models[number] | null>(null)
+const filterOpen = ref(false)
+const repairingDir = ref<Set<string>>(new Set())
+
+/** v0.17：一键 AI 修复立绘（缺动作 / 缺表情 / 缺物理 全部补齐） */
+async function repairAvatar(m: (typeof cfg.models)[number]): Promise<void> {
+  if (repairingDir.value.has(m.dir)) return
+  repairingDir.value.add(m.dir)
+  bus.emit('ui:toast', { kind: 'info', message: `🔧 开始修复 ${m.display}…`, ttl_ms: 2500 })
+  try {
+    const tasks: Array<Promise<{ ok: boolean; reason?: string }>> = [
+      window.api.models.autoFill({ model_json_path: m.absolute_path }),
+    ]
+    if (!m.meta?.has_physics) {
+      tasks.push(
+        window.api.models.applyPhysicsPreset({
+          model_json_path: m.absolute_path,
+          preset_id: 'mid-length-hair',
+        }) as Promise<{ ok: boolean; reason?: string }>,
+      )
+    }
+    if ((m.meta?.expression_count ?? 0) < 4) {
+      tasks.push(
+        window.api.models.applyExpressionPack({ model_json_path: m.absolute_path }) as Promise<{ ok: boolean; reason?: string }>,
+      )
+    }
+    const results = await Promise.allSettled(tasks)
+    const fails = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok))
+    if (fails.length === 0) {
+      bus.emit('ui:toast', { kind: 'success', message: `✨ ${m.display} 修复完成`, ttl_ms: 4000 })
+      void cfg.rescanModels()
+    } else {
+      bus.emit('ui:toast', { kind: 'warn', message: `部分修复失败 (${fails.length}/${results.length})`, ttl_ms: 5000 })
+    }
+  } catch (e) {
+    bus.emit('ui:toast', { kind: 'error', message: `修复异常：${String(e)}`, ttl_ms: 5000 })
+  } finally {
+    repairingDir.value.delete(m.dir)
+  }
+}
+
+/** 缺什么 — 卡片角标判定 */
+function repairNeeded(m: (typeof cfg.models)[number]): boolean {
+  const motions = m.meta?.motion_count ?? 0
+  const expressions = m.meta?.expression_count ?? 0
+  return motions < 3 || expressions < 4 || !m.meta?.has_physics
+}
 
 /** dir → AI 生成的介绍，跟 main 进程 cache 同步 */
 const descriptions = ref<Record<string, string>>({})
@@ -169,8 +213,8 @@ const describing = ref<Set<string>>(new Set())
 /** 哪些 IP section 是展开的 */
 const expandedIps = ref<Set<string>>(new Set())
 
-function extractIp(dir: string): string {
-  const parts = dir.split(/[\\/]/).filter(Boolean)
+function extractIp(absPath: string): string {
+  const parts = absPath.split(/[\\/]/).filter(Boolean)
   // v0.9: 模型库迁到 electron/models-library/，旧路径 Live2d-model-master 仍兼容
   const ix = parts.findIndex(
     (p) => p === 'models-library' || p.includes('Live2d-model-master'),
@@ -274,8 +318,9 @@ const groupedByIp = computed(() => {
         (en?.tags ?? []).some((t) => t.toLowerCase().includes(q))
       if (!hit) continue
     }
-    const rawIp = extractIp(m.dir)
-    const ip = matchIpInfo(rawIp) ? rawIp : UNKNOWN_IP_BUCKET
+    // v0.17: 用 absolute_path 提 IP（之前用 m.dir 只是 basename，提不出真 IP）
+    // 所有 IP 都单独分组（即使不在 IP_INFO 知识库），不再合并到「📦 其他」
+    const ip = extractIp(m.absolute_path)
     if (!groupsRaw.has(ip)) groupsRaw.set(ip, [])
     groupsRaw.get(ip)!.push(m)
   }
@@ -413,6 +458,8 @@ async function rescan(): Promise<void> {
 }
 
 onMounted(async () => {
+  bus.on('avatar:model-loaded', onModelLoaded)
+  bus.on('avatar:model-error', onModelError)
   // 加载所有 cached 描述
   try {
     descriptions.value = await window.api.models.cachedDescriptions()
@@ -473,103 +520,105 @@ watch(groupedByIp, (groups) => {
 
 <template>
   <div class="library-panel" :class="{ 'library-embedded': embedded }" @click.stop>
-    <header>
-      <div v-if="!embedded" class="title-row">
-        <h2>🎭 模型库 — 按 IP 分组</h2>
-        <div class="stats">
-          总 {{ stats.total }} | Cubism4 {{ stats.c4 }} |
-          <span class="g-a">A {{ stats.a }}</span> /
-          <span class="g-b">B {{ stats.b }}</span> /
-          <span class="g-c">C {{ stats.c }}</span> /
-          <span class="g-d">D {{ stats.d }}</span>
+    <header class="lib-header">
+      <!-- 第一行：搜索 + viewmode segmented + 紧凑工具菜单 -->
+      <div class="control-bar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input v-model="search" placeholder="搜索 角色 / IP / 标签…" class="search-input" />
+          <button v-if="search" class="search-clear" @click="search = ''" title="清空">✕</button>
         </div>
-        <button class="close-btn" @click="emit('close')">✕</button>
-      </div>
-      <div v-else class="title-row embedded-stats">
-        <span class="stats">
-          总 {{ stats.total }} | Cubism4 {{ stats.c4 }} |
-          <span class="g-a">A {{ stats.a }}</span> /
-          <span class="g-b">B {{ stats.b }}</span> /
-          <span class="g-c">C {{ stats.c }}</span> /
-          <span class="g-d">D {{ stats.d }}</span>
-        </span>
-      </div>
-      <div class="filter-row">
-        <input v-model="search" placeholder="搜索名字/描述..." class="search-input" />
-        <select v-model="gradeFilter" class="select">
-          <option value="all">所有等级</option>
-          <option value="A">A 级 (≥15 动作)</option>
-          <option value="B">B 级 (≥8 动作)</option>
-          <option value="C">C 级 (≥3 动作)</option>
-          <option value="D">D 级 (静态)</option>
-        </select>
-        <select v-model="sortBy" class="select">
-          <option value="motion">按动作数 ↓</option>
-          <option value="expression">按表情数 ↓</option>
-          <option value="grade">按等级 ↓</option>
-          <option value="name">按名字 A→Z</option>
-        </select>
-        <label class="toggle"><input type="checkbox" v-model="hideUnusable" /> 只显示可用</label>
-        <button class="ghost" @click="rescan" :disabled="rescanning">
-          {{ rescanning ? '扫描中…' : '🔄 重扫' }}
-        </button>
+        <div class="vm-segmented">
+          <button :class="['vm', { active: viewMode === 'all' }]" @click="viewMode = 'all'" title="全部">
+            <span class="vm-emoji">📚</span><span class="vm-text">全部</span>
+            <span class="vm-count">{{ cfg.models.length }}</span>
+          </button>
+          <button :class="['vm', { active: viewMode === 'favorites' }]" @click="viewMode = 'favorites'" title="收藏">
+            <span class="vm-emoji">⭐</span><span class="vm-text">收藏</span>
+            <span class="vm-count">{{ favorites.size }}</span>
+          </button>
+          <button :class="['vm', { active: viewMode === 'recent' }]" @click="viewMode = 'recent'" title="最近">
+            <span class="vm-emoji">🕐</span><span class="vm-text">最近</span>
+            <span class="vm-count">{{ recentDirs.length }}</span>
+          </button>
+        </div>
         <button
-          class="ghost"
-          @click="
-            groupedByIp.forEach((g) =>
-              g.ip ? expandedIps.has(g.ip) ? expandedIps.delete(g.ip) : expandedIps.add(g.ip) : null,
-            )
-          "
+          class="filter-toggle"
+          :class="{ active: filterOpen || gradeFilter !== 'all' || !hideUnusable }"
+          @click="filterOpen = !filterOpen"
+          title="筛选与排序"
         >
-          🔽 全部展开/收起
-        </button>
-        <button class="ghost" @click="regenerateAllThumbs" title="清空缩略图缓存并重建">
-          🖼️ 重建缩略图
-        </button>
-        <button
-          class="ghost"
-          @click="enrichProgress && enrichProgress.done < enrichProgress.total ? abortEnrichment() : startEnrichment()"
-          :title="enrichProgress && enrichProgress.done < enrichProgress.total ? '点击中止' : '用 LLM 给 1389 个角色推中文名+介绍（~30 分钟）'"
-        >
-          {{ enrichProgress && enrichProgress.done < enrichProgress.total ? '⏹ 中止补全' : '🤖 补全角色名' }}
+          ⚙ <span class="ft-text">筛选</span>
+          <span v-if="gradeFilter !== 'all'" class="ft-dot" />
         </button>
       </div>
-      <!-- v0.12: viewMode 切换 -->
-      <div class="viewmode-row">
-        <button :class="['vm', { active: viewMode === 'all' }]" @click="viewMode = 'all'">
-          📚 全部 <span class="vm-count">{{ cfg.models.length }}</span>
-        </button>
-        <button
-          :class="['vm', { active: viewMode === 'favorites' }]"
-          @click="viewMode = 'favorites'"
-        >
-          ⭐ 收藏 <span class="vm-count">{{ favorites.size }}</span>
-        </button>
-        <button :class="['vm', { active: viewMode === 'recent' }]" @click="viewMode = 'recent'">
-          🕐 最近 <span class="vm-count">{{ recentDirs.length }}</span>
-        </button>
-      </div>
-      <!-- v0.10: 缩略图生成进度 -->
+
+      <!-- 第二行：折叠的高级筛选（默认隐藏）-->
+      <Transition name="slide-fade">
+        <div v-if="filterOpen" class="filter-popover">
+          <label class="fp-field">
+            <span class="fp-label">等级</span>
+            <select v-model="gradeFilter" class="select">
+              <option value="all">全部</option>
+              <option value="A">A · ≥15 动作</option>
+              <option value="B">B · ≥8</option>
+              <option value="C">C · ≥3</option>
+              <option value="D">D · 静态</option>
+            </select>
+          </label>
+          <label class="fp-field">
+            <span class="fp-label">排序</span>
+            <select v-model="sortBy" class="select">
+              <option value="motion">动作数 ↓</option>
+              <option value="expression">表情数 ↓</option>
+              <option value="grade">等级 ↓</option>
+              <option value="name">名字 A→Z</option>
+            </select>
+          </label>
+          <label class="fp-toggle">
+            <input type="checkbox" v-model="hideUnusable" />
+            <span>只显示可用</span>
+          </label>
+          <div class="fp-spacer" />
+          <button class="ghost" @click="rescan" :disabled="rescanning">
+            {{ rescanning ? '扫描中…' : '🔄 重扫' }}
+          </button>
+          <button class="ghost" @click="regenerateAllThumbs" title="清空缩略图缓存并重建">
+            🖼 重建缩略图
+          </button>
+          <button
+            class="ghost"
+            @click="enrichProgress && enrichProgress.done < enrichProgress.total ? abortEnrichment() : startEnrichment()"
+            :title="enrichProgress && enrichProgress.done < enrichProgress.total ? '点击中止' : 'LLM 补全 1389 个角色中文名+介绍（约 30 分钟）'"
+          >
+            {{ enrichProgress && enrichProgress.done < enrichProgress.total ? '⏹ 中止补全' : '🤖 LLM 补全' }}
+          </button>
+        </div>
+      </Transition>
+
+      <!-- 第三行：进度条（仅运行时显示）-->
       <div v-if="thumbProgress && thumbProgress.done < thumbProgress.total" class="thumb-progress">
         <div class="thumb-bar" :style="{ width: ((thumbProgress.done / thumbProgress.total) * 100).toFixed(1) + '%' }" />
         <span class="thumb-text">
-          🖼️ 生成缩略图 {{ thumbProgress.done }} / {{ thumbProgress.total }}
+          🖼 缩略图 {{ thumbProgress.done }} / {{ thumbProgress.total }}
           <span v-if="thumbProgress.failed > 0" class="thumb-fail">（{{ thumbProgress.failed }} 失败）</span>
-          <span v-if="thumbProgress.current" class="thumb-cur" :title="thumbProgress.current">
-            • {{ (thumbProgress.current.length > 30 ? thumbProgress.current.slice(0, 30) + '…' : thumbProgress.current) }}
-          </span>
         </span>
       </div>
-      <!-- v0.12: LLM enrichment 进度 -->
       <div v-if="enrichProgress && enrichProgress.done < enrichProgress.total" class="thumb-progress enrich">
         <div class="thumb-bar enrich-bar" :style="{ width: ((enrichProgress.done / enrichProgress.total) * 100).toFixed(1) + '%' }" />
         <span class="thumb-text">
-          🤖 LLM 补全角色名 {{ enrichProgress.done }} / {{ enrichProgress.total }}
+          🤖 LLM 补全 {{ enrichProgress.done }} / {{ enrichProgress.total }}
           <span v-if="enrichProgress.failed > 0" class="thumb-fail">（{{ enrichProgress.failed }} 失败）</span>
-          <span v-if="enrichProgress.current" class="thumb-cur" :title="enrichProgress.current">
-            • {{ (enrichProgress.current.length > 24 ? enrichProgress.current.slice(0, 24) + '…' : enrichProgress.current) }}
-          </span>
         </span>
+      </div>
+
+      <!-- 顶部小字 stats（不占焦点）-->
+      <div class="embedded-stats">
+        共 {{ stats.total }} model · Cubism4 {{ stats.c4 }} ·
+        <span class="g-a">A {{ stats.a }}</span> ·
+        <span class="g-b">B {{ stats.b }}</span> ·
+        <span class="g-c">C {{ stats.c }}</span> ·
+        <span class="g-d">D {{ stats.d }}</span>
       </div>
     </header>
 
@@ -582,18 +631,17 @@ watch(groupedByIp, (groups) => {
             <span v-if="matchIpInfo(g.ip)" class="ip-kind">{{ matchIpInfo(g.ip)!.kind }}</span>
           </div>
           <span class="ip-count">
-            {{ g.char_count }} 角色 · {{ g.count }} 个 model
+            {{ g.char_count }} 角色 · {{ g.count }} model
           </span>
           <button
             v-if="expandedIps.has(g.ip)"
             class="ip-btn"
             @click.stop="describeBatch(g.clusters.slice(0, 30).map((c) => c.primary))"
-            title="为该 IP 下前 30 个角色批量生成 AI 介绍"
+            title="批量生成 AI 介绍"
           >
-            ✨ 批量介绍
+            ✨
           </button>
         </div>
-        <!-- v0.9: 展开 IP 时显示该 IP 的简介，让来源一眼可辨 -->
         <div v-if="expandedIps.has(g.ip) && matchIpInfo(g.ip)" class="ip-banner">
           {{ matchIpInfo(g.ip)!.intro }}
         </div>
@@ -614,7 +662,7 @@ watch(groupedByIp, (groups) => {
               <div class="spinner-ring" />
               <span>加载中…</span>
             </div>
-            <!-- v0.10: 缩略图 — 有就显示真实，没有就显示占位 -->
+            <!-- 缩略图 + 浮层 chip overlay -->
             <div class="card-thumb">
               <img
                 v-if="c.character_id && thumbUrls[c.character_id]"
@@ -625,38 +673,47 @@ watch(groupedByIp, (groups) => {
               />
               <div v-else class="thumb-placeholder">
                 <span class="thumb-icon">🎭</span>
-                <span class="thumb-hint">等待生成…</span>
               </div>
-            </div>
-            <div class="card-head">
-              <span class="grade-tag">{{ c.primary.meta?.grade ?? '?' }}</span>
-              <span class="stat">🎬{{ c.primary.meta?.motion_count ?? 0 }}</span>
-              <span class="stat">😊{{ c.primary.meta?.expression_count ?? 0 }}</span>
-              <span v-if="c.primary.meta?.has_physics" class="stat">⚡</span>
-              <span v-if="c.views.length > 1" class="views-tag">{{ c.views.length }} views</span>
-            </div>
-            <!-- v0.12: 优先 enriched 中文名，否则用原 dir 名 -->
-            <div class="card-name-row">
-              <div class="card-name" :title="c.primary.display">
-                {{ enriched[c.character_id]?.chinese_name || c.primary.display }}
-              </div>
+              <!-- 缩略图右上角 chip 浮层（grade + 收藏）-->
+              <span class="thumb-grade-chip">{{ c.primary.meta?.grade ?? '?' }}</span>
               <button
-                class="fav-btn"
+                class="thumb-fav"
                 :class="{ on: favorites.has(c.primary.dir) }"
                 @click.stop="toggleFavorite(c.primary.dir)"
                 :title="favorites.has(c.primary.dir) ? '取消收藏' : '收藏'"
               >
                 {{ favorites.has(c.primary.dir) ? '⭐' : '☆' }}
               </button>
+              <!-- 缺资源时显示「需修复」徽章 -->
+              <span v-if="repairNeeded(c.primary)" class="thumb-warn" title="缺动作/表情/物理">⚠</span>
             </div>
-            <!-- 拼音原名（当 enriched 中文名 != 原 display 时显示，让用户对照） -->
+            <!-- 元信息行 -->
+            <div class="card-head">
+              <span class="stat" :title="`${c.primary.meta?.motion_count ?? 0} 动作`">🎬{{ c.primary.meta?.motion_count ?? 0 }}</span>
+              <span class="stat" :title="`${c.primary.meta?.expression_count ?? 0} 表情`">😊{{ c.primary.meta?.expression_count ?? 0 }}</span>
+              <span v-if="c.primary.meta?.has_physics" class="stat" title="含物理">⚡</span>
+              <span v-if="c.views.length > 1" class="views-tag">{{ c.views.length }} views</span>
+            </div>
+            <!-- 名字 -->
+            <div class="card-name" :title="c.primary.display">
+              {{ enriched[c.character_id]?.chinese_name || c.primary.display }}
+            </div>
             <div
               v-if="enriched[c.character_id]?.chinese_name !== c.primary.display && enriched[c.character_id]"
               class="card-pinyin"
+              :title="c.primary.display"
             >
               {{ c.primary.display }}
             </div>
-            <!-- 同角色多 view 显示 chip 列表 -->
+            <!-- enriched 一句话 -->
+            <div v-if="enriched[c.character_id]" class="card-desc enriched">
+              {{ enriched[c.character_id]?.intro_one_line }}
+            </div>
+            <div v-else-if="descriptions[c.primary.dir]" class="card-desc">
+              {{ descriptions[c.primary.dir] }}
+            </div>
+            <div v-else-if="describing.has(c.primary.dir)" class="card-desc dim">生成中…</div>
+            <!-- 多 view chips -->
             <div v-if="c.views.length > 1" class="views-row">
               <button
                 v-for="v in c.views"
@@ -674,66 +731,133 @@ watch(groupedByIp, (groups) => {
                 {{ v.meta?.view_label || '主' }}
               </button>
             </div>
-            <!-- v0.12: enriched 一句话介绍 -->
-            <div v-if="enriched[c.character_id]" class="card-desc enriched">
-              {{ enriched[c.character_id]?.intro_one_line }}
-            </div>
-            <div v-else-if="descriptions[c.primary.dir]" class="card-desc">
-              {{ descriptions[c.primary.dir] }}
-            </div>
-            <div v-else-if="describing.has(c.primary.dir)" class="card-desc dim">生成中…</div>
-            <!-- v0.12: enriched tags -->
-            <div v-if="enriched[c.character_id]?.tags?.length" class="card-tags">
-              <span v-for="t in enriched[c.character_id]?.tags" :key="t" class="tag">{{ t }}</span>
-            </div>
           </div>
           <div v-if="g.clusters.length > 60" class="more-hint">
-            该 IP 共 {{ g.char_count }} 角色，显示前 60
+            共 {{ g.char_count }} 角色 · 显示前 60
           </div>
         </div>
       </section>
     </div>
 
-    <aside v-if="focused" class="detail">
-      <h3>{{ focused.display }}</h3>
-      <div class="detail-ip">IP: {{ extractIp(focused.dir) }}</div>
-      <div v-if="descriptions[focused.dir]" class="ai-desc">
-        <div class="ai-desc-label">✨ AI 介绍</div>
-        <div class="ai-desc-text">{{ descriptions[focused.dir] }}</div>
+    <!-- 详情 Drawer — 点卡片才出现的右侧抽屉 -->
+    <Transition name="drawer-slide">
+      <div v-if="focused" class="drawer" @click.stop>
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <div class="drawer-name">{{ enriched[focused.meta?.character_id || '']?.chinese_name || focused.display }}</div>
+            <div class="drawer-sub">{{ extractIp(focused.dir) }}</div>
+          </div>
+          <button class="drawer-close" @click="focused = null" title="关闭">✕</button>
+        </div>
+
+        <div class="drawer-body">
+          <!-- 大缩略图 -->
+          <div class="drawer-thumb">
+            <img
+              v-if="focused.meta?.character_id && thumbUrls[focused.meta.character_id]"
+              :src="thumbUrls[focused.meta.character_id]"
+              :alt="focused.display"
+            />
+            <div v-else class="thumb-placeholder big">
+              <span class="thumb-icon">🎭</span>
+            </div>
+          </div>
+
+          <!-- AI 介绍 -->
+          <div v-if="descriptions[focused.dir]" class="ai-desc">
+            <div class="ai-desc-label">✨ AI 介绍</div>
+            <div class="ai-desc-text">{{ descriptions[focused.dir] }}</div>
+          </div>
+          <button
+            v-else
+            class="ghost-action"
+            @click="describe(focused)"
+            :disabled="describing.has(focused.dir)"
+          >
+            {{ describing.has(focused.dir) ? '生成中…' : '✨ 生成 AI 介绍' }}
+          </button>
+
+          <!-- 元数据 -->
+          <div class="detail-meta">
+            <div><span class="dm-k">等级</span><span class="dm-v">{{ focused.meta?.grade ?? '?' }}</span></div>
+            <div><span class="dm-k">动作</span><span class="dm-v">{{ focused.meta?.motion_count ?? 0 }}</span></div>
+            <div><span class="dm-k">表情</span><span class="dm-v">{{ focused.meta?.expression_count ?? 0 }}</span></div>
+            <div><span class="dm-k">物理</span><span class="dm-v">{{ focused.meta?.has_physics ? '✓' : '✗' }}</span></div>
+            <div><span class="dm-k">moc3</span><span class="dm-v">{{ Math.round((focused.meta?.moc_kb ?? 0) / 1024 * 10) / 10 }}MB</span></div>
+            <div><span class="dm-k">贴图</span><span class="dm-v">{{ Math.round((focused.meta?.texture_kb ?? 0) / 1024) }}MB</span></div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="detail-actions">
+            <button class="primary" @click="applyModel(focused)" :disabled="loadingDir === focused.dir">
+              {{ loadingDir === focused.dir ? '加载中…' : '🎭 切到此模型' }}
+            </button>
+            <button
+              v-if="repairNeeded(focused)"
+              class="repair-btn"
+              :disabled="repairingDir.has(focused.dir)"
+              @click="repairAvatar(focused)"
+              :title="`补齐 ${(focused.meta?.motion_count ?? 0) < 3 ? '动作 ' : ''}${(focused.meta?.expression_count ?? 0) < 4 ? '表情 ' : ''}${!focused.meta?.has_physics ? '物理' : ''}`"
+            >
+              {{ repairingDir.has(focused.dir) ? '修复中…' : '🔧 AI 修复立绘' }}
+            </button>
+          </div>
+
+          <!-- 同角色多 view 切换 -->
+          <div
+            v-if="(() => {
+              const cluster = groupedByIp.flatMap(g => g.clusters).find(c => c.views.some(v => v.dir === focused?.dir));
+              return cluster && cluster.views.length > 1;
+            })()"
+            class="drawer-views"
+          >
+            <div class="dv-label">其他 view</div>
+            <div class="dv-list">
+              <template v-for="cluster in groupedByIp.flatMap(g => g.clusters).filter(c => c.views.some(v => v.dir === focused?.dir))" :key="cluster.character_id">
+                <button
+                  v-for="v in cluster.views"
+                  :key="v.dir"
+                  class="view-chip"
+                  :class="{ active: cfg.soul?.avatar.model_dir === v.dir }"
+                  @click="applyModel(v)"
+                >
+                  {{ v.meta?.view_label || '主' }}
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- 路径 -->
+          <div class="dir-path" :title="focused.absolute_path">{{ focused.absolute_path }}</div>
+        </div>
       </div>
-      <button v-else class="primary" @click="describe(focused)" :disabled="describing.has(focused.dir)">
-        {{ describing.has(focused.dir) ? '生成中…' : '✨ 生成 AI 介绍' }}
-      </button>
-      <div class="detail-meta">
-        <div>等级：<b>{{ focused.meta?.grade ?? '?' }}</b></div>
-        <div>动作：<b>{{ focused.meta?.motion_count ?? 0 }}</b></div>
-        <div>表情：<b>{{ focused.meta?.expression_count ?? 0 }}</b></div>
-        <div>物理：<b>{{ focused.meta?.has_physics ? '✓' : '✗' }}</b></div>
-        <div>moc3：<b>{{ Math.round((focused.meta?.moc_kb ?? 0) / 1024 * 10) / 10 }}MB</b></div>
-        <div>贴图：<b>{{ Math.round((focused.meta?.texture_kb ?? 0) / 1024) }}MB</b></div>
-      </div>
-      <div class="detail-actions">
-        <button class="primary" @click="applyModel(focused)">切到此模型</button>
-      </div>
-      <div class="dir-path" :title="focused.absolute_path">{{ focused.absolute_path }}</div>
-    </aside>
+    </Transition>
+    <!-- Drawer 背景遮罩（点击关闭）-->
+    <Transition name="fade">
+      <div v-if="focused" class="drawer-scrim" @click="focused = null" />
+    </Transition>
   </div>
 </template>
 
 <style scoped>
+/* v0.17 — 单列布局 + drawer 详情，告别 fixed 340px 列 */
 .library-panel {
-  position: fixed; inset: 4%; z-index: 3000;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  grid-template-columns: 1fr 340px;
-  grid-template-areas: 'header header' 'body detail';
+  position: fixed;
+  inset: 4%;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
   background: oklch(98% 0.005 25 / 0.96);
-  border: 1px solid oklch(85% 0.02 25 / 0.6); border-radius: 16px;
+  border: 1px solid oklch(85% 0.02 25 / 0.6);
+  border-radius: 16px;
   box-shadow: 0 24px 60px oklch(0% 0 0 / 0.3);
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  pointer-events: auto;
+  overflow: hidden;
+  color: oklch(20% 0.01 25);
+  container-type: inline-size;
 }
-/* v0.11: 嵌入到资源商店时，去掉 fixed/shadow/border，flex 内填充 */
 .library-panel.library-embedded {
   position: relative;
   inset: auto;
@@ -745,37 +869,209 @@ watch(groupedByIp, (groups) => {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.embedded-stats {
-  padding: 8px 24px;
-  font-size: 12px;
-  color: oklch(50% 0.05 250);
-}
-.embedded-stats .stats { font-family: monospace; }
-.library-panel.library-embedded :deep(.body),
-.library-panel.library-embedded :deep(.detail) {
-  background: transparent;
-}
-.library-panel {
-  pointer-events: auto; overflow: hidden; color: oklch(20% 0.01 25);
-}
-header { grid-area: header; padding: 14px 18px; border-bottom: 1px solid oklch(85% 0.02 25 / 0.4); }
-.title-row { display: flex; align-items: center; gap: 16px; }
-.title-row h2 { margin: 0; font-size: 18px; font-weight: 600; }
-.stats { font-size: 12px; color: oklch(50% 0.01 25); flex: 1; }
-.g-a { color: oklch(45% 0.18 145); font-weight: 600; }
-.g-b { color: oklch(55% 0.16 70); font-weight: 600; }
-.g-c { color: oklch(60% 0.14 50); }
-.g-d { color: oklch(60% 0.05 30); }
-.close-btn { width: 28px; height: 28px; border-radius: 999px; border: none; background: oklch(92% 0.02 25); cursor: pointer; font-size: 14px; }
-.close-btn:hover { background: oklch(88% 0.04 25); }
-.filter-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-.search-input, .select { padding: 6px 10px; border: 1px solid oklch(85% 0.02 25 / 0.7); border-radius: 8px; background: oklch(99% 0.002 25); font-size: 13px; }
-.search-input { flex: 1; min-width: 200px; }
-.toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
-.ghost { padding: 6px 12px; border: 1px solid oklch(85% 0.02 25 / 0.6); background: transparent; border-radius: 8px; cursor: pointer; font-size: 12px; }
-.ghost:hover { background: oklch(95% 0.02 25); }
 
-.body { grid-area: body; padding: 8px 16px 16px; overflow-y: auto; }
+/* ===== Header ===== */
+.lib-header {
+  flex-shrink: 0;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid oklch(88% 0.01 250 / 0.45);
+  background: oklch(99% 0.002 250 / 0.6);
+}
+.control-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.search-wrap {
+  flex: 1 1 240px;
+  min-width: 180px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 12px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
+  padding: 8px 32px 8px 30px;
+  border: 1px solid oklch(85% 0.015 250 / 0.7);
+  border-radius: 10px;
+  background: oklch(100% 0 0 / 0.7);
+  font-size: 13px;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.search-input:focus {
+  outline: none;
+  border-color: oklch(65% 0.18 250);
+  box-shadow: 0 0 0 3px oklch(75% 0.15 250 / 0.2);
+}
+.search-clear {
+  position: absolute;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: oklch(88% 0.01 250 / 0.6);
+  color: oklch(40% 0.04 250);
+  font-size: 9px;
+}
+.search-clear:hover { background: oklch(82% 0.02 250 / 0.8); }
+
+/* viewmode segmented control */
+.vm-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: oklch(94% 0.01 250 / 0.6);
+  border-radius: 12px;
+}
+.vm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  color: oklch(45% 0.05 250);
+  background: transparent;
+  font-weight: 500;
+  transition: all 150ms;
+  white-space: nowrap;
+}
+.vm:hover { background: oklch(97% 0.01 250 / 0.7); color: oklch(30% 0.08 250); }
+.vm.active {
+  background: linear-gradient(135deg, oklch(60% 0.22 250), oklch(55% 0.24 270));
+  color: white;
+  box-shadow: 0 1px 4px oklch(60% 0.22 250 / 0.35);
+}
+.vm-emoji { font-size: 13px; line-height: 1; }
+.vm-text { font-size: 12px; }
+.vm-count {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: oklch(100% 0 0 / 0.35);
+}
+.vm:not(.active) .vm-count { background: oklch(100% 0 0 / 0.7); color: oklch(45% 0.05 250); }
+
+/* filter toggle */
+.filter-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: oklch(100% 0 0 / 0.55);
+  border: 1px solid oklch(85% 0.015 250 / 0.7);
+  color: oklch(40% 0.04 250);
+  font-weight: 500;
+  transition: all 150ms;
+}
+.filter-toggle:hover { background: oklch(97% 0.012 250); border-color: oklch(70% 0.12 250 / 0.6); }
+.filter-toggle.active {
+  background: oklch(94% 0.04 250 / 0.7);
+  border-color: oklch(60% 0.22 250 / 0.5);
+  color: oklch(30% 0.18 250);
+}
+.ft-text { font-weight: 500; }
+.ft-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: oklch(60% 0.22 30);
+  box-shadow: 0 0 0 2px oklch(60% 0.22 30 / 0.25);
+}
+
+/* filter popover */
+.filter-popover {
+  margin-top: 10px;
+  padding: 12px;
+  background: oklch(96% 0.012 250 / 0.85);
+  border: 1px solid oklch(88% 0.01 250 / 0.5);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.fp-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fp-label { font-size: 11px; color: oklch(45% 0.04 250); font-weight: 600; }
+.fp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: oklch(35% 0.04 250);
+  cursor: pointer;
+}
+.fp-spacer { flex: 1; min-width: 0; }
+.select {
+  padding: 5px 8px;
+  border: 1px solid oklch(85% 0.015 250 / 0.7);
+  border-radius: 7px;
+  background: oklch(100% 0 0 / 0.8);
+  font-size: 12px;
+  color: oklch(30% 0.04 250);
+}
+.ghost {
+  padding: 6px 12px;
+  border: 1px solid oklch(85% 0.015 250 / 0.7);
+  background: oklch(100% 0 0 / 0.5);
+  border-radius: 8px;
+  font-size: 12px;
+  color: oklch(35% 0.04 250);
+  transition: all 150ms;
+}
+.ghost:hover { background: oklch(97% 0.012 250); }
+.ghost:disabled { opacity: 0.5; cursor: wait; }
+
+/* embedded stats — 极小字号灰色一行 */
+.embedded-stats {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: oklch(55% 0.03 250);
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.3px;
+}
+.g-a { color: oklch(50% 0.18 145); font-weight: 600; }
+.g-b { color: oklch(58% 0.16 70); font-weight: 600; }
+.g-c { color: oklch(60% 0.14 50); }
+.g-d { color: oklch(60% 0.05 30); opacity: 0.7; }
+
+/* ===== Body ===== */
+.body {
+  flex: 1;
+  padding: 8px 14px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ===== 容器查询：窄面板时收缩控件 ===== */
+@container (max-width: 640px) {
+  .vm-text { display: none; }
+  .ft-text { display: none; }
+  .vm { padding: 5px 8px; }
+  .embedded-stats { font-size: 10px; }
+  .lib-header { padding: 10px 12px 6px; }
+  .body { padding: 6px 10px 12px; }
+}
+@container (max-width: 480px) {
+  .search-wrap { flex: 1 1 100%; order: -1; }
+  .vm-segmented { flex: 1; justify-content: space-around; }
+  .vm-count { display: none; }
+}
 
 .ip-section {
   margin-top: 12px; border: 1px solid oklch(90% 0.015 25 / 0.5);
@@ -819,51 +1115,155 @@ header { grid-area: header; padding: 14px 18px; border-bottom: 1px solid oklch(8
 }
 .ip-btn:hover { background: oklch(92% 0.06 280); }
 
+/* v0.17 视觉升级 — Pinterest + App Store 风（响应式紧凑版）*/
 .grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px; padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 14px 14px 18px;
+}
+@container (min-width: 700px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+}
+@container (min-width: 900px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; padding: 16px 18px 20px; }
 }
 .card {
-  padding: 10px; background: white;
-  border: 2px solid transparent; border-radius: 10px;
-  cursor: pointer; transition: transform 0.1s, box-shadow 0.1s;
-  display: flex; flex-direction: column; gap: 6px;
-  min-height: 110px;
+  position: relative;
+  padding: 8px;
+  background: linear-gradient(180deg, oklch(99% 0.003 250 / 0.88), oklch(96% 0.008 250 / 0.75));
+  backdrop-filter: blur(10px) saturate(1.3);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+  border: 1px solid oklch(88% 0.01 250 / 0.5);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.22s, border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.04),
+              0 2px 8px oklch(0% 0 0 / 0.05);
 }
-.card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.1); }
-.card-current { border-color: oklch(60% 0.18 250); box-shadow: 0 0 0 3px oklch(85% 0.06 250 / 0.5); }
-.card-grade-a { border-left: 4px solid oklch(45% 0.18 145); }
-.card-grade-b { border-left: 4px solid oklch(55% 0.16 70); }
-.card-grade-c { border-left: 4px solid oklch(60% 0.14 50); }
-.card-grade-d { border-left: 4px solid oklch(60% 0.05 30); opacity: 0.6; }
-.card-head { display: flex; gap: 6px; align-items: center; font-size: 11px; flex-wrap: wrap; }
+.card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 6px 18px oklch(60% 0.18 250 / 0.18),
+              0 12px 28px oklch(0% 0 0 / 0.12);
+  border-color: oklch(75% 0.12 250 / 0.5);
+}
+
+/* 当前使用中 — glow ring + 顶部 chip */
+.card-current {
+  border-color: oklch(60% 0.22 250);
+  box-shadow: 0 0 0 3px oklch(70% 0.18 250 / 0.35),
+              0 6px 20px oklch(60% 0.22 250 / 0.3);
+  background: linear-gradient(180deg, oklch(98% 0.02 250 / 0.95), oklch(94% 0.04 250 / 0.85));
+}
+.card-current::before {
+  content: '✨ 使用中';
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  z-index: 3;
+  background: linear-gradient(135deg, oklch(60% 0.22 250), oklch(55% 0.25 280));
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px oklch(60% 0.22 250 / 0.4);
+}
+
+/* Grade — 取消 left border，全用 chip */
+.card-grade-d { opacity: 0.62; }
+
+/* head 改为右上角浮 chip */
+.card-head {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 10.5px;
+  flex-wrap: wrap;
+  padding: 1px 0;
+}
+.grade-tag {
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: white;
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.15);
+}
+.card-grade-a .grade-tag { background: linear-gradient(135deg, oklch(60% 0.18 145), oklch(50% 0.2 155)); }
+.card-grade-b .grade-tag { background: linear-gradient(135deg, oklch(68% 0.16 80), oklch(60% 0.18 70)); }
+.card-grade-c .grade-tag { background: linear-gradient(135deg, oklch(68% 0.15 50), oklch(60% 0.17 35)); }
+.card-grade-d .grade-tag { background: oklch(60% 0.02 250); }
+
+.stat {
+  color: oklch(45% 0.02 250);
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: oklch(94% 0.005 250 / 0.6);
+}
 .views-tag {
   margin-left: auto;
-  font-size: 10px;
-  padding: 1px 6px;
-  background: oklch(94% 0.05 280);
-  color: oklch(35% 0.15 280);
-  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  background: linear-gradient(135deg, oklch(94% 0.06 280 / 0.7), oklch(90% 0.08 290 / 0.6));
+  color: oklch(35% 0.18 280);
+  border-radius: 999px;
 }
-.views-row { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.views-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .view-chip {
-  padding: 2px 8px; border: 1px solid oklch(85% 0.02 25 / 0.6);
-  background: white; border-radius: 4px; cursor: pointer;
-  font-size: 10px; color: oklch(40% 0.02 25);
+  padding: 3px 9px;
+  border: 1px solid oklch(85% 0.02 250 / 0.5);
+  background: oklch(99% 0.002 250 / 0.7);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 10px;
+  color: oklch(40% 0.02 250);
+  transition: all 0.15s;
 }
-.view-chip:hover { background: oklch(95% 0.02 25); }
+.view-chip:hover {
+  background: oklch(96% 0.04 250);
+  border-color: oklch(70% 0.1 250 / 0.6);
+}
 .view-chip.active {
-  background: oklch(55% 0.2 250); color: white; border-color: oklch(55% 0.2 250);
+  background: linear-gradient(135deg, oklch(60% 0.22 250), oklch(55% 0.24 270));
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 2px 6px oklch(60% 0.22 250 / 0.4);
 }
-.grade-tag { font-weight: 700; padding: 1px 6px; border-radius: 4px; background: oklch(94% 0.04 25); color: oklch(30% 0.04 25); }
-.stat { color: oklch(40% 0.02 25); }
+
 .card-name {
-  font-size: 13px; font-weight: 500; line-height: 1.3;
-  overflow: hidden; display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: oklch(22% 0.04 250);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  letter-spacing: 0.2px;
 }
-.card-desc { font-size: 11px; color: oklch(35% 0.02 250); line-height: 1.4; }
+.card-desc {
+  font-size: 11px;
+  color: oklch(40% 0.02 250);
+  line-height: 1.5;
+}
 .card-desc.dim { color: oklch(60% 0.01 25); font-style: italic; }
+.card-desc.enriched {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .ai-btn {
   align-self: flex-start; padding: 2px 8px;
   border: 1px solid oklch(75% 0.12 280 / 0.5); background: oklch(97% 0.03 280);
@@ -873,46 +1273,249 @@ header { grid-area: header; padding: 14px 18px; border-bottom: 1px solid oklch(8
 
 .more-hint { grid-column: 1/-1; text-align: center; font-size: 11px; color: oklch(50% 0.01 25); font-style: italic; padding: 8px; }
 
-.detail {
-  grid-area: detail; padding: 16px;
-  border-left: 1px solid oklch(85% 0.02 25 / 0.4); background: oklch(99% 0.003 25);
+/* ===== Drawer 详情面板 — 右侧 overlay ===== */
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.25);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+}
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(380px, 95%);
+  z-index: 110;
+  background: oklch(99% 0.003 250 / 0.97);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-left: 1px solid oklch(85% 0.015 250 / 0.6);
+  box-shadow: -8px 0 32px oklch(0% 0 0 / 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid oklch(90% 0.012 250 / 0.5);
+}
+.drawer-title { flex: 1; min-width: 0; }
+.drawer-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: oklch(22% 0.04 250);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.drawer-sub {
+  font-size: 11px;
+  color: oklch(50% 0.04 250);
+  margin-top: 2px;
+}
+.drawer-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: oklch(94% 0.01 250 / 0.7);
+  font-size: 12px;
+  color: oklch(40% 0.04 250);
+  flex-shrink: 0;
+  transition: all 150ms;
+}
+.drawer-close:hover { background: oklch(88% 0.025 25 / 0.8); color: oklch(35% 0.18 25); transform: scale(1.05); }
+
+.drawer-body {
+  flex: 1;
   overflow-y: auto;
+  padding: 14px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.detail h3 { margin: 0 0 4px; font-size: 15px; }
-.detail-ip { font-size: 11px; color: oklch(45% 0.05 250); margin-bottom: 12px; }
+.drawer-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(135deg, oklch(96% 0.012 250 / 0.5), oklch(94% 0.025 280 / 0.4));
+}
+.drawer-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-placeholder.big { width: 100%; height: 100%; }
+.thumb-placeholder.big .thumb-icon { font-size: 56px; }
+
 .ai-desc {
-  margin-bottom: 12px; padding: 10px; background: oklch(97% 0.03 280); border-radius: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, oklch(96% 0.03 280 / 0.6), oklch(94% 0.04 250 / 0.5));
+  border-left: 3px solid oklch(65% 0.18 280);
+  border-radius: 0 10px 10px 0;
 }
-.ai-desc-label { font-size: 11px; color: oklch(40% 0.15 280); font-weight: 600; margin-bottom: 4px; }
-.ai-desc-text { font-size: 13px; line-height: 1.5; color: oklch(25% 0.02 280); }
+.ai-desc-label { font-size: 10.5px; color: oklch(40% 0.15 280); font-weight: 700; letter-spacing: 0.4px; margin-bottom: 4px; }
+.ai-desc-text { font-size: 12.5px; line-height: 1.55; color: oklch(25% 0.04 280); }
+.ghost-action {
+  padding: 8px 12px;
+  border: 1px dashed oklch(70% 0.12 280 / 0.6);
+  background: oklch(98% 0.02 280 / 0.5);
+  border-radius: 10px;
+  font-size: 12px;
+  color: oklch(40% 0.15 280);
+  font-weight: 500;
+  transition: all 150ms;
+}
+.ghost-action:hover { background: oklch(94% 0.04 280 / 0.7); }
+
 .detail-meta {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  font-size: 12px; margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
-.detail-actions { display: flex; gap: 8px; margin: 12px 0; }
+.detail-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: oklch(96% 0.008 250 / 0.6);
+}
+.dm-k { font-size: 10px; color: oklch(50% 0.04 250); letter-spacing: 0.3px; }
+.dm-v { font-size: 13px; font-weight: 700; color: oklch(28% 0.05 250); }
+
+.detail-actions { display: flex; flex-direction: column; gap: 8px; }
 .primary {
-  flex: 1; padding: 8px 12px;
-  background: oklch(55% 0.2 250); color: white;
-  border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, oklch(60% 0.22 250), oklch(55% 0.24 270));
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px oklch(60% 0.22 250 / 0.3);
+  transition: all 150ms;
 }
-.primary:hover { background: oklch(50% 0.22 250); }
-.primary:disabled { opacity: 0.5; cursor: wait; }
-.dir-path { margin-top: 12px; font-size: 10px; color: oklch(50% 0.01 25); word-break: break-all; font-family: monospace; }
+.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px oklch(60% 0.22 250 / 0.4); }
+.primary:disabled { opacity: 0.5; cursor: wait; transform: none; }
+
+.repair-btn {
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, oklch(68% 0.2 50), oklch(62% 0.22 35));
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px oklch(65% 0.2 45 / 0.3);
+  transition: all 150ms;
+}
+.repair-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px oklch(65% 0.2 45 / 0.45); }
+.repair-btn:disabled { opacity: 0.6; cursor: wait; }
+
+.drawer-views { display: flex; flex-direction: column; gap: 6px; }
+.dv-label { font-size: 11px; color: oklch(50% 0.04 250); font-weight: 600; }
+.dv-list { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.dir-path {
+  margin-top: auto;
+  font-size: 10px;
+  color: oklch(55% 0.02 250);
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  padding-top: 8px;
+  border-top: 1px dashed oklch(88% 0.01 250 / 0.5);
+  opacity: 0.7;
+}
+
+/* drawer 进出动画 */
+.drawer-slide-enter-active, .drawer-slide-leave-active {
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.drawer-slide-enter-from, .drawer-slide-leave-to { transform: translateX(105%); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.22s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.slide-fade-enter-active { transition: all 0.22s cubic-bezier(0.32, 0.72, 0.24, 1); }
+.slide-fade-leave-active { transition: all 0.18s ease; }
+.slide-fade-enter-from { opacity: 0; transform: translateY(-6px); }
+.slide-fade-leave-to { opacity: 0; transform: translateY(-4px); }
 
 /* v0.9: 切模型 spinner — 立刻反馈避免「点了没反应」感 */
 .card { position: relative; }
 
-/* v0.10: 缩略图 */
+/* v0.17 缩略图 — 顶撑大块视觉 + chip overlay */
 .card-thumb {
+  position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   background: linear-gradient(135deg, oklch(96% 0.012 250 / 0.5), oklch(94% 0.025 280 / 0.4));
   border-radius: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.thumb-grade-chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: white;
+  box-shadow: 0 1px 4px oklch(0% 0 0 / 0.25);
+  backdrop-filter: blur(8px);
+}
+.card-grade-a .thumb-grade-chip { background: linear-gradient(135deg, oklch(60% 0.18 145 / 0.95), oklch(50% 0.2 155 / 0.95)); }
+.card-grade-b .thumb-grade-chip { background: linear-gradient(135deg, oklch(68% 0.16 80 / 0.95), oklch(60% 0.18 70 / 0.95)); }
+.card-grade-c .thumb-grade-chip { background: linear-gradient(135deg, oklch(68% 0.15 50 / 0.95), oklch(60% 0.17 35 / 0.95)); }
+.card-grade-d .thumb-grade-chip { background: oklch(50% 0.02 250 / 0.85); }
+
+.thumb-fav {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: oklch(100% 0 0 / 0.6);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  color: oklch(55% 0.05 70);
+  box-shadow: 0 1px 4px oklch(0% 0 0 / 0.18);
+  transition: all 150ms;
+}
+.thumb-fav:hover { background: oklch(100% 0 0 / 0.85); transform: scale(1.1); }
+.thumb-fav.on { color: oklch(65% 0.2 70); background: oklch(98% 0.03 70 / 0.85); }
+
+.thumb-warn {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, oklch(75% 0.18 65), oklch(68% 0.2 50));
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px oklch(0% 0 0 / 0.25);
+  animation: warn-pulse 2.4s ease-in-out infinite;
+}
+@keyframes warn-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; transform: scale(1.05); }
 }
 .thumb-img {
   width: 100%; height: 100%;
@@ -993,31 +1596,6 @@ header { grid-area: header; padding: 14px 18px; border-bottom: 1px solid oklch(8
 }
 @keyframes chip-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 
-/* v0.12: viewMode tab */
-.viewmode-row { display: flex; gap: 6px; margin-top: 10px; padding-bottom: 8px; }
-.vm {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px; border-radius: 999px;
-  background: oklch(96% 0.01 250 / 0.5);
-  font-size: 12px; font-weight: 500;
-  color: oklch(45% 0.05 250);
-  transition: all 150ms;
-}
-.vm:hover { background: oklch(93% 0.025 250 / 0.7); }
-.vm.active {
-  background: oklch(55% 0.2 250);
-  color: white;
-}
-.vm-count {
-  font-size: 10px;
-  background: oklch(100% 0 0 / 0.4);
-  padding: 1px 6px;
-  border-radius: 999px;
-  color: inherit;
-  font-weight: 600;
-}
-.vm.active .vm-count { background: oklch(100% 0 0 / 0.3); }
-
 /* v0.12: enrich 进度条颜色区分 */
 .thumb-progress.enrich {
   margin-top: 6px;
@@ -1027,22 +1605,6 @@ header { grid-area: header; padding: 14px 18px; border-bottom: 1px solid oklch(8
   background: linear-gradient(90deg, oklch(70% 0.18 280 / 0.5), oklch(65% 0.2 320 / 0.55));
 }
 
-/* v0.12: 卡片名字 + 收藏星 */
-.card-name-row {
-  display: flex; align-items: flex-start; gap: 6px;
-  justify-content: space-between;
-}
-.card-name-row .card-name { flex: 1; }
-.fav-btn {
-  width: 22px; height: 22px;
-  border-radius: 6px;
-  font-size: 14px;
-  color: oklch(60% 0.15 70);
-  background: transparent;
-  transition: all 150ms;
-}
-.fav-btn:hover { background: oklch(96% 0.05 70 / 0.5); }
-.fav-btn.on { color: oklch(60% 0.2 70); }
 .card-pinyin {
   font-size: 10px;
   color: oklch(58% 0.04 250);

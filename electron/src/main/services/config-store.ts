@@ -34,15 +34,23 @@ const DEFAULT: RuntimeConfig = {
   autocomment_interval_sec: 600,
   emotion_decay_per_minute: 0.1,
   flip_probability: 0.15,
+  // v0.17：8 情绪分别映射到不同 Edge TTS 女声，让 TTS 真的有「感情差异」
+  //   - Xiaoyi: 温柔甜美少女（默认/害羞）
+  //   - Xiaoxiao: 活泼开朗（开心/惊喜）
+  //   - Xiaomeng: 温暖治愈（悲伤/中性）
+  //   - Xiaohan: 沉稳成熟（生气）
+  //   - Xiaoshuang: 俏皮可爱（撒娇/调侃）
+  //   - Xiaomo: 慢节奏柔和（困倦）
+  // sidecar 不仅 voice 区别音色，还可能用 SSML prosody style 二次润色（emotion 字段也传给 sidecar）
   emotion_voice_map: {
     neutral: 'edge:zh-CN-XiaoyiNeural',
-    happy: 'edge:zh-CN-XiaoyiNeural',
-    sad: 'edge:zh-CN-XiaoyiNeural',
-    angry: 'edge:zh-CN-XiaoyiNeural',
+    happy: 'edge:zh-CN-XiaoxiaoNeural',
+    sad: 'edge:zh-CN-liaoning-XiaobeiNeural',
+    angry: 'edge:zh-CN-XiaohanNeural',
     shy: 'edge:zh-CN-XiaoyiNeural',
-    tease: 'edge:zh-CN-XiaoyiNeural',
-    sleepy: 'edge:zh-CN-XiaoyiNeural',
-    surprise: 'edge:zh-CN-XiaoyiNeural',
+    tease: 'edge:zh-CN-XiaoshuangNeural',
+    sleepy: 'edge:zh-CN-XiaomoNeural',
+    surprise: 'edge:zh-CN-XiaoxiaoNeural',
   },
   embedding_endpoint: '',
   embedding_model: '',
@@ -59,7 +67,20 @@ export function loadConfig(): RuntimeConfig {
   if (!existsSync(p)) return { ...DEFAULT }
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf-8')) as Partial<RuntimeConfig>
-    return { ...DEFAULT, ...parsed, emotion_voice_map: { ...DEFAULT.emotion_voice_map, ...(parsed.emotion_voice_map ?? {}) } }
+    // v0.17 migration：仅在 (a) 旧版默认情况下覆盖：
+    //   - parsed.emotion_voice_map 8 字段都存在
+    //   - 且全部映射到旧默认 voice (zh-CN-XiaoyiNeural) — 说明从未自定义过
+    // 用户故意把所有 emotion 设为同一 voice（如只有一个 RVC 音色）会被尊重。
+    let emotionMap = { ...DEFAULT.emotion_voice_map, ...(parsed.emotion_voice_map ?? {}) }
+    const isLegacyDefault =
+      parsed.emotion_voice_map != null &&
+      Object.keys(parsed.emotion_voice_map).length >= 8 &&
+      Object.values(parsed.emotion_voice_map).every((v) => v === 'edge:zh-CN-XiaoyiNeural')
+    if (isLegacyDefault) {
+      console.log('[config] migrate emotion_voice_map: legacy single-Xiaoyi default → v0.17 8-voice')
+      emotionMap = { ...DEFAULT.emotion_voice_map }
+    }
+    return { ...DEFAULT, ...parsed, emotion_voice_map: emotionMap }
   } catch (e) {
     console.warn('[config] parse failed, using defaults:', e)
     return { ...DEFAULT }

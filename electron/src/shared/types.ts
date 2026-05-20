@@ -62,6 +62,12 @@ export interface RuntimeConfig {
    * 默认 0（不裁剪），用户可在 Settings 改成 90 / 180 / 365 等。
    */
   history_retention_days?: number
+  /**
+   * v0.17 (ComfyUI Phase 1)：图像生成后端 endpoint。
+   * 例 http://192.168.71.100:8188 。空 = 未启用。
+   * 与 LLM endpoint 独立配置（ComfyUI 走 8188，LLM 走 1234）。
+   */
+  comfyui_endpoint?: string
 }
 
 export interface ChatMessage {

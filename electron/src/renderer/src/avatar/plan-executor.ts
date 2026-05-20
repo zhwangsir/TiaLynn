@@ -48,10 +48,82 @@ async function executeOne(action: BehaviorAction, opts: ExecOpts): Promise<void>
     case 'play_motion':
       return doPlayMotion(action)
     case 'change_emotion':
-      return doChangeEmotion(action)
+      return doChangeEmotion(action, opts)
     case 'idle_subtle':
       return new Promise((r) => setTimeout(r, action.duration_ms))
+    case 'play_group':
+      return doPlayGroup(action, opts)
+    case 'generate_sticker':
+      return doGenerateSticker(action)
+    case 'agent_task':
+      return doAgentTask(action)
   }
+}
+
+/** v0.17 E-4：TiaLynn 跑 agent 任务（fire-and-forget — agent loop 异步跑） */
+async function doAgentTask(
+  action: Extract<BehaviorAction, { type: 'agent_task' }>,
+): Promise<void> {
+  console.log(`[plan-exec] agent_task goal="${action.goal}" max_steps=${action.max_steps ?? 10}`)
+  // 不 await — agent loop 可能跑几分钟，不阻塞 plan 链
+  void window.api.agent
+    .runTask({ goal: action.goal, ...(action.max_steps != null ? { max_steps: action.max_steps } : {}) })
+    .then((r) => {
+      const verb = r.ok ? '完成' : '没完成'
+      const detail = r.ok ? r.final_message ?? '' : r.reason ?? ''
+      console.log(`[plan-exec] agent_task ${verb}: ${detail}`)
+      // 让 TiaLynn 自己报告结果（注入 utterance + TTS）
+      bus.emit('brain:inject-utterance', {
+        text: r.ok ? `${detail || '完成了 ~'}` : `没做成：${detail || '不知道哪步错了'}`,
+        emotion: r.ok ? 'happy' : 'shy',
+        intensity: 0.6,
+      })
+      bus.emit('brain:reply-end', {
+        stream_id: `agent-${Date.now()}`,
+        full_text: r.ok ? (detail || '完成了 ~') : `没做成：${detail || ''}`,
+        emotion: r.ok ? 'happy' : 'shy',
+        intensity: 0.6,
+      })
+    })
+    .catch((e) => console.warn('[plan-exec] agent_task error:', e))
+}
+
+/** v0.17 C：TiaLynn 主动调 ComfyUI 画贴纸送主人（fire-and-forget — 长时间生成不阻塞 plan） */
+async function doGenerateSticker(
+  action: Extract<BehaviorAction, { type: 'generate_sticker' }>,
+): Promise<void> {
+  console.log(`[plan-exec] generate_sticker emotion=${action.emotion} reason=${action.reason ?? '-'}`)
+  // 不 await — 生成需 6-30 秒，让 plan 立刻往下走
+  void window.api.comfyui
+    .generateSticker({
+      emotion: action.emotion,
+      ...(action.extra_prompt ? { extraPrompt: action.extra_prompt } : {}),
+    })
+    .then((r) => {
+      if (!r.ok) console.warn('[plan-exec] generate_sticker failed:', r.error)
+    })
+    .catch((e) => console.warn('[plan-exec] generate_sticker error:', e))
+}
+
+/** v0.17 D：直接播 model3.json 自带 motion group */
+async function doPlayGroup(
+  action: Extract<BehaviorAction, { type: 'play_group' }>,
+  opts: ExecOpts,
+): Promise<void> {
+  const ok = opts.renderer.playMotionGroup(action.group)
+  if (!ok) console.warn(`[plan-exec] play_group "${action.group}" — model 无此 group`)
+}
+
+/** v0.17 B：情绪 → motion group 智能映射（fallback 顺序：找不到首选就试备用） */
+const EMOTION_GROUP_MAP: Record<string, string[]> = {
+  happy:    ['Tap', 'FlickUp', 'Flick'],
+  tease:    ['Tap', 'FlickRight', 'Flick'],
+  surprise: ['FlickUp', 'Shake', 'Flick3'],
+  shy:      ['FlickDown', 'FlickLeft', 'Flick'],
+  sad:      ['FlickDown'],
+  angry:    ['Shake', 'Flick3'],
+  sleepy:   [],
+  neutral:  [],
 }
 
 /** 屏幕坐标 → 立绘 canvas 坐标 → setGaze */
@@ -125,6 +197,18 @@ async function doPlayMotion(
 
 async function doChangeEmotion(
   action: Extract<BehaviorAction, { type: 'change_emotion' }>,
+  opts: ExecOpts,
 ): Promise<void> {
   bus.emit('brain:emotion-changed', { emotion: action.emotion, intensity: action.intensity })
+  // v0.17 B：情绪 intensity > 0.4 时按映射触发一个动作 group，让身体跟着情绪走
+  // 但如果当前 plan 已经显式给了 play_group（rules / LLM 自带动作）→ 不要二次触发，
+  // 否则同一个 group 会立即被打断重启（看起来像"动作没反应"）。
+  if (action.intensity > 0.4) {
+    const planHasGroup = currentPlan.value?.actions.some((a) => a.type === 'play_group')
+    if (planHasGroup) return
+    const candidates = EMOTION_GROUP_MAP[action.emotion] ?? []
+    for (const group of candidates) {
+      if (opts.renderer.playMotionGroup(group)) break
+    }
+  }
 }

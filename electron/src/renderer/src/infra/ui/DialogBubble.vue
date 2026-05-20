@@ -2,7 +2,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
 
-const HIDE_AFTER_MS = 8000
+/** 按文字长度动态：保底 5 秒，每字 +250ms，上限 18 秒（防止超长文本永驻） */
+function hideMsFor(text: string | undefined): number {
+  const len = text?.length ?? 0
+  return Math.min(18_000, Math.max(5_000, 5_000 + len * 250))
+}
 
 const dialog = useDialogStore()
 
@@ -21,7 +25,7 @@ function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
   hideTimer = setTimeout(() => {
     visible.value = false
-  }, HIDE_AFTER_MS)
+  }, hideMsFor(latest.value?.text))
 }
 
 watch(
@@ -45,26 +49,27 @@ onBeforeUnmount(() => {
   if (hideTimer) clearTimeout(hideTimer)
 })
 
+/* v0.17：不透明度从 0.94 降到 0.82 — 桌面颜色能透一点过来，强化"飘在桌面"而非"实色 panel" */
 const emotionTint: Record<string, string> = {
-  neutral: 'oklch(96% 0.012 25 / 0.94)',
-  happy: 'oklch(96% 0.06 80 / 0.94)',
-  sad: 'oklch(95% 0.04 230 / 0.94)',
-  angry: 'oklch(93% 0.08 25 / 0.94)',
-  surprise: 'oklch(96% 0.07 65 / 0.94)',
-  shy: 'oklch(96% 0.08 18 / 0.94)',
-  tease: 'oklch(96% 0.08 320 / 0.94)',
-  sleepy: 'oklch(94% 0.03 250 / 0.94)',
+  neutral: 'oklch(97% 0.012 25 / 0.82)',
+  happy: 'oklch(97% 0.06 80 / 0.82)',
+  sad: 'oklch(96% 0.04 230 / 0.82)',
+  angry: 'oklch(95% 0.08 25 / 0.82)',
+  surprise: 'oklch(97% 0.07 65 / 0.82)',
+  shy: 'oklch(97% 0.08 18 / 0.82)',
+  tease: 'oklch(97% 0.08 320 / 0.82)',
+  sleepy: 'oklch(95% 0.03 250 / 0.82)',
 }
 
 const emotionTintDark: Record<string, string> = {
-  neutral: 'oklch(28% 0.012 25 / 0.94)',
-  happy: 'oklch(32% 0.08 80 / 0.94)',
-  sad: 'oklch(28% 0.05 230 / 0.94)',
-  angry: 'oklch(30% 0.1 25 / 0.94)',
-  surprise: 'oklch(32% 0.09 65 / 0.94)',
-  shy: 'oklch(32% 0.1 18 / 0.94)',
-  tease: 'oklch(32% 0.1 320 / 0.94)',
-  sleepy: 'oklch(28% 0.04 250 / 0.94)',
+  neutral: 'oklch(28% 0.012 25 / 0.82)',
+  happy: 'oklch(32% 0.08 80 / 0.82)',
+  sad: 'oklch(28% 0.05 230 / 0.82)',
+  angry: 'oklch(30% 0.1 25 / 0.82)',
+  surprise: 'oklch(32% 0.09 65 / 0.82)',
+  shy: 'oklch(32% 0.1 18 / 0.82)',
+  tease: 'oklch(32% 0.1 320 / 0.82)',
+  sleepy: 'oklch(28% 0.04 250 / 0.82)',
 }
 
 const isDark = ref(
@@ -123,58 +128,56 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
 </template>
 
 <style scoped>
+/* v0.17：气泡漂浮在立绘头顶 — 漫画气泡风（不像 toast 通知） */
 .bubble {
   position: absolute;
-  bottom: clamp(72px, 12vh, 140px);
-  right: clamp(8px, 2vw, 24px);
-  left: auto;
-  top: auto;
-  max-width: min(360px, 70vw);
-  padding: 12px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--color-bubble-border);
+  top: clamp(12px, 6%, 56px);
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  /* v0.17：translate 和 scale 必须同 transform 内合写，否则 global ui-scale 会单独覆盖 translateX */
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: top center;
+  max-width: min(320px, 86%);
+  padding: 9px 16px;
+  /* 漫画风：圆滑大圆角 + 不规则 border-radius 让形状更"软" */
+  border-radius: 22px 22px 22px 8px;
+  border: 1.5px solid var(--color-bubble-border);
   color: var(--color-bubble-text);
   font-size: var(--text-base);
-  line-height: 1.55;
-  box-shadow: var(--shadow-md);
+  line-height: 1.45;
+  /* drop-shadow 跟随气泡形状（不规则 border-radius）显得更自然 */
+  filter: drop-shadow(0 4px 10px oklch(0% 0 0 / 0.18))
+          drop-shadow(0 1px 3px oklch(0% 0 0 / 0.12));
+  /* 去掉 box-shadow（drop-shadow 已经管） + 去掉 backdrop-filter（panel-like glass 感破坏融入）*/
+  box-shadow: none;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   pointer-events: auto;
-  max-height: min(40vh, 320px);
+  max-height: min(28vh, 220px);
   overflow-y: auto;
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
   z-index: 1500;
   transition: background var(--duration-normal) var(--ease-in-out);
 }
 
-@media (max-height: 480px), (max-width: 320px) {
-  .bubble {
-    bottom: auto;
-    top: 8px;
-    right: 8px;
-    left: 8px;
-    max-width: none;
-    max-height: 30vh;
-    padding: 8px 12px;
-    font-size: var(--text-sm);
-  }
+@media (max-height: 360px) {
+  .bubble { padding: 6px 10px; font-size: var(--text-sm); max-height: 24vh; }
   .bubble::after { display: none; }
 }
 
-/* 箭头指向左侧（人物方向） */
+/* 箭头朝下指向立绘头顶 */
 .bubble::after {
   content: '';
   position: absolute;
-  left: -7px;
-  top: 24px;
+  left: 50%;
+  bottom: -7px;
   width: 14px;
   height: 14px;
   background: inherit;
-  border-left: 1px solid var(--color-bubble-border);
+  border-right: 1px solid var(--color-bubble-border);
   border-bottom: 1px solid var(--color-bubble-border);
-  transform: rotate(45deg);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .text {
@@ -238,11 +241,11 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
 }
 .bubble-enter-from {
   opacity: 0;
-  transform: translateY(-8px) scale(0.96);
+  transform: translateX(-50%) translateY(-8px) scale(calc(var(--ui-scale, 1) * 0.92));
 }
 .bubble-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.98);
+  transform: translateX(-50%) translateY(-6px) scale(calc(var(--ui-scale, 1) * 0.96));
 }
 
 @keyframes typing-bounce {

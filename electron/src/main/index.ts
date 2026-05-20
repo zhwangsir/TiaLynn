@@ -42,6 +42,8 @@ import { registerOnlineIpc } from './ipc/online'
 import { registerCharactersIpc } from './ipc/characters'
 import { registerMemoryIpc } from './ipc/memory'
 import { registerToolIpc } from './ipc/tools'
+import { registerComfyuiIpc } from './ipc/comfyui'
+import { registerAutomationIpc } from './ipc/automation'
 import { registerMarketIpc } from './ipc/market'
 import { registerMotionFactoryIpc } from './ipc/motion-factory'
 import { registerMotionEngineIpc } from './ipc/motion-engine'
@@ -49,6 +51,9 @@ import { registerTriggerIpc } from './ipc/trigger'
 import { registerPerceptionIpc } from './ipc/perception'
 import { startPerception, stopPerception } from './services/perception'
 import { startAttention, stopAttention } from './services/attention'
+import { startLlmHealthLoop } from './services/llm/health-fallback'
+import { startTray, stopTray } from './services/tray'
+import { registerHaltShortcut, unregisterHaltShortcut } from './services/automation/halt-shortcut'
 import { getPaths } from './services/paths'
 import { loadConfig } from './services/config-store'
 import { close as closeHistoryDb, pruneOlderThan } from './services/history-store'
@@ -88,6 +93,19 @@ if (!gotTheLock) {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('moe.tialynn')
 
+  // v0.17：桌宠真正"原生化"关键三连
+  //   1) macOS：accessory activation policy → 不在 Dock 出现、不在 Cmd+Tab 出现、
+  //      不在 Mission Control 当作独立 app 缩略图。完全后台 daemon-style。
+  //   2) macOS：避免 Tray 被 Touch Bar 系统当 regular app 接管
+  //   3) Tray 是用户的唯一可见入口（顶部菜单栏小图标）
+  if (process.platform === 'darwin') {
+    try {
+      app.setActivationPolicy('accessory')
+    } catch (e) {
+      console.warn('[main] setActivationPolicy accessory failed:', e)
+    }
+  }
+
   app.on('browser-window-created', (_event, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -114,6 +132,8 @@ app.whenReady().then(() => {
   registerMotionEngineIpc()
   registerTriggerIpc()
   registerPerceptionIpc()
+  registerComfyuiIpc(getMainWindow)
+  registerAutomationIpc(getMainWindow)
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）
@@ -138,9 +158,11 @@ app.whenReady().then(() => {
   // v0.13: LLM 未配置时不启动 attention loop — 否则每 60s 撞一次 LLM 调用错误
   // 用户首次在 Settings 配完 endpoint 后由 IPC 触发 startAttention（见 ipc/llm.ts 的 setConfig）
   if (cfg.llm_endpoint && cfg.llm_model) {
-    startAttention(getMainWindow, { proactive_monitor_interval_ms: 60_000 })
+    // v0.17 D-2: 后台周期检查 endpoint 模型是否 alive，挂了自动切
+    startLlmHealthLoop()
+    startAttention(getMainWindow, { proactive_monitor_interval_ms: 45_000 })
     markAttentionRunning(true)
-    console.log('[attention] started (proactive every 60s, evaluating every 5s)')
+    console.log('[attention] started (proactive every 45s, evaluating every 10s)')
   } else {
     markAttentionRunning(false)
     console.log(
@@ -150,6 +172,12 @@ app.whenReady().then(() => {
 
   const preloadPath = join(__dirname, '../preload/index.mjs')
   mainWindow = createMainWindow({ preloadPath })
+
+  // v0.17 P3：系统状态栏菜单（macOS 顶部、Windows 系统托盘）
+  startTray(getMainWindow)
+
+  // v0.17 E-4：全局熔断快捷键
+  registerHaltShortcut(getMainWindow)
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -174,4 +202,6 @@ app.on('before-quit', () => {
   closeMotionEngineDb()
   stopAttention()
   stopPerception()
+  stopTray()
+  unregisterHaltShortcut()
 })

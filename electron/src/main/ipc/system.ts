@@ -62,7 +62,7 @@ export function registerSystemIpc(getWindow: () => BrowserWindow | null): void {
     // v0.13: LLM 配置状态变化时切换 attention loop
     const llmReady = !!(merged.llm_endpoint && merged.llm_model)
     if (llmReady && !attentionRunning) {
-      startAttention(getWindow, { proactive_monitor_interval_ms: 60_000 })
+      startAttention(getWindow, { proactive_monitor_interval_ms: 45_000 })
       attentionRunning = true
       console.log('[attention] started (LLM 配置完成)')
     } else if (!llmReady && attentionRunning) {

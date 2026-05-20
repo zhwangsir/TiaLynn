@@ -36,6 +36,21 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       const impl = buildProvider(provider, endpoint, apiKey)
       const abort = new AbortController()
       aborts.set(payload.streamId, abort)
+      // v0.17 D-3：从长期记忆做 RAG 检索，把相关记忆 prepend 到 messages
+      // fallback embedding + cosine similarity，不依赖外部 embedding 服务
+      try {
+        const { buildRagContext } = await import('../services/memory-extractor')
+        const lastUser = [...payload.messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+        if (lastUser) {
+          const rag = buildRagContext(lastUser, 5)
+          if (rag) {
+            payload.messages = [{ role: 'system', content: rag }, ...payload.messages]
+            console.log(`[llm] RAG injected: ${rag.split('\n').length - 1} memories`)
+          }
+        }
+      } catch (e) {
+        console.warn('[llm] RAG inject failed (non-fatal):', e)
+      }
       console.log(
         `[llm] chat-stream start streamId=${payload.streamId} provider=${provider} endpoint=${endpoint} model=${model} msgs=${payload.messages.length} hasTools=${!!payload.tools?.length}`,
       )

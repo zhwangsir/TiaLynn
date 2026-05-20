@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import DiskUsageDialog from './DiskUsageDialog.vue'
+import FloatingPanel from './FloatingPanel.vue'
 import RvcSettingsSection from './settings/RvcSettingsSection.vue'
 import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import type { RuntimeConfig } from '@shared/types'
@@ -486,20 +487,22 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <header>
-        <h2 id="settings-title">设置 · v{{ cfg.version || '0.6' }}</h2>
-        <div class="header-actions">
-          <button
-            class="header-action-btn"
-            title="磁盘占用统计"
-            @click="diskUsageOpen = true"
-          >📊 占用</button>
-          <button class="close" @click="emit('close')" title="关闭设置">×</button>
-        </div>
-      </header>
+  <FloatingPanel
+    storage-key="settings"
+    :title="`⚙️ 设置 · v${cfg.version || '0.6'}`"
+    theme="light"
+    :defaults="{ width: 880, height: 720 }"
+    @close="emit('close')"
+  >
+    <template #header-extra>
+      <button
+        class="header-action-btn"
+        title="磁盘占用统计"
+        @click="diskUsageOpen = true"
+      >📊 占用</button>
+    </template>
 
+    <div class="panel-body" role="dialog" aria-modal="true">
       <DiskUsageDialog v-if="diskUsageOpen" @close="diskUsageOpen = false" />
 
       <nav class="tabs" role="tablist">
@@ -732,7 +735,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </button>
       </footer>
     </div>
-  </div>
+  </FloatingPanel>
 </template>
 
 <style scoped>

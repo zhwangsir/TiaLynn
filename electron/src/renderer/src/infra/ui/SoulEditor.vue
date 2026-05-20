@@ -9,6 +9,7 @@ import { onMounted, ref, watch } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
+import FloatingPanel from './FloatingPanel.vue'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -87,56 +88,53 @@ onMounted(() => loadTab(activeTab.value))
 </script>
 
 <template>
-  <transition name="soul-editor" appear>
-    <div class="overlay" @click.self="close">
-      <div class="card">
-        <header>
-          <div class="header-info">
-            <h2>编辑灵魂</h2>
-            <span class="header-sub" v-if="character.active">— {{ character.active.name }}</span>
-          </div>
-          <button class="x-btn" @click="close">✕</button>
-        </header>
-
-        <nav class="tabs">
-          <button
-            v-for="t in tabs"
-            :key="t.id"
-            :class="['tab', { active: activeTab === t.id }]"
-            @click="activeTab = t.id"
-          >
-            <span class="t-icon">{{ t.icon }}</span>
-            <span class="t-label">{{ t.label }}</span>
-          </button>
-        </nav>
-
-        <div class="hint-bar">
-          {{ tabs.find((t) => t.id === activeTab)!.hint }}
-        </div>
-
-        <div class="body">
-          <div v-if="loading" class="loading">加载中…</div>
-          <textarea
-            v-else
-            v-model="content"
-            class="editor"
-            spellcheck="false"
-            placeholder="# yaml 内容\nschema_version: '2.0'\n..."
-          ></textarea>
-        </div>
-
-        <footer>
-          <span v-if="dirty" class="dirty-tag">● 有未保存的改动</span>
-          <span v-else-if="!loading" class="clean-tag">✓ 已是最新</span>
-          <span class="spacer"></span>
-          <button class="ghost" @click="close">关闭</button>
-          <button class="primary" :disabled="!dirty || saving" @click="save">
-            {{ saving ? '保存中…' : '保存并热重载' }}
-          </button>
-        </footer>
+  <FloatingPanel
+    storage-key="soul-editor"
+    :title="`✏️ 编辑灵魂${character.active ? ' — ' + character.active.name : ''}`"
+    theme="dark"
+    :defaults="{ width: 820, height: 700 }"
+    @close="close"
+  >
+    <template #sub-header>
+      <nav class="tabs">
+        <button
+          v-for="t in tabs"
+          :key="t.id"
+          :class="['tab', { active: activeTab === t.id }]"
+          @click="activeTab = t.id"
+        >
+          <span class="t-icon">{{ t.icon }}</span>
+          <span class="t-label">{{ t.label }}</span>
+        </button>
+      </nav>
+      <div class="hint-bar">
+        {{ tabs.find((t) => t.id === activeTab)!.hint }}
       </div>
+    </template>
+
+    <div class="body">
+      <div v-if="loading" class="loading">加载中…</div>
+      <textarea
+        v-else
+        v-model="content"
+        class="editor"
+        spellcheck="false"
+        placeholder="# yaml 内容\nschema_version: '2.0'\n..."
+      ></textarea>
     </div>
-  </transition>
+
+    <template #footer>
+      <div class="ft-bar">
+        <span v-if="dirty" class="dirty-tag">● 有未保存的改动</span>
+        <span v-else-if="!loading" class="clean-tag">✓ 已是最新</span>
+        <span class="spacer"></span>
+        <button class="ghost" @click="close">关闭</button>
+        <button class="primary" :disabled="!dirty || saving" @click="save">
+          {{ saving ? '保存中…' : '保存并热重载' }}
+        </button>
+      </div>
+    </template>
+  </FloatingPanel>
 </template>
 
 <style scoped>

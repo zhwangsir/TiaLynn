@@ -22,6 +22,8 @@ const currentIntensity = ref(0.5)
 let renderer: Live2DRenderer | null = null
 let sampler: AlphaSampler | null = null
 let interaction: WindowInteraction | null = null
+/** v0.17: 在 onMounted 内注册的 bus.on 清理列表 — onBeforeUnmount 统一调用，防 listener 泄漏 */
+const cleanupHandlers: Array<() => void> = []
 
 const passthrough = computed(() => props.passthroughEnabled !== false)
 
@@ -42,14 +44,43 @@ onMounted(async () => {
   })
 
   // 嘴型驱动 —— 监听总线
-  bus.on('avatar:lipsync', ({ value }) => {
+  const lipsyncHandler = ({ value }: { value: number }): void => {
     renderer?.setLipsync(value)
-  })
+  }
+  bus.on('avatar:lipsync', lipsyncHandler)
 
   // v0.15 A3: 情绪变化驱动 stage 整体呼吸节奏
-  bus.on('brain:emotion-changed', ({ emotion, intensity }) => {
+  const emotionHandler = ({ emotion, intensity }: { emotion: string; intensity: number }): void => {
     currentEmotion.value = emotion
     currentIntensity.value = intensity
+  }
+  bus.on('brain:emotion-changed', emotionHandler)
+
+  // v0.17：鼠标 hover 立绘像素时的微反应 — 让她"感受到"主人
+  //   - 鼠标进入 alpha 命中区（不是只进窗口）→ 12 秒冷却内 35% 概率触发一次小动作
+  //   - 随机选 FlickLeft/FlickRight/Tap 之一，配 shy/happy emotion
+  //   - 冷却 12 秒避免来回 hover 时疯狂触发
+  let lastHoverReactAt = 0
+  const HOVER_REACT_COOLDOWN_MS = 12_000
+  const HOVER_REACT_GROUPS = ['FlickLeft', 'FlickRight', 'Tap', 'FlickUp']
+  const HOVER_REACT_EMOTIONS: Array<'shy' | 'happy' | 'tease'> = ['shy', 'happy', 'tease']
+  const hoverHandler = ({ inside }: { inside: boolean }): void => {
+    if (!inside) return
+    if (!renderer) return
+    const now = Date.now()
+    if (now - lastHoverReactAt < HOVER_REACT_COOLDOWN_MS) return
+    if (Math.random() > 0.35) return
+    lastHoverReactAt = now
+    const group = HOVER_REACT_GROUPS[Math.floor(Math.random() * HOVER_REACT_GROUPS.length)]!
+    const emo = HOVER_REACT_EMOTIONS[Math.floor(Math.random() * HOVER_REACT_EMOTIONS.length)]!
+    renderer.playMotionGroup(group)
+    bus.emit('brain:emotion-changed', { emotion: emo, intensity: 0.5 })
+  }
+  bus.on('avatar:mouse-inside', hoverHandler)
+  cleanupHandlers.push(() => {
+    bus.off('avatar:lipsync', lipsyncHandler)
+    bus.off('brain:emotion-changed', emotionHandler)
+    bus.off('avatar:mouse-inside', hoverHandler)
   })
 
   // 窗口尺寸响应（节流）
@@ -111,6 +142,10 @@ const onZoom = (payload: { delta: number; reset?: boolean }): void => {
 }
 bus.on('avatar:zoom', onZoom)
 
+/** v0.17：记录加载失败的 dir，下次 pickAndLoad 跳过它 */
+const failedDirs = new Set<string>()
+const MAX_FALLBACK_ATTEMPTS = 3
+
 async function pickAndLoad(): Promise<void> {
   if (!renderer) return
   status.value = 'loading'
@@ -124,6 +159,15 @@ async function pickAndLoad(): Promise<void> {
       cfg.models.find(
         (m) => m.dir === wanted && (!wantedFile || m.model_file === wantedFile),
       ) ?? cfg.models.find((m) => m.dir === wanted)
+
+    // diagnostic：让 main log 能看到 wanted vs 是否有匹配
+    console.warn(
+      `[live2d] PICK wanted="${wanted}" file="${wantedFile}" exact=${exact ? 'HIT' : 'MISS'} totalModels=${cfg.models.length}`,
+    )
+    if (!exact && wanted) {
+      const partial = cfg.models.filter((m) => m.dir.includes(wanted ?? '') || (wanted ?? '').includes(m.dir))
+      console.warn(`[live2d] PICK partial matches:`, partial.slice(0, 3).map((m) => ({ dir: m.dir, file: m.model_file })))
+    }
 
     // v0.6.11: 优先级 = ⭐ builtin 推荐 > 完整 cubism4 > 任意 cubism4 > 报错
     const recommended = cfg.models.filter((m) => m.meta?.recommended)
@@ -201,34 +245,41 @@ async function pickAndLoad(): Promise<void> {
       model_path: found.absolute_path,
       cubism: found.cubism,
     })
-    // v0.6.11 运行时验证：加载 1.5s 后若 alpha sampler 检测画面没有任何不透明像素
-    // → 模型加载了但渲染失败（黑屏/全透明）→ 自动 fallback 到推荐
+    // v0.6.11 运行时验证：加载 1.5s 后 alpha sampler 检查
+    // 修订：不再自动 fallback —— 调试期间隐藏错误成本太高，宁可白屏让用户看到
     const loadedDir = found.dir
     setTimeout(() => {
       if (!sampler || !renderer) return
       if (status.value !== 'ready') return
-      // 当前 cfg.soul 还是 loadedDir 才检查（用户已经手动切走就别管）
       if (cfg.soul?.avatar.model_dir !== loadedDir) return
       if (sampler.isReady() && !sampler.hasOpaque()) {
-        const fallback = recommended[0] ?? completeC4.find((m) => m.dir !== loadedDir)
-        if (fallback && fallback.dir !== loadedDir) {
-          bus.emit('ui:toast', {
-            kind: 'warn',
-            message: `「${loadedDir}」加载后没有渲染出任何像素（可能模型损坏/不兼容）。已自动切到「${fallback.dir}」`,
-            ttl_ms: 8000,
-          })
-          void cfg.saveAvatar({ model_dir: fallback.dir, model_file: fallback.model_file })
-        } else {
-          bus.emit('ui:toast', {
-            kind: 'error',
-            message: `「${loadedDir}」加载后空白；没有可用的备用模型可切换`,
-            ttl_ms: 8000,
-          })
-        }
+        bus.emit('ui:toast', {
+          kind: 'warn',
+          message: `「${loadedDir}」加载后画面全透明（模型加载成功但 PIXI 渲染 0 像素）。打开 DevTools (Cmd+Opt+I) 看 console 错误`,
+          ttl_ms: 15000,
+        })
+        console.warn('[live2d] alpha sampler: 0 opaque pixels for', loadedDir, found.file_url)
       }
     }, 1500)
   } catch (e) {
     console.error('[live2d] load failed', e)
+    const failedDir = cfg.soul?.avatar.model_dir
+    if (failedDir) failedDirs.add(failedDir)
+    // v0.17：自动 fallback 到第一个可用且未失败的模型，最多 3 次
+    if (failedDirs.size < MAX_FALLBACK_ATTEMPTS) {
+      const fallback = cfg.models.find(
+        (m) => m.cubism === 'cubism4' && m.meta?.has_core && !failedDirs.has(m.dir),
+      )
+      if (fallback) {
+        bus.emit('ui:toast', {
+          kind: 'warn',
+          message: `「${failedDir}」加载失败，自动切到「${fallback.dir}」`,
+          ttl_ms: 5000,
+        })
+        await cfg.saveAvatar({ model_dir: fallback.dir, model_file: fallback.model_file })
+        return pickAndLoad()
+      }
+    }
     status.value = 'error'
     errorMsg.value = String(e)
     bus.emit('ui:toast', { kind: 'error', message: `立绘加载失败：${String(e)}`, ttl_ms: 8000 })
@@ -239,6 +290,9 @@ async function pickAndLoad(): Promise<void> {
 onBeforeUnmount(() => {
   bus.off('avatar:reload-model', onReloadModel)
   bus.off('avatar:zoom', onZoom)
+  // v0.17: 清理所有 onMounted 内注册的 bus handler（lipsync / brain:emotion-changed / avatar:mouse-inside）
+  for (const cleanup of cleanupHandlers) cleanup()
+  cleanupHandlers.length = 0
   if (saveTimer) clearTimeout(saveTimer)
   interaction?.destroy()
   sampler?.destroy()
@@ -320,6 +374,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
   /* v0.15 A2: loading 时 canvas 整体淡出 */
   transition: opacity var(--duration-normal) var(--ease-in-out);
+  /* v0.17：立绘 drop-shadow — 让她"贴"在桌面而不是漂浮 panel 里。
+     filter: drop-shadow 比 box-shadow 强 — 跟随 alpha 形状（非矩形），真正像影子。 */
+  filter: drop-shadow(0 12px 24px oklch(0% 0 0 / 0.28))
+          drop-shadow(0 4px 8px oklch(0% 0 0 / 0.18));
 }
 .live2d-stage[data-state='loading'] .live2d-canvas {
   opacity: 0.3;

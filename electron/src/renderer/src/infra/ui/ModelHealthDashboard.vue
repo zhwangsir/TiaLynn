@@ -8,6 +8,7 @@
  * - 单模型详情面板
  */
 import { computed, onMounted, ref } from 'vue'
+import FloatingPanel from './FloatingPanel.vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 
@@ -190,15 +191,15 @@ async function applyPhysics(report: ModelReport, presetId: string): Promise<void
 </script>
 
 <template>
-  <transition name="dashboard" appear>
-    <div class="overlay" @click.self="emit('close')">
-      <div class="card">
-        <header>
-          <h2>🔬 Live2D 模型健康仪表盘</h2>
-          <button class="x-btn" @click="emit('close')">✕</button>
-        </header>
-
-        <div v-if="loading || learningsLoading" class="loading">
+  <FloatingPanel
+    storage-key="model-health-dashboard"
+    title="🔬 Live2D 模型健康仪表盘"
+    theme="dark"
+    :defaults="{ width: 1100, height: 800 }"
+    @close="emit('close')"
+  >
+    <div class="dash-body">
+      <div v-if="loading || learningsLoading" class="loading">
           {{ learningsLoading ? '加载行业标准学习库...' : `评估中... (${reports.length}/${cfg.models.length})` }}
         </div>
 
@@ -304,8 +305,7 @@ async function applyPhysics(report: ModelReport, presetId: string): Promise<void
           </div>
         </template>
       </div>
-    </div>
-  </transition>
+  </FloatingPanel>
 </template>
 
 <style scoped>

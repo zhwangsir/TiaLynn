@@ -132,14 +132,16 @@ const timeFilter = computed(() => {
   transition: filter var(--duration-slow) var(--ease-in-out);
 }
 
+/* v0.17：所有 scene 大幅降低不透明度（0.55→0.18），让边缘真正 fade 到桌面 —
+   之前矩形 panel 感来自中心高浓度色块。现在只在立绘脚下保留淡淡氛围色。 */
+
 /* === 卧室：暖粉色径向 === */
 .scene-bedroom {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(94% 0.05 25 / 0.55) 0%,
-    oklch(92% 0.06 18 / 0.4) 30%,
-    oklch(88% 0.05 18 / 0.2) 55%,
-    transparent 80%
+    ellipse 60% 50% at 50% 75%,
+    oklch(94% 0.05 25 / 0.18) 0%,
+    oklch(92% 0.06 18 / 0.1) 35%,
+    transparent 65%
   );
 }
 .scene-bedroom::before {
@@ -147,18 +149,17 @@ const timeFilter = computed(() => {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 30% 80%, oklch(85% 0.08 60 / 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 70%, oklch(85% 0.08 30 / 0.15) 0%, transparent 50%);
+    radial-gradient(ellipse at 30% 80%, oklch(85% 0.08 60 / 0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 70% 75%, oklch(85% 0.08 30 / 0.06) 0%, transparent 40%);
 }
 
 /* === 星空：深蓝径向 + 闪烁星点 === */
 .scene-starry {
   background: radial-gradient(
-    circle at 50% 55%,
-    oklch(35% 0.1 270 / 0.6) 0%,
-    oklch(25% 0.08 260 / 0.45) 30%,
-    oklch(18% 0.06 250 / 0.3) 55%,
-    transparent 82%
+    ellipse 60% 55% at 50% 70%,
+    oklch(35% 0.1 270 / 0.2) 0%,
+    oklch(25% 0.08 260 / 0.12) 35%,
+    transparent 65%
   );
 }
 .star {
@@ -179,11 +180,10 @@ const timeFilter = computed(() => {
 /* === 书房：木纹色 + 黄光 === */
 .scene-study {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(78% 0.06 60 / 0.55) 0%,
-    oklch(70% 0.07 50 / 0.4) 30%,
-    oklch(60% 0.06 45 / 0.25) 55%,
-    transparent 80%
+    ellipse 60% 50% at 50% 75%,
+    oklch(78% 0.06 60 / 0.18) 0%,
+    oklch(70% 0.07 50 / 0.1) 35%,
+    transparent 65%
   );
 }
 .scene-study::before {
@@ -204,22 +204,20 @@ const timeFilter = computed(() => {
 /* === 樱花：粉色 + 花瓣 === */
 .scene-sakura {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(92% 0.07 18 / 0.55) 0%,
-    oklch(88% 0.08 15 / 0.4) 30%,
-    oklch(85% 0.07 12 / 0.25) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 75%,
+    oklch(92% 0.07 18 / 0.18) 0%,
+    oklch(88% 0.08 15 / 0.1) 35%,
+    transparent 65%
   );
 }
 
 /* === 咖啡馆：木色 + 暖灯 === */
 .scene-cafe {
   background: radial-gradient(
-    circle at 50% 65%,
-    oklch(85% 0.08 45 / 0.55) 0%,
-    oklch(72% 0.08 40 / 0.4) 30%,
-    oklch(58% 0.06 35 / 0.22) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 78%,
+    oklch(85% 0.08 45 / 0.18) 0%,
+    oklch(72% 0.08 40 / 0.1) 35%,
+    transparent 65%
   );
 }
 .scene-cafe::before {
@@ -232,11 +230,10 @@ const timeFilter = computed(() => {
 /* === 海边：蓝绿 === */
 .scene-ocean {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(80% 0.08 200 / 0.55) 0%,
-    oklch(70% 0.1 210 / 0.4) 30%,
-    oklch(55% 0.1 215 / 0.22) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 75%,
+    oklch(80% 0.08 200 / 0.18) 0%,
+    oklch(70% 0.1 210 / 0.1) 35%,
+    transparent 65%
   );
 }
 .scene-ocean::before {
@@ -257,11 +254,10 @@ const timeFilter = computed(() => {
 /* === 雨夜 === */
 .scene-rainy {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(32% 0.06 245 / 0.6) 0%,
-    oklch(25% 0.04 240 / 0.45) 30%,
-    oklch(18% 0.03 235 / 0.3) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 75%,
+    oklch(32% 0.06 245 / 0.22) 0%,
+    oklch(25% 0.04 240 / 0.12) 35%,
+    transparent 65%
   );
 }
 .raindrop {
@@ -279,11 +275,10 @@ const timeFilter = computed(() => {
 /* === 雪景 === */
 .scene-snow {
   background: radial-gradient(
-    circle at 50% 60%,
-    oklch(92% 0.03 230 / 0.55) 0%,
-    oklch(82% 0.04 220 / 0.4) 30%,
-    oklch(70% 0.04 220 / 0.22) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 75%,
+    oklch(92% 0.03 230 / 0.18) 0%,
+    oklch(82% 0.04 220 / 0.1) 35%,
+    transparent 65%
   );
 }
 .snowflake {
@@ -304,11 +299,10 @@ const timeFilter = computed(() => {
 /* === 火炉 === */
 .scene-fireplace {
   background: radial-gradient(
-    circle at 50% 70%,
-    oklch(75% 0.18 35 / 0.55) 0%,
-    oklch(62% 0.15 30 / 0.4) 30%,
-    oklch(45% 0.12 25 / 0.22) 55%,
-    transparent 82%
+    ellipse 60% 50% at 50% 78%,
+    oklch(75% 0.18 35 / 0.2) 0%,
+    oklch(62% 0.15 30 / 0.12) 35%,
+    transparent 65%
   );
 }
 .fire-glow {

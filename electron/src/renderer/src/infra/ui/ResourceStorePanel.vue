@@ -13,6 +13,7 @@
  */
 import { ref } from 'vue'
 import { useConfigStore } from '../stores/config'
+import FloatingPanel from './FloatingPanel.vue'
 import ModelLibraryPanel from './ModelLibraryPanel.vue'
 import RvcVoiceTab from './RvcVoiceTab.vue'
 import OnlineStoreTab from './OnlineStoreTab.vue'
@@ -25,26 +26,27 @@ const activeTab = ref<TabId>('avatars')
 </script>
 
 <template>
-  <div class="store-panel" @click.stop @click.right.prevent>
-    <header class="store-header">
-      <h2>🎁 TiaLynn 资源商店</h2>
-      <button class="close-btn" @click="emit('close')">✕</button>
-    </header>
+  <FloatingPanel
+    storage-key="resource-store"
+    title="🎁 TiaLynn 资源商店"
+    theme="light"
+    :defaults="{ width: 1100, height: 800 }"
+    @close="emit('close')"
+  >
+    <template #sub-header>
+      <div class="tabbar">
+        <button :class="['tab', { active: activeTab === 'avatars' }]" @click="activeTab = 'avatars'">
+          🎭 立绘 <span class="badge">{{ cfg.models.length }}</span>
+        </button>
+        <button :class="['tab', { active: activeTab === 'voices' }]" @click="activeTab = 'voices'">
+          🎙️ 音色
+        </button>
+        <button :class="['tab', { active: activeTab === 'online' }]" @click="activeTab = 'online'">
+          ☁️ 在线
+        </button>
+      </div>
+    </template>
 
-    <!-- Tab bar -->
-    <div class="tabbar">
-      <button :class="['tab', { active: activeTab === 'avatars' }]" @click="activeTab = 'avatars'">
-        🎭 立绘 <span class="badge">{{ cfg.models.length }}</span>
-      </button>
-      <button :class="['tab', { active: activeTab === 'voices' }]" @click="activeTab = 'voices'">
-        🎙️ 音色
-      </button>
-      <button :class="['tab', { active: activeTab === 'online' }]" @click="activeTab = 'online'">
-        ☁️ 在线
-      </button>
-    </div>
-
-    <!-- Tab body -->
     <div class="tab-body">
       <ModelLibraryPanel
         v-if="activeTab === 'avatars'"
@@ -54,7 +56,7 @@ const activeTab = ref<TabId>('avatars')
       <RvcVoiceTab v-else-if="activeTab === 'voices'" />
       <OnlineStoreTab v-else-if="activeTab === 'online'" />
     </div>
-  </div>
+  </FloatingPanel>
 </template>
 
 <style scoped>

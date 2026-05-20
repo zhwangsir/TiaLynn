@@ -70,6 +70,46 @@ export type BehaviorAction =
       /** 无目标，纯 idle filler，比如轻微呼吸/眨眼 */
       duration_ms: number
     }
+  | {
+      /**
+       * v0.17 D：直接触发 Live2D 模型自带的 motion group。
+       * LLM 可在合适情绪/事件下输出，例如开心 → "Tap"，惊讶 → "FlickUp"。
+       * group 在该模型的 model3.json Motions 中存在才会播；不存在静默忽略。
+       */
+      type: 'play_group'
+      /** 模型 motion group 名（Idle/Tap/Flick/FlickUp/FlickDown/FlickLeft/FlickRight/Flick3/Shake 等） */
+      group: string
+      /** 可选：解释（仅日志，不影响渲染） */
+      reason?: string
+    }
+  | {
+      /**
+       * v0.17 C：TiaLynn 主动调 ComfyUI 生成一张贴纸送给主人。
+       * LLM 在合适场景（如夜晚关怀、主人开心时分享、想念主人时）输出此 action。
+       * 生成后通过 StickerOverlay 自动浮出在桌面。频率不要太高（生成 6-30 秒）。
+       */
+      type: 'generate_sticker'
+      /** 情绪决定贴纸内容主题；映射到 ComfyUI prompt */
+      emotion: EmotionId
+      /** 可选：附加 prompt 描述。LLM 可以自由发挥（如"晚安月亮"、"加油拳头"） */
+      extra_prompt?: string
+      /** 可选：解释为什么生成（仅日志） */
+      reason?: string
+    }
+  | {
+      /**
+       * v0.17 E-4：TiaLynn 接到主人指令后自己跑桌面自动化任务。
+       * planner LLM 在用户对话里识别到 "帮我打开 X / 关掉 X / 帮我点 X / 帮我搜 X" 类指令时输出此 action。
+       * plan-executor 调 window.api.agent.runTask 进入 agent loop（截屏 → vision LLM → 操作 → 验证）。
+       *
+       * 安全：用户随时按 Cmd+Shift+Esc 全局熔断；每步在 console 有 log。
+       */
+      type: 'agent_task'
+      /** 目标描述：自然语言，越具体越好。例："打开微信，搜索老王，发消息'晚饭吃啥'" */
+      goal: string
+      /** 可选：最大步数（默认 10） */
+      max_steps?: number
+    }
 
 export interface BehaviorPlan {
   /** plan 创建时间 */
@@ -113,10 +153,10 @@ export interface AttentionConfig {
 
 export const DEFAULT_ATTENTION_CONFIG: AttentionConfig = {
   enabled: true,
-  tick_ms: 5000,
+  tick_ms: 10_000, // v0.17：从 5s 调到 10s — Master 不希望那么频繁感知屏幕
   min_action_interval_ms: 8000,
-  min_speak_interval_ms: 90_000,
+  min_speak_interval_ms: 30_000,
   use_llm_planner: true,
-  llm_planner_max_per_minute: 4,
-  proactive_monitor_interval_ms: 30_000,
+  llm_planner_max_per_minute: 6, // v0.17：从 4 调到 6，给 reactive trigger 留余量（proactive 1.3/min + reactive 1.7/min ≈ 3/min，留 ≥50% headroom）
+  proactive_monitor_interval_ms: 45_000, // v0.17：从 30s 调到 45s，少打扰
 }

@@ -89,6 +89,12 @@ const api: TialynnApi = {
       invoke('system:disk-usage', force) as ReturnType<TialynnApi['system']['diskUsage']>,
     cleanPath: (path: string) =>
       invoke('system:clean-path', path) as ReturnType<TialynnApi['system']['cleanPath']>,
+    // v0.17 P3: tray menu 点击 → main → 这条事件 → renderer onMenuSelect(id)
+    onTrayAction: (cb: (id: string) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, id: string): void => cb(id)
+      ipcRenderer.on('tray:action', handler)
+      return () => ipcRenderer.off('tray:action', handler)
+    },
   },
   window: {
     startDrag: () => invoke('window:start-drag') as Promise<{ ok: boolean; reason?: string }>,
@@ -446,6 +452,65 @@ const api: TialynnApi = {
       return () => ipcRenderer.off('tools:approval-request', handler)
     },
     sendApprovalDecision: (payload) => send('tools:approval-decision', payload),
+  },
+  comfyui: {
+    status: () => invoke('comfyui:status') as ReturnType<TialynnApi['comfyui']['status']>,
+    listCheckpoints: () => invoke('comfyui:list-checkpoints') as ReturnType<TialynnApi['comfyui']['listCheckpoints']>,
+    listLoras: () => invoke('comfyui:list-loras') as ReturnType<TialynnApi['comfyui']['listLoras']>,
+    listSamplers: () => invoke('comfyui:list-samplers') as ReturnType<TialynnApi['comfyui']['listSamplers']>,
+    listVideoModels: () => invoke('comfyui:list-video-models') as ReturnType<TialynnApi['comfyui']['listVideoModels']>,
+    uploadImage: (payload) =>
+      invoke('comfyui:upload-image', payload) as ReturnType<TialynnApi['comfyui']['uploadImage']>,
+    generateImage: (payload) =>
+      invoke('comfyui:generate-image', payload) as ReturnType<TialynnApi['comfyui']['generateImage']>,
+    generateI2I: (payload) =>
+      invoke('comfyui:generate-i2i', payload) as ReturnType<TialynnApi['comfyui']['generateI2I']>,
+    generateVideoT2V: (payload) =>
+      invoke('comfyui:generate-video-t2v', payload) as ReturnType<TialynnApi['comfyui']['generateVideoT2V']>,
+    generateVideoI2V: (payload) =>
+      invoke('comfyui:generate-video-i2v', payload) as ReturnType<TialynnApi['comfyui']['generateVideoI2V']>,
+    generateSticker: (payload) =>
+      invoke('comfyui:generate-sticker', payload) as ReturnType<TialynnApi['comfyui']['generateSticker']>,
+    generateBackground: (payload) =>
+      invoke('comfyui:generate-background', payload) as ReturnType<TialynnApi['comfyui']['generateBackground']>,
+    listRecent: (kind) =>
+      invoke('comfyui:list-recent', kind) as ReturnType<TialynnApi['comfyui']['listRecent']>,
+    cancel: () => invoke('comfyui:cancel') as ReturnType<TialynnApi['comfyui']['cancel']>,
+    onProgress: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: Parameters<Parameters<TialynnApi['comfyui']['onProgress']>[0]>[0],
+      ): void => cb(p)
+      ipcRenderer.on('comfyui:progress', handler)
+      return () => ipcRenderer.off('comfyui:progress', handler)
+    },
+  },
+  agent: {
+    halt: (on) => invoke('agent:halt', on) as ReturnType<TialynnApi['agent']['halt']>,
+    isHalted: () => invoke('agent:is-halted') as ReturnType<TialynnApi['agent']['isHalted']>,
+    cursorPos: () => invoke('agent:cursor-pos') as ReturnType<TialynnApi['agent']['cursorPos']>,
+    screenSize: () => invoke('agent:screen-size') as ReturnType<TialynnApi['agent']['screenSize']>,
+    move: (p) => invoke('agent:move', p) as ReturnType<TialynnApi['agent']['move']>,
+    click: (p) => invoke('agent:click', p) as ReturnType<TialynnApi['agent']['click']>,
+    doubleClick: (p) => invoke('agent:double-click', p) as ReturnType<TialynnApi['agent']['doubleClick']>,
+    scroll: (p) => invoke('agent:scroll', p) as ReturnType<TialynnApi['agent']['scroll']>,
+    drag: (p) => invoke('agent:drag', p) as ReturnType<TialynnApi['agent']['drag']>,
+    type: (p) => invoke('agent:type', p) as ReturnType<TialynnApi['agent']['type']>,
+    key: (p) => invoke('agent:key', p) as ReturnType<TialynnApi['agent']['key']>,
+    clickAndType: (p) => invoke('agent:click-and-type', p) as ReturnType<TialynnApi['agent']['clickAndType']>,
+    screenshot: (region) =>
+      invoke('agent:screenshot', region) as ReturnType<TialynnApi['agent']['screenshot']>,
+    find: (p) => invoke('agent:find', p) as ReturnType<TialynnApi['agent']['find']>,
+    findAndClick: (p) => invoke('agent:find-and-click', p) as ReturnType<TialynnApi['agent']['findAndClick']>,
+    runTask: (p) => invoke('agent:run-task', p) as ReturnType<TialynnApi['agent']['runTask']>,
+    onStep: (cb): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        step: Parameters<Parameters<TialynnApi['agent']['onStep']>[0]>[0],
+      ): void => cb(step)
+      ipcRenderer.on('agent:step', handler)
+      return () => ipcRenderer.off('agent:step', handler)
+    },
   },
 }
 

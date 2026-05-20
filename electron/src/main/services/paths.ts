@@ -58,7 +58,7 @@ export function getPaths(): TialynnPaths {
   // models-library 作为独立 root → IP 在 depth=1, character_dir 在 depth=2，恰好符合 MAX_DEPTH=3
   const modelsLibrary = app.isPackaged
     ? join(projectRoot, 'models-library') // 打包后跟 resources 同级
-    : resolve(projectRoot, 'models-library') // dev: electron/models-library
+    : resolve(projectRoot, 'electron', 'models-library') // dev: electron/models-library
   const modelSearchPaths = uniq([
     modelsLibrary,
     projectRoot,

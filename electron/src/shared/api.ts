@@ -100,6 +100,8 @@ export interface TialynnApi {
       computed_at_ms: number
     }>
     cleanPath(path: string): Promise<{ ok: boolean; freed_bytes: number; reason?: string }>
+    /** v0.17 P3: 监听 macOS tray / Windows 托盘菜单点击，id 跟 ContextMenu menuItems 一一对应 */
+    onTrayAction(cb: (id: string) => void): () => void
   }
   window: {
     startDrag(): Promise<{ ok: boolean; reason?: string }>
@@ -576,5 +578,181 @@ export interface TialynnApi {
     }): Promise<{ ok: boolean; install_id: string }>
     onInstallProgress(cb: (p: OnlineInstallProgress) => void): () => void
     onInstallDone(cb: (p: OnlineInstallDone) => void): () => void
+  }
+  /** v0.17 ComfyUI Phase 2「创作工坊」：文生图 / 图生图 / 文生视频 / 图生视频 */
+  comfyui: {
+    status(): Promise<{ ok: boolean; endpoint?: string; detail?: unknown; error?: string }>
+
+    // 动态资源列表
+    listCheckpoints(): Promise<{ ok: boolean; items: string[]; error?: string }>
+    listLoras(): Promise<{ ok: boolean; items: string[]; error?: string }>
+    listSamplers(): Promise<{ ok: boolean; samplers: string[]; schedulers: string[]; error?: string }>
+    listVideoModels(): Promise<{ ok: boolean; items: string[]; error?: string }>
+
+    // 图片上传
+    uploadImage(payload: { srcPath: string }): Promise<{
+      ok: boolean
+      localCachePath?: string
+      comfyName?: string
+      subfolder?: string
+      type?: string
+      error?: string
+    }>
+
+    // 通用 T2I
+    generateImage(payload: {
+      prompt: string
+      negative?: string
+      checkpoint: string
+      width?: number
+      height?: number
+      steps?: number
+      cfg?: number
+      sampler?: string
+      scheduler?: string
+      seed?: number
+      loras?: Array<{ name: string; strength_model?: number; strength_clip?: number }>
+      filenamePrefix?: string
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+
+    // 图生图
+    generateI2I(payload: {
+      prompt: string
+      negative?: string
+      checkpoint: string
+      inputImage: string
+      denoise?: number
+      width?: number
+      height?: number
+      steps?: number
+      cfg?: number
+      sampler?: string
+      scheduler?: string
+      seed?: number
+      loras?: Array<{ name: string; strength_model?: number; strength_clip?: number }>
+      filenamePrefix?: string
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+
+    // 文生视频
+    generateVideoT2V(payload: {
+      prompt: string
+      model: string
+      seed?: number
+      promptExtend?: boolean
+      watermark?: boolean
+      filenamePrefix?: string
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+
+    // 图生视频
+    generateVideoI2V(payload: {
+      prompt?: string
+      negative?: string
+      inputImage: string
+      length?: number
+      width?: number
+      height?: number
+      checkpoint: string
+      steps?: number
+      cfg?: number
+      sampler?: string
+      scheduler?: string
+      seed?: number
+      filenamePrefix?: string
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+
+    // 旧 Phase 1（保留）
+    generateSticker(payload: {
+      emotion: 'happy' | 'sad' | 'angry' | 'shy' | 'surprise' | 'tease' | 'sleepy' | 'neutral'
+      extraPrompt?: string
+      checkpoint?: string
+      seed?: number
+      steps?: number
+      cfg?: number
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+    generateBackground(payload: {
+      theme: string
+      checkpoint?: string
+      seed?: number
+      steps?: number
+      cfg?: number
+      width?: number
+      height?: number
+    }): Promise<{ ok: boolean; prompt_id?: string; files?: string[]; error?: string }>
+
+    listRecent(kind?: 'sticker' | 'background' | 'image' | 'video' | 'all'): Promise<Array<{
+      kind: string
+      path: string
+      mtime: number
+      size: number
+    }>>
+    cancel(): Promise<{ ok: boolean; error?: string }>
+    onProgress(cb: (p: {
+      kind: string
+      state: 'queued' | 'running' | 'done'
+      [k: string]: unknown
+    }) => void): () => void
+  }
+  /** v0.17 E：Agent 自动化 — TiaLynn 操控鼠标 / 键盘 / 截屏 */
+  agent: {
+    halt(on: boolean): Promise<{ halted: boolean }>
+    isHalted(): Promise<{ halted: boolean }>
+    cursorPos(): Promise<{ x: number; y: number }>
+    screenSize(): Promise<{ width: number; height: number }>
+    move(p: { x: number; y: number; duration_ms?: number }): Promise<{ ok: boolean; error?: string }>
+    click(p: { x: number; y: number; button?: 'left' | 'right' | 'middle' }): Promise<{ ok: boolean; error?: string }>
+    doubleClick(p: { x: number; y: number }): Promise<{ ok: boolean; error?: string }>
+    scroll(p: { dy: number; dx?: number }): Promise<{ ok: boolean; error?: string }>
+    drag(p: { from_x: number; from_y: number; to_x: number; to_y: number }): Promise<{ ok: boolean; error?: string }>
+    type(p: { text: string }): Promise<{ ok: boolean; error?: string }>
+    key(p: { combo: string[] }): Promise<{ ok: boolean; error?: string }>
+    clickAndType(p: { x: number; y: number; text: string }): Promise<{ ok: boolean; error?: string }>
+    screenshot(region?: { x: number; y: number; w: number; h: number }): Promise<{
+      ok: boolean
+      base64?: string
+      width?: number
+      height?: number
+      error?: string
+    }>
+    /** E-2: vision LLM 看屏找东西的位置 */
+    find(p: { description: string }): Promise<{
+      ok: boolean
+      x?: number
+      y?: number
+      confidence?: number
+      raw?: string
+      error?: string
+    }>
+    /** find + 立即点击 */
+    findAndClick(p: { description: string }): Promise<{
+      ok: boolean
+      x?: number
+      y?: number
+      confidence?: number
+      raw?: string
+      error?: string
+    }>
+    /** E-3: 给一个目标，agent 自己循环（截屏→LLM→执行）直到完成或失败 */
+    runTask(p: { goal: string; max_steps?: number }): Promise<{
+      ok: boolean
+      goal: string
+      steps: Array<{
+        step: number
+        ts: number
+        thought?: string
+        action: string
+        params?: Record<string, unknown>
+        result?: { ok: boolean; error?: string; coord?: { x: number; y: number } }
+      }>
+      final_message?: string
+      reason?: string
+    }>
+    onStep(cb: (step: {
+      step: number
+      ts: number
+      thought?: string
+      action: string
+      params?: Record<string, unknown>
+      result?: { ok: boolean; error?: string; coord?: { x: number; y: number } }
+    }) => void): () => void
   }
 }

@@ -95,7 +95,10 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     mergeSystem: boolean,
     isRetry = false,
   ): Promise<boolean> {
-    const url = `${this.endpoint.replace(/\/+$/, '')}/v1/chat/completions`
+    // v0.17：用户可能填的 endpoint 已含 /v1（如 http://x:8000/v1），也可能没含（http://x:1234）
+    // 智能判断：若末尾已是 /v1 就不重复拼
+    const base = this.endpoint.replace(/\/+$/, '')
+    const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
     const normalized = normalizeMessages(messages, mergeSystem)
     console.log(
       `[openai-compat] tryStream merge=${mergeSystem} retry=${isRetry} in=${messages.length} out=${normalized.length} roles=[${normalized.map((m) => `${m.role}:${m.content.trim().length}`).join(',')}]`,

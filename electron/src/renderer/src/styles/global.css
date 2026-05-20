@@ -204,3 +204,25 @@ select:focus {
     transition-duration: 1ms !important;
   }
 }
+
+/* ============== v0.17 全局 UI 缩放 ==============
+ * Cmd/Ctrl + = / - / 0 控制 :root 的 --ui-scale (0.7~1.6)
+ * 用 transform: scale 不用 zoom — Chromium 上不会破坏 fixed children 的事件路径。
+ * transform 不影响 layout box，hit-test 自动按 transformed bounding box 计算，
+ * 所以 panel 关闭按钮 / 外部遮罩点击都正常。
+ *
+ * 应用范围：所有 dialog / panel 的根容器 — 立绘 / 背景 / 粒子不缩。
+ * 全局 selectors（不在 Vue scoped 内，跨组件生效）。
+ * ============================================ */
+.fp-panel,
+.ctx-menu,
+.lightbox,
+.overlay > .card,
+.overlay > .panel {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: center center;
+  transition: transform 120ms ease;
+}
+/* .bubble 不在这里 — 它有自己的 translateX(-50%) 定位需求，
+   scale 由 DialogBubble.vue scoped style 自己合写（避免 specificity 战 + transform 覆盖） */
+

@@ -27,7 +27,7 @@ export function transparentWindowConfig(): BrowserWindowConstructorOptions {
     ...(isMacOS && { titleBarStyle: 'hidden' as const }),
     transparent: true,
     hasShadow: false,
-    resizable: false,
+    // v0.17：去掉 resizable: false — 让上层决定。主立绘窗口需要可缩放
     skipTaskbar: true,
     fullscreenable: false,
     backgroundColor: '#00000000',

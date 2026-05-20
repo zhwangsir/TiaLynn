@@ -39,6 +39,11 @@ export class AttentionScheduler {
     session_active_ms: 0,
   }
   private lastProactiveAt = 0
+  /** v0.17: 上次 reactive 触发时间（键鼠 burst 即时反应节流） */
+  private lastReactiveAt = 0
+  /** 35 秒内最多一次 reactive 反应。提到 35s 是为了：reactive (1.7/min) + proactive (45s 间隔 = 1.3/min)
+   *  合计 ≈ 3/min，给默认 llm_planner_max_per_minute=4 留余量，避免反向把 proactive 挤掉 fallback */
+  private readonly REACTIVE_COOLDOWN_MS = 35_000
   /** v0.14: 本次启动时间，用于计算 session_active_ms */
   private sessionStartedAt = Date.now()
   private config: AttentionConfig = { ...DEFAULT_ATTENTION_CONFIG }
@@ -105,6 +110,8 @@ export class AttentionScheduler {
       perception.onType('mouse_stayed', () => {
         // 主人在专心看某处 — 我也想看看
         this.bump('focus_on_screen', 0.15)
+        // v0.17: 即时反应 — 瞥一眼主人在看的位置
+        this.tryReactiveTrigger('mouse_stayed: 主人凝视屏幕某处')
       }),
     )
     this.unsubscribers.push(
@@ -128,8 +135,9 @@ export class AttentionScheduler {
     )
     this.unsubscribers.push(
       perception.onType('typing_burst', () => {
-        // 主人在快速打字 — 不要打扰
+        // 主人在快速打字 — 不要打扰，但偶尔耳语级一句"主人加油"
         this.decay('focus_on_screen', 0.2)
+        this.tryReactiveTrigger('typing_burst: 主人在专注打字（短耳语级鼓励，不打扰）')
       }),
     )
     this.unsubscribers.push(
@@ -137,6 +145,8 @@ export class AttentionScheduler {
         this.state.current_app = ev.app_name
         // 切应用 = 上下文变化 → 好奇度提升
         this.bump('focus_on_screen', 0.25)
+        // v0.17: 立刻好奇反应一下
+        this.tryReactiveTrigger(`app_focus_changed: 主人切到 ${ev.app_name}`)
       }),
     )
     this.unsubscribers.push(
@@ -171,6 +181,25 @@ export class AttentionScheduler {
 
   private decay(key: 'focus_on_master' | 'focus_on_screen' | 'concern_level', amount: number): void {
     this.state[key] = Math.max(0, this.state[key] - amount)
+  }
+
+  /**
+   * v0.17 — 键鼠等高频事件即时触发一次行为反应（不等 tick 定时器）。
+   * 双重节流：(1) REACTIVE_COOLDOWN_MS 25 秒，(2) min_action_interval_ms。
+   * Planner 收到 reason 后会按 system prompt 输出协同的 speak + play_group。
+   */
+  private tryReactiveTrigger(reason: string): void {
+    if (!this.config.enabled || !this.onTriggerCb) return
+    const now = Date.now()
+    if (now - this.lastReactiveAt < this.REACTIVE_COOLDOWN_MS) return
+    if (now - this.state.last_action_at < this.config.min_action_interval_ms) return
+    this.lastReactiveAt = now
+    console.log(`[scheduler] reactive: ${reason}`)
+    this.onTriggerCb({
+      should_act: true,
+      reason: `reactive(${reason})`,
+      snapshot: this.snapshot(),
+    })
   }
 
   // ============ Tick 决策 ============

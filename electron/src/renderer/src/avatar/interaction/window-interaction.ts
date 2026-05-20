@@ -43,6 +43,8 @@ export class WindowInteraction {
 
   /** 强制响应（设置面板 / 右键菜单打开时） */
   forceInteractive(on: boolean): void {
+    // v0.17：模态打开/关闭 = DOM 命中元素栈变了，缓存的 hit-test 结果立即失效
+    this.lastHitTest = null
     if (on) {
       this.currentIgnore = false
       void window.api.window.setIgnoreMouse(false)
@@ -70,9 +72,10 @@ export class WindowInteraction {
     }
     if (!pt.inside) return
     const rect = this.opts.container.getBoundingClientRect()
-    const overUi = this.isOverUiElement(pt.x, pt.y)
+    // v0.17 perf：alpha sampler 是 O(1) cheap，先短路。命中 alpha 就跳过更贵的
+    // elementsFromPoint + getComputedStyle 链。90% 桌宠场景鼠标在立绘像素上。
     const overAlpha = this.opts.sampler.hits(pt.x, pt.y, rect.width, rect.height)
-    const hit = overUi || overAlpha
+    const hit = overAlpha || this.isOverUiElement(pt.x, pt.y)
     bus.emit('avatar:mouse-inside', { inside: hit, x: pt.x, y: pt.y })
     this.applyIgnore(!hit)
   }
@@ -101,14 +104,38 @@ export class WindowInteraction {
    * 判断屏幕坐标是否落在 UI 元素上（非 canvas、非 body）。
    * 透明区点击会落到 body 或 canvas 上（这两者算「非 UI」，应当穿透）。
    */
+  /** v0.17 perf：缓存 hit-test 结果（鼠标静止时复用，避免每 50ms tick 都 elementsFromPoint） */
+  private lastHitTest: { x: number; y: number; result: boolean; t: number } | null = null
+  private static readonly HIT_CACHE_TTL_MS = 250
+
   private isOverUiElement(clientX: number, clientY: number): boolean {
-    const el = document.elementFromPoint(clientX, clientY)
-    if (!el) return false
-    if (el === document.body || el === document.documentElement) return false
-    if (el.tagName === 'CANVAS') return false
-    if (el.classList.contains('live2d-stage')) return false
-    if (el.classList.contains('root')) return false
-    return true
+    // 缓存命中：鼠标位置相同且 250ms 内重用
+    const cache = this.lastHitTest
+    if (
+      cache &&
+      Math.abs(cache.x - clientX) < 2 &&
+      Math.abs(cache.y - clientY) < 2 &&
+      Date.now() - cache.t < WindowInteraction.HIT_CACHE_TTL_MS
+    ) {
+      return cache.result
+    }
+    // v0.17：用 elementsFromPoint(复数) 拿命中栈，跳过所有 pointer-events:none 的层。
+    // 关键 — 之前 .ui-overlay-layer / .sticker-layer 等全屏透明层会被 elementFromPoint
+    // 返回，让拖动 / 穿透判定误以为"在 UI 上"立即 return。
+    const stack = document.elementsFromPoint(clientX, clientY)
+    let result = false
+    for (const el of stack) {
+      if (el === document.body || el === document.documentElement) break
+      if (el.tagName === 'CANVAS') break
+      if (el.classList.contains('live2d-stage')) break
+      if (el.classList.contains('root')) break
+      // 跳过 pointer-events:none 的透明层，继续向下找真正实质性的 UI
+      if (window.getComputedStyle(el).pointerEvents === 'none') continue
+      result = true
+      break
+    }
+    this.lastHitTest = { x: clientX, y: clientY, result, t: Date.now() }
+    return result
   }
 
   private onWindowMouseMove = (e: MouseEvent): void => {

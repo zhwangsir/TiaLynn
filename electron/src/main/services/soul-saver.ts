@@ -9,14 +9,17 @@ import { dirname, join } from 'node:path'
 import yaml from 'js-yaml'
 import type { SoulConfig } from '@shared/types'
 import { getPaths } from './paths'
+import { characterSoulDir, getActiveCharacter } from './character-store'
 
 type Mutable = Record<string, unknown>
 
-/** 把 partial avatar 写回 identity.yaml（用户数据目录优先） */
+/** 把 partial avatar 写回 identity.yaml — 必须与 loadSoul 用同一目录 */
 export function saveAvatar(avatar: Partial<SoulConfig['avatar']>): { ok: boolean; path: string; reason?: string } {
   const paths = getPaths()
-  // 用户数据目录优先，源 soulDir 是 fallback
-  const targetDir = join(paths.userDataDir, 'soul')
+  // v0.17 修复：loadSoul 优先读 active character 的 soul（characterSoulDir），
+  // 之前 saveAvatar 总是写全局 ~/.tialynn/soul/identity.yaml — 读写错位，模型切换永远不生效。
+  const active = getActiveCharacter()
+  const targetDir = active ? characterSoulDir(active.id) : join(paths.userDataDir, 'soul')
   if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true })
   const targetFile = join(targetDir, 'identity.yaml')
 

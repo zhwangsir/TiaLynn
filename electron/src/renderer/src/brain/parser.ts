@@ -94,6 +94,36 @@ function parseActionsArray(raw: unknown): BehaviorAction[] {
           duration_ms: Math.min(10000, Math.max(1000, Number(r.duration_ms ?? 3000))),
         })
         break
+      case 'play_group':
+        if (typeof r.group === 'string' && r.group.length > 0 && r.group.length < 32) {
+          out.push({
+            type: 'play_group',
+            group: r.group,
+            ...(typeof r.reason === 'string' ? { reason: r.reason } : {}),
+          })
+        }
+        break
+      case 'generate_sticker':
+        out.push({
+          type: 'generate_sticker',
+          emotion: normalizeEmotion(r.emotion),
+          ...(typeof r.extra_prompt === 'string' && r.extra_prompt.length < 200
+            ? { extra_prompt: r.extra_prompt }
+            : {}),
+          ...(typeof r.reason === 'string' ? { reason: r.reason } : {}),
+        })
+        break
+      case 'agent_task':
+        if (typeof r.goal === 'string' && r.goal.trim().length > 0 && r.goal.length < 500) {
+          out.push({
+            type: 'agent_task',
+            goal: r.goal.trim(),
+            ...(typeof r.max_steps === 'number' && r.max_steps > 0 && r.max_steps <= 30
+              ? { max_steps: r.max_steps }
+              : {}),
+          })
+        }
+        break
     }
   }
   return out

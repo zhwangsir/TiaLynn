@@ -5,20 +5,21 @@ import DialogBubble from './infra/ui/DialogBubble.vue'
 import InputBar from './infra/ui/InputBar.vue'
 import ContextMenu, { type MenuItem } from './infra/ui/ContextMenu.vue'
 import SettingsPanel from './infra/ui/SettingsPanel.vue'
-import ControlDock from './infra/ui/ControlDock.vue'
+// v0.17: ControlDock 已移除 — 功能迁到右键菜单
 import ResourceStorePanel from './infra/ui/ResourceStorePanel.vue'
 import ErrorBoundary from './infra/ui/ErrorBoundary.vue'
 import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
-import MotionFactoryPanel from './infra/ui/MotionFactoryPanel.vue'
+import CreatorStudioPanel from './infra/ui/CreatorStudioPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
-import CharacterStatusBar from './infra/ui/CharacterStatusBar.vue'
+// v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
 import SoulEditor from './infra/ui/SoulEditor.vue'
 import ModelHealthDashboard from './infra/ui/ModelHealthDashboard.vue'
 import SceneBackground from './infra/ui/SceneBackground.vue'
 import EmotionParticles from './infra/ui/EmotionParticles.vue'
+import StickerOverlay from './avatar/components/StickerOverlay.vue'
 import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
@@ -35,7 +36,7 @@ const character = useCharacterStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
-const motionFactoryOpen = ref(false)
+const creatorStudioOpen = ref(false)
 const libraryOpen = ref(false)
 const inputOpen = ref(false)
 const pinned = ref(true)
@@ -52,25 +53,42 @@ const healthDashboardOpen = ref(false)
 const passthroughEnabled = computed(
   () =>
     !settingsOpen.value &&
-    !motionFactoryOpen.value &&
+    !creatorStudioOpen.value &&
     !menuOpen.value &&
     !libraryOpen.value &&
     !onboardingOpen.value &&
     !characterPickerOpen.value &&
     !characterCreatorOpen.value &&
-    !soulEditorOpen.value,
+    !soulEditorOpen.value &&
+    !healthDashboardOpen.value &&
+    !inputOpen.value,
 )
 
 const menuItems = computed<MenuItem[]>(() => [
-  { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '打开对话', icon: iconChat, shortcut: '↵' },
-  { id: 'motion-factory', label: '🎬 动作工坊', icon: iconChat },
+  { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '💬 打开对话', icon: iconChat, shortcut: '↵' },
+  { id: 'sep0', label: '', separator: true },
+  // 角色
+  { id: 'pick-character', label: `🎭 切换角色${character.active ? ` (当前: ${character.active.name})` : ''}`, icon: iconChat },
+  { id: 'soul-editor', label: '✏️ 编辑灵魂', icon: iconChat },
+  { id: 'sep-char', label: '', separator: true },
+  // 模型与资源
   { id: 'library', label: '🎁 资源商店', icon: iconChat },
-  { id: 'settings', label: '设置', icon: iconGear },
-  { id: 'reload', label: '重载模型 / 灵魂', icon: iconReload },
-  { id: 'sep1', label: '', separator: true },
-  { id: 'pin', label: pinned.value ? '取消置顶' : '置顶', icon: iconPin },
-  { id: 'minimize', label: '收起', icon: iconMinus },
-  { id: 'sep2', label: '', separator: true },
+  { id: 'creator-studio', label: '🎨 创作工坊', icon: iconChat },
+  { id: 'health-dashboard', label: '🔬 模型健康仪表盘', icon: iconChat },
+  { id: 'reload', label: '🔄 重载模型 / 灵魂', icon: iconReload },
+  { id: 'sep-model', label: '', separator: true },
+  // 立绘缩放
+  { id: 'zoom-in', label: '🔍 放大立绘 (+)' },
+  { id: 'zoom-out', label: '🔎 缩小立绘 (−)' },
+  { id: 'zoom-reset', label: '↻ 复原大小（auto-fit）' },
+  { id: 'sep-zoom', label: '', separator: true },
+  // 设置
+  { id: 'settings', label: '⚙️ 设置', icon: iconGear },
+  { id: 'sep-sys', label: '', separator: true },
+  // 窗口
+  { id: 'pin', label: pinned.value ? '📌 取消置顶' : '📍 置顶', icon: iconPin },
+  { id: 'minimize', label: '— 收起', icon: iconMinus },
+  { id: 'sep-end', label: '', separator: true },
   { id: 'close', label: '关闭', danger: true, icon: iconX },
 ])
 
@@ -91,11 +109,38 @@ async function onMenuSelect(id: string): Promise<void> {
     case 'settings':
       settingsOpen.value = true
       break
-    case 'motion-factory':
-      motionFactoryOpen.value = true
+    case 'creator-studio':
+      creatorStudioOpen.value = true
       break
     case 'library':
       libraryOpen.value = true
+      break
+    case 'pick-character':
+      characterPickerOpen.value = true
+      break
+    case 'soul-editor':
+      soulEditorOpen.value = true
+      break
+    case 'health-dashboard':
+      healthDashboardOpen.value = true
+      break
+    case 'zoom-in':
+      bus.emit('avatar:zoom', { delta: 0.15 })
+      break
+    case 'zoom-out':
+      bus.emit('avatar:zoom', { delta: -0.15 })
+      break
+    case 'zoom-reset':
+      bus.emit('avatar:zoom', { delta: 0, reset: true })
+      break
+    case 'ui-zoom-in':
+      applyUIScale(Math.min(1.6, Math.round((uiScale.value + 0.1) * 10) / 10))
+      break
+    case 'ui-zoom-out':
+      applyUIScale(Math.max(0.7, Math.round((uiScale.value - 0.1) * 10) / 10))
+      break
+    case 'ui-zoom-reset':
+      applyUIScale(1)
       break
     case 'reload':
       await cfg.rescanModels()
@@ -126,6 +171,8 @@ let offCtxMenuFn: (() => void) | null = null
 let offSoulFn: (() => void) | null = null
 let offInstalledFn: (() => void) | null = null
 let offAttentionPlanFn: (() => void) | null = null
+let offTrayFn: (() => void) | null = null
+let offCharSwitchedFn: (() => void) | null = null
 const dragOver = ref(false)
 
 /** Plan 执行入口：从 Live2DStage 拿 renderer + container 引用 */
@@ -203,7 +250,7 @@ onMounted(async () => {
   ready.value = true
 
   // v0.14: 切角色时清空对话历史 + 重新 inject greeting
-  bus.on('character:switched', async () => {
+  const charSwitchedHandler = async (): Promise<void> => {
     await dialog.bootstrap()  // reload per-character history
     await cfg.reloadSoul()    // 新角色的灵魂
     bus.emit('ui:toast', {
@@ -211,7 +258,9 @@ onMounted(async () => {
       message: `已切换到 ${character.active?.name ?? '?'}`,
       ttl_ms: 2500,
     })
-  })
+  }
+  bus.on('character:switched', charSwitchedHandler)
+  offCharSwitchedFn = () => bus.off('character:switched', charSwitchedHandler)
 
   // v0.13 首次启动引导：LLM 未配置就弹出
   if (!cfg.config?.llm_endpoint || !cfg.config?.llm_model) {
@@ -250,13 +299,48 @@ onMounted(async () => {
     })
   }
   bus.on('brain:reply-actions', onReplyActions)
+  // v0.17 P3: tray 菜单点击 → 走 renderer 同一套 onMenuSelect 分支
+  offTrayFn = window.api.system.onTrayAction((id) => { void onMenuSelect(id) })
+
+  // v0.17 (二次)：全局 UI 缩放快捷键 Cmd/Ctrl + = / - / 0
+  //   用 transform: scale 通过 :root --ui-scale，应用在 global.css 的 panel selector 上。
+  //   不像之前 .ui-overlay-layer + zoom 那样会破坏 fixed children 事件路径。
+  const persisted = Number(localStorage.getItem('ui-scale') ?? '1') || 1
+  applyUIScale(Math.min(1.6, Math.max(0.7, persisted)))
+  window.addEventListener('keydown', onScaleKey)
 })
+
+const uiScale = ref(1)
+
+function applyUIScale(s: number): void {
+  uiScale.value = s
+  document.documentElement.style.setProperty('--ui-scale', String(s))
+  localStorage.setItem('ui-scale', String(s))
+}
+
+function onScaleKey(e: KeyboardEvent): void {
+  if (!e.metaKey && !e.ctrlKey) return
+  const cur = uiScale.value
+  if (e.key === '=' || e.key === '+') {
+    e.preventDefault()
+    applyUIScale(Math.min(1.6, Math.round((cur + 0.1) * 10) / 10))
+  } else if (e.key === '-' || e.key === '_') {
+    e.preventDefault()
+    applyUIScale(Math.max(0.7, Math.round((cur - 0.1) * 10) / 10))
+  } else if (e.key === '0') {
+    e.preventDefault()
+    applyUIScale(1)
+  }
+}
 
 onBeforeUnmount(() => {
   offCtxMenuFn?.()
   offSoulFn?.()
   offInstalledFn?.()
   offAttentionPlanFn?.()
+  offTrayFn?.()
+  offCharSwitchedFn?.()
+  window.removeEventListener('keydown', onScaleKey)
 })
 </script>
 
@@ -271,16 +355,11 @@ onBeforeUnmount(() => {
       <SceneBackground v-if="ready" />
       <Live2DStage v-if="ready" :passthrough-enabled="passthroughEnabled" />
       <EmotionParticles v-if="ready" />
-      <CharacterStatusBar v-if="ready" @open-picker="characterPickerOpen = true" />
-      <ControlDock
-        v-if="ready"
-        @open-settings="settingsOpen = true"
-        @open-picker="characterPickerOpen = true"
-        @open-soul-editor="soulEditorOpen = true"
-        @open-health-dashboard="healthDashboardOpen = true"
-        @reload-model="onReloadModelClick"
-      />
+      <!-- v0.17：桌面减法 — 移除 CharacterStatusBar 和 ControlDock
+           功能全部迁到右键菜单（menuItems）+ 系统状态栏 Tray (P3)。
+           桌面只保留：背景 / Live2D 立绘 / 情绪粒子 / 对话气泡 / 贴纸 / 输入框 -->
       <DialogBubble v-if="ready" />
+      <StickerOverlay v-if="ready" />
       <InputBar v-if="ready && inputOpen" @close="closeInput" />
       <ContextMenu
         :open="menuOpen"
@@ -291,7 +370,7 @@ onBeforeUnmount(() => {
         @close="closeMenu"
       />
       <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
-      <MotionFactoryPanel v-if="motionFactoryOpen" @close="motionFactoryOpen = false" />
+      <CreatorStudioPanel v-if="creatorStudioOpen" @close="creatorStudioOpen = false" />
       <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
       <CharacterPicker

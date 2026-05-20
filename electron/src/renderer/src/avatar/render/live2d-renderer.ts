@@ -60,14 +60,34 @@ export class Live2DRenderer {
     if (this.destroyed) throw new Error('renderer destroyed')
     const mySeq = ++this.loadSeq
 
+    console.log(`[live2d] LOAD seq=${mySeq} url=${modelUrl.slice(-120)}`)
+
     // 1. 同步清理舞台上所有旧模型（不只是 this.model —— race 时可能挂了多个）
     this.disposeAllStageModels()
+    console.log(`[live2d] LOAD seq=${mySeq} step=dispose-old-done`)
 
     // 2. 异步加载新模型
-    const model = await Live2DModel.from(modelUrl, { autoInteract: false })
+    let model: Live2DModel
+    try {
+      model = await Live2DModel.from(modelUrl, { autoInteract: false })
+    } catch (e) {
+      console.error(`[live2d] LOAD seq=${mySeq} step=FROM-FAILED`, e)
+      throw e
+    }
+    const ext = model as ExtLive2DModel
+    console.log(
+      `[live2d] LOAD seq=${mySeq} step=from-done`,
+      {
+        hasInternal: !!ext.internalModel,
+        originalW: ext.internalModel?.originalWidth,
+        originalH: ext.internalModel?.originalHeight,
+        textureCount: (model as { textures?: unknown[] }).textures?.length,
+      },
+    )
 
     // 3. 加载完成时如果不是最新请求，立即销毁这个 zombie，不挂上 stage
     if (this.destroyed || mySeq !== this.loadSeq) {
+      console.log(`[live2d] LOAD seq=${mySeq} step=STALE — discard`)
       try {
         // 同 disposeAllStageModels：不销毁 texture/baseTexture，避免污染 PIXI cache
         model.destroy({ children: true, texture: false, baseTexture: false })
@@ -81,6 +101,7 @@ export class Live2DRenderer {
     this.disposeAllStageModels()
     this.model = model
     this.app.stage.addChild(model)
+    console.log(`[live2d] LOAD seq=${mySeq} step=stage-added`)
 
     model.anchor.set(0.5, 0.5)
     // v0.9: 默认 auto-fit canvas 85%，opts.scale 当作「user hint」（1.0 = 完全 auto-fit）
@@ -187,6 +208,31 @@ export class Live2DRenderer {
   /** 嘴型 0~1 */
   setLipsync(value: number): void {
     this.lipsyncValue = clamp(value, 0, 1)
+  }
+
+  /**
+   * v0.17 B+D：触发 Live2D 模型 motion group 内的随机 motion。
+   * priority=3 (Cubism NORMAL) → 会打断 idle 但不会被新的 idle 顶掉；适合「响应情绪」一次性动作。
+   * group 不存在时静默返回 false。
+   */
+  playMotionGroup(group: string): boolean {
+    if (!this.model || !group) return false
+    try {
+      const m = this.model as ExtLive2DModel
+      const settings = m.internalModel?.settings
+      const motions: Record<string, unknown[]> =
+        settings?.motions ?? settings?.json?.FileReferences?.Motions ?? {}
+      const arr = motions[group]
+      if (!Array.isArray(arr) || arr.length === 0) return false
+      // 第二参数 undefined → pixi-live2d-display 在该 group 内 Math.random()
+      // priority=3 (NORMAL) 打断当前 idle 让动作可见
+      m.motion?.(group, undefined, 3)
+      console.log(`[live2d] playMotionGroup "${group}" (${arr.length} candidates)`)
+      return true
+    } catch (e) {
+      console.warn('[live2d] playMotionGroup failed', group, e)
+      return false
+    }
   }
 
   /**

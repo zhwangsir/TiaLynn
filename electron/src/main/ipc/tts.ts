@@ -103,11 +103,13 @@ export function registerTtsIpc(): void {
             if (cfg.tts_rate) body.rate = cfg.tts_rate
             if (cfg.tts_volume) body.volume = cfg.tts_volume
             if (cfg.tts_pitch) body.pitch = cfg.tts_pitch
+            // v0.17：从 120s 改 15s — 远程 sidecar 挂了别让用户每次等 2 分钟
+            // 合理的 RVC 合成 < 8s（含 RVC 转音色），15s 留余量
             const r = await fetch(url, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify(body),
-              signal: AbortSignal.timeout(120_000),
+              signal: AbortSignal.timeout(15_000),
             })
             if (r.ok) {
               const buf = await r.arrayBuffer()

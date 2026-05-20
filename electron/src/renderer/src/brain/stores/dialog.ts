@@ -286,6 +286,20 @@ export const useDialogStore = defineStore('dialog', () => {
       intensity: parsed.intensity,
     })
     bus.emit('brain:emotion-changed', { emotion: parsed.emotion, intensity: parsed.intensity })
+    // v0.17 D-3：fire-and-forget 抽取长期记忆（不阻塞对话流）
+    void (async (): Promise<void> => {
+      try {
+        const userTurn = [...turns.value].reverse().find((t) => t.role === 'user')
+        if (!userTurn?.text) return
+        await (window.api as unknown as { memory?: { extractFromTurn: (p: unknown) => Promise<unknown> } }).memory?.extractFromTurn({
+          user_text: userTurn.text,
+          assistant_text: assistant.text,
+          turn_id: assistant.id,
+        })
+      } catch (e) {
+        console.warn('[dialog] memory extract failed (non-fatal):', e)
+      }
+    })()
     // v0.8.2: LLM 可以在 reply 里附带 actions（瞥屏/换表情/idle），让 plan-executor 跑
     if (parsed.actions && parsed.actions.length > 0) {
       bus.emit('brain:reply-actions', { actions: parsed.actions })

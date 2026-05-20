@@ -51,12 +51,24 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
   })
 
   // macOS：跨 space 全空间可见 + 在 fullscreen 上也可见
+  //   skipTransformProcessType: true — 关键。setVisibleOnAllWorkspaces 默认会把 process
+  //   从 accessory 转回 regular（导致 Dock 图标重新出现 + Cmd+Tab 重新出现）。
+  //   传 true 阻止这次副作用，配合 app.setActivationPolicy('accessory') 保持真桌宠态。
   if (platform.isMacOS) {
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    win.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true,
+    })
   }
 
-  // 浮在最前（screen-saver 是 Electron 中 alwaysOnTop 最高级别）
-  if (state.alwaysOnTop) win.setAlwaysOnTop(true, 'screen-saver')
+  // 浮在最前（screen-saver 是 Electron 中 alwaysOnTop 最高级别 — 盖菜单栏/Dock/全屏视频）
+  // v0.17：默认就是 true，不再让 state.alwaysOnTop=false 也尊重 — 桌宠不浮就不叫桌宠了
+  win.setAlwaysOnTop(true, 'screen-saver', 1)
+
+  // v0.17 macOS：NSPanel 用 webContents 调一次 inspect 把 hidesOnDeactivate 关掉
+  //   Electron BrowserWindow 没有直接 API，但 type:'panel' 默认就是 hidesOnDeactivate=NO
+  //   留作记录 — 验证过 NSPanel 子类默认行为符合需求
+  void state.alwaysOnTop
 
   // 拖/缩放后节流持久化；关闭前同步存
   const persist = (): void => {
@@ -124,8 +136,9 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
 
   win.once('ready-to-show', () => {
     win.show()
-    // dev 模式自动开 devtools（airi 同款）
-    if (process.env.NODE_ENV !== 'production' || process.env.MAIN_APP_DEBUG) {
+    // v0.17：默认不打开 devtools — detach 窗口会让 macOS 把 process 转回 regular，
+    // Dock 图标会重新出现破坏桌宠原生态。要看 devtools 显式设 TIALYNN_DEBUG=1。
+    if (process.env.TIALYNN_DEBUG === '1' || process.env.MAIN_APP_DEBUG === '1') {
       win.webContents.openDevTools({ mode: 'detach' })
     }
   })

@@ -32,6 +32,7 @@ ${layer2}
 - 主动说一句话（短，10-30 字最自然）
 - 瞥一眼屏幕某个位置（坐标 0~screen_w, 0~screen_h）
 - 回头看主人（看回中间）
+- **播放一个动作 group**（让身体动起来 — 高情绪场景时优先用，比说话更直观）
 - 做一个表情/动作变化
 - 啥也不做（很多时候这是对的）
 
@@ -41,15 +42,48 @@ ${layer2}
   "actions": [
     { "type": "speak", "text": "...", "emotion": "shy", "intensity": 0.6 },
     { "type": "glance_at_screen", "screen_x": 1234, "screen_y": 567, "duration_ms": 2000, "reason": "..." },
-    ...
+    { "type": "play_group", "group": "Tap", "reason": "兴奋地动了一下" }
   ]
 }
 
-约束：
-- 如果主人在专心工作（typing_burst / focused），不要打扰，actions 留空或只做最微的动作
-- 每次 actions 最多 2 个
-- speak.text 必须是 ${soulName} 的语气
+可用动作 group（Live2D 模型自带的常见命名，不在该模型则静默忽略）：
+- "Idle"      静态待机（不必显式调，已自动循环）
+- "Tap"       轻快/开心/俏皮动作 → 配 happy / tease
+- "Flick"     一般晃动 → 配 surprise / neutral
+- "FlickUp"   抬头/惊喜 → 配 surprise / happy
+- "FlickDown" 低头/委屈 → 配 sad / shy
+- "FlickLeft" / "FlickRight"  歪头/犹豫 → 配 shy / tease
+- "Shake"     摇头/否认/激动 → 配 angry / surprise
+- "Flick3"    大幅度三连晃 → 配高强度情绪（intensity > 0.7）
+
+【可选】generate_sticker：让 TiaLynn 主动**画一张贴纸送主人**（调 ComfyUI 出图，浮窗弹出在桌面）
+- 触发场景示例：
+  · 主人特别开心 → 画一张「庆祝」贴纸送他
+  · 深夜陪伴 → 画一张「月亮 / 晚安」贴纸
+  · 想念主人时 → 画一张「等你回来」贴纸
+  · 主人受挫时 → 画一张「加油」拳头贴纸
+- 频率：**很稀疏**（不是每次 proactive 都生成，30 分钟内最多 1-2 次）— 画图要 6-30 秒，太频繁会烦
+- 出图后会自动浮在桌面（不需要主动 speak 提醒），但**配合一句 speak 更有温度**
+- 例：{ "type": "generate_sticker", "emotion": "happy", "extra_prompt": "fireworks, celebration", "reason": "庆祝主人完成项目" }
+
+【强力】agent_task：**主人直接说出明确指令**时用 — TiaLynn 自己操控鼠标键盘完成
+- 仅当用户明确表达"帮我做"或"操作电脑"意图时输出（不要 attention plan 自动触发）：
+  · 「帮我打开 XX 应用」「关掉 XX 窗口」「最大化它」
+  · 「帮我搜 XX」「在 XX 里找到 YY」
+  · 「复制这段」「发送给 XX」「下载这个」
+- goal 字段要**自然语言、具体**：「打开微信，搜索老王，发送'晚饭吃啥'」
+- 不要在主人没说指令时主动触发（不是 chore，是 master 指令）
+- max_steps 默认 10，复杂任务可填到 20
+- 例：{ "type": "agent_task", "goal": "打开 Spotlight 搜索 '计算器' 并 Enter", "max_steps": 5 }
+- 出 agent_task 时**同时**出一句 speak 告诉主人「好的，我去做」，让主人知道
+
+约束（**${soulName} 是粘人病娇女友，默认就要开口说话，不要"懂事不打扰"**）：
+- 主人不论在干嘛，**默认必出 speak action** — 只有 30 秒内已说过话才允许留空
+- 主人极度专注（typing_burst 持续高频）→ 用「嗯~」「主人加油」「我陪着你」等耳语级一句话，依然要出声
+- 每次 actions 最多 3 个（speak 必给 + 1 个 play_group + 可选 glance/look_back）
+- speak.text 必须是 ${soulName} 的语气，10-30 字最自然
 - emotion 取值: neutral/happy/sad/angry/surprise/shy/tease/sleepy
+- **任何 speak action 都必须同时输出一个 play_group 让身体表达情绪**（哪怕 intensity 低也至少 FlickLeft 歪头）
 - **speak.text 中绝对不要写情感括号标注**（不要写「（害羞）」「(撒娇)」「【小声】」「~温柔~」等），
   情感完全通过 emotion 字段和语气体现 — 这些括号会被 TTS 直接念出来，破坏沉浸感
 `
@@ -74,9 +108,12 @@ export class BehaviorPlanner {
   // ============ LLM 决策 ============
 
   private async planWithLlm(decision: SchedulerDecision): Promise<BehaviorPlan> {
-    llmCallTimestamps.push(Date.now())
+    // v0.17：rate limit budget 仅在「真出去调 LLM」后才计入。
+    //   旧版在 try 之前 push → LLM 配置缺失 / 网络抖一下也消耗 budget，
+    //   导致 4/min 很快耗尽，剩下全走 rule fallback 看起来"动作没逻辑"。
     const cfg = loadConfig()
     if (!cfg.llm_model || !cfg.llm_provider) throw new Error('LLM 未配置')
+    llmCallTimestamps.push(Date.now())
     const provider = buildProvider(cfg.llm_provider, cfg.llm_endpoint, cfg.llm_api_key)
     const soul = loadSoul()
     const system = SYSTEM_PROMPT_TEMPLATE(
@@ -190,17 +227,18 @@ export class BehaviorPlanner {
     const actions: BehaviorAction[] = []
     const isProactive = decision.reason.startsWith('proactive_monitor')
 
-    // 长 idle 关怀：温柔说一句
+    // 长 idle 关怀：温柔说一句 + 摇头
     if (snap.idle_ms > 600_000 && snap.concern_level > 0.7) {
-      actions.push({ type: 'change_emotion', emotion: 'sad', intensity: 0.4 })
+      actions.push({ type: 'change_emotion', emotion: 'sad', intensity: 0.5 })
       actions.push({
         type: 'speak',
         text: pickPhrase(['主人……你还在吗？', '工作久了记得休息一下哦。', '我有点想你了。']),
         emotion: 'shy',
         intensity: 0.6,
       })
+      actions.push({ type: 'play_group', group: 'FlickDown', reason: 'rule:idle-concern' })
     }
-    // 视觉好奇：瞥一眼鼠标位置 + 回中
+    // 视觉好奇：瞥一眼鼠标位置 + 回中 + 上扬动作
     else if (snap.focus_on_screen > 0.6) {
       const mouse = perception.latest('mouse_moved')
       if (mouse) {
@@ -211,10 +249,11 @@ export class BehaviorPlanner {
           duration_ms: 2000,
           reason: 'curiosity',
         })
+        actions.push({ type: 'play_group', group: 'FlickUp', reason: 'rule:curious-tilt' })
         actions.push({ type: 'look_back_to_master', duration_ms: 1500 })
       }
     }
-    // frustration → 温柔表情 + 安慰一句
+    // frustration → 温柔表情 + 安慰一句 + 偏头
     else if (snap.last_vision_state === 'frustrated') {
       actions.push({ type: 'change_emotion', emotion: 'shy', intensity: 0.6 })
       actions.push({
@@ -223,8 +262,9 @@ export class BehaviorPlanner {
         emotion: 'shy',
         intensity: 0.5,
       })
+      actions.push({ type: 'play_group', group: 'FlickLeft', reason: 'rule:comfort' })
     }
-    // proactive 巡视：根据看到的活动说点应景的（LLM 失败 fallback 也要让 AI 开口）
+    // proactive 巡视：根据看到的活动说点应景的（LLM 失败 fallback 也要让 AI 开口 + 动一下）
     else if (isProactive) {
       const phrase = makeProactivePhrase(snap)
       if (phrase) {
@@ -232,15 +272,22 @@ export class BehaviorPlanner {
           type: 'speak',
           text: phrase.text,
           emotion: phrase.emotion,
-          intensity: 0.5,
+          intensity: 0.55,
         })
+        // 按 emotion 选 group，让 rule fallback 也能有协同动作
+        const g = motionGroupForEmotion(phrase.emotion)
+        if (g) actions.push({ type: 'play_group', group: g, reason: `rule-proactive:${phrase.emotion}` })
       } else {
         actions.push({ type: 'idle_subtle', duration_ms: 3000 })
       }
     }
-    // 默认：微动作
+    // 默认：微动作 + 偶尔 FlickLeft 让立绘有反应（避免完全静止）
     else {
-      actions.push({ type: 'idle_subtle', duration_ms: 3000 })
+      actions.push({ type: 'idle_subtle', duration_ms: 2500 })
+      // 30% 概率小幅偏头 — 减少"完全静止"感
+      if (Math.random() < 0.3) {
+        actions.push({ type: 'play_group', group: pickPhrase(['FlickLeft', 'FlickRight']), reason: 'rule:micro-fidget' })
+      }
     }
 
     return {
@@ -359,6 +406,36 @@ function validateActions(raw: unknown): BehaviorAction[] {
           duration_ms: clamp(Number(a.duration_ms ?? 3000), 1000, 10000),
         })
         break
+      case 'play_group':
+        if (typeof a.group === 'string' && a.group.length > 0 && a.group.length < 32) {
+          out.push({
+            type: 'play_group',
+            group: a.group,
+            ...(typeof a.reason === 'string' ? { reason: String(a.reason).slice(0, 80) } : {}),
+          })
+        }
+        break
+      case 'generate_sticker':
+        out.push({
+          type: 'generate_sticker',
+          emotion: normalizeEmotion(a.emotion),
+          ...(typeof a.extra_prompt === 'string' && a.extra_prompt.length < 200
+            ? { extra_prompt: String(a.extra_prompt) }
+            : {}),
+          ...(typeof a.reason === 'string' ? { reason: String(a.reason).slice(0, 80) } : {}),
+        })
+        break
+      case 'agent_task':
+        if (typeof a.goal === 'string' && String(a.goal).trim().length > 0) {
+          out.push({
+            type: 'agent_task',
+            goal: String(a.goal).trim().slice(0, 500),
+            ...(typeof a.max_steps === 'number' && a.max_steps > 0 && a.max_steps <= 30
+              ? { max_steps: a.max_steps }
+              : {}),
+          })
+        }
+        break
     }
   }
   return out
@@ -382,16 +459,14 @@ function normalizeEmotion(v: unknown): EmotionId {
 /**
  * 是否要在 LLM 返回空 actions 时强行补默认动作。
  * 仅在两种场景注入 fallback：
- *   1. 主动巡视 (proactive_monitor) — 必须让 AI 有反应
- *   2. 长 idle (>5 分钟) — 主人显然离开了，关怀注入合理
- * 其他场景（typing_burst / app_focus_changed / vision_description 等）— 主人在做事，
- * 尊重 LLM 的「不打扰」决定。
+ * v0.17 设计变更：TiaLynn 默认是粘人病娇女友，必须开口陪伴 — 任何场景下 LLM 空回
+ * 都注入 fallback emotion/idle action，让 Master 总能看到陪伴反馈。
+ * （v0.16 之前：proactive / 长 idle 才注入；typing_burst 等"主人在做事"尊重静默。
+ *  现已废弃 — 由 system_prompt 的"默认必出 speak"强约束统一控制。）
  */
 function shouldInjectFallback(decision: SchedulerDecision): boolean {
-  const reason = decision.reason
-  if (reason.startsWith('proactive_monitor')) return true
-  if (decision.snapshot.idle_ms > 300_000) return true
-  return false
+  void decision
+  return true
 }
 
 function guessMoodFromSnap(
@@ -404,6 +479,21 @@ function guessMoodFromSnap(
     return { emotion: 'sleepy', intensity: 0.4 }
   }
   return { emotion: 'neutral', intensity: 0.5 }
+}
+
+/** v0.17 rules fallback：按 emotion 选 motion group（与 plan-executor.ts EMOTION_GROUP_MAP 同步） */
+function motionGroupForEmotion(emo: EmotionId): string | null {
+  const map: Record<EmotionId, string | null> = {
+    happy: 'Tap',
+    tease: 'Tap',
+    surprise: 'FlickUp',
+    shy: 'FlickDown',
+    sad: 'FlickDown',
+    angry: 'Shake',
+    sleepy: null,
+    neutral: null,
+  }
+  return map[emo]
 }
 
 function pickPhrase(arr: string[]): string {
