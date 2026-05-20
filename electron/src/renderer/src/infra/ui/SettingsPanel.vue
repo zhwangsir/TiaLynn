@@ -7,6 +7,7 @@ import FloatingPanel from './FloatingPanel.vue'
 import RvcSettingsSection from './settings/RvcSettingsSection.vue'
 import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import EvalRunner from './EvalRunner.vue'
+import EmotionalDebugPanel from './EmotionalDebugPanel.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -814,6 +815,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       <!-- P3 UI: 角色一致性测试 — 50 题 5-25 分钟 -->
       <EvalRunner />
+
+      <!-- P3 UI: 情感状态 debug (J 可视化) -->
+      <EmotionalDebugPanel />
 
       </div>
 
