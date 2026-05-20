@@ -117,7 +117,7 @@ async function pickAndUpload(target: 'i2i' | 'i2v'): Promise<void> {
       return
     }
     progressMsg.value = ''
-    const preview = `file://${r.localCachePath}`
+    const preview = `tialynn-asset://${r.localCachePath}`
     if (target === 'i2i') {
       i2iForm.value.inputImage = r.comfyName
       i2iForm.value.inputImagePreview = preview
@@ -204,7 +204,7 @@ async function refreshHistory(): Promise<void> {
 }
 const historyFiltered = computed(() => history.value)
 
-function fileUrl(p: string): string { return `file://${encodeURI(p)}` }
+function fileUrl(p: string): string { return `tialynn-asset://${encodeURI(p)}` }
 function isVideo(p: string): boolean { return /\.(mp4|mov|webm|webp)$/i.test(p) }
 function formatSize(n: number): string {
   if (n < 1024) return `${n} B`

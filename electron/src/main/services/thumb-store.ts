@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPaths } from './paths'
+import { toAssetUrl } from './asset-protocol'
 
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 天过期重生成
 const MAX_SIZE_BYTES = 500 * 1024 // 500KB 上限（webp 通常 < 50KB）
@@ -58,7 +59,7 @@ export function getThumb(characterId: string): ThumbInfo {
   }
   return {
     exists: true,
-    url: `file://${webp.replace(/\\/g, '/')}`,
+    url: toAssetUrl(webp),
     size_bytes: st.size,
     age_ms: age,
   }
@@ -148,7 +149,7 @@ export function getThumbBatch(characterIds: string[]): Record<string, ThumbInfo>
     const webpPath = join(dir, `${id}.webp`)
     result[cid] = {
       exists: true,
-      url: `file://${webpPath.replace(/\\/g, '/')}`,
+      url: toAssetUrl(webpPath),
       size_bytes: entry.size,
       age_ms: age,
     }

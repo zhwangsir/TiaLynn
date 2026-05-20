@@ -61,6 +61,11 @@ import { loadConfig } from './services/config-store'
 import { close as closeHistoryDb, pruneOlderThan } from './services/history-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
 import { initializeLogger } from './services/logger'
+import { registerAssetSchemePrivileges, registerAssetProtocol } from './services/asset-protocol'
+
+// H1 (audit): tialynn-asset:// 必须在 app.whenReady 之前注册 scheme privileges
+//   privileges 注册时机硬性约束。注册 handler 留到 whenReady 后
+registerAssetSchemePrivileges()
 
 // macOS 透明窗口需要硬件加速正确工作
 app.commandLine.appendSwitch('enable-features', 'Metal')
@@ -114,6 +119,9 @@ app.whenReady().then(() => {
 
   // 提前确保数据目录存在
   getPaths()
+
+  // H1: 注册 tialynn-asset:// handler — 替代 file:// 跨目录加载，allowing webSecurity:true
+  registerAssetProtocol()
 
   // v0.13: 初始化 electron-log，接管 console.* → 写文件到 ~/.tialynn/logs/main.log
   initializeLogger()

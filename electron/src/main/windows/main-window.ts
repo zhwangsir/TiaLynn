@@ -38,13 +38,8 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      // v0.13 安全说明 (audit Security CRITICAL C1):
-      // webSecurity:false 让 file:// 跨目录 fetch (Live2D 1389 模型横跨 models-library
-      // 各子目录) 不被 SOP 拦。彻底安全做法是 protocol.handle('tialynn-asset', ...)
-      // 注册自定义协议 + 改 model-scanner toFileUrl，需要专门 PR。
-      // 当前 mitigation: 加 setWindowOpenHandler + will-navigate + CSP (见下面)
-      // 三道 defense-in-depth 阻止 XSS 实质危害，即使 SOP 失效。
-      webSecurity: false,
+      // H1 (audit): webSecurity 现在保持默认 true — 所有跨目录资源走 tialynn-asset://
+      // protocol handler (registerAssetProtocol)，handler 内部做路径白名单校验
       backgroundThrottling: false,
     },
     ...transparentWindowConfig(),
@@ -100,31 +95,38 @@ export function createMainWindow(opts: MainWindowOpts): BrowserWindow {
     return { action: 'deny' }
   })
 
-  // 2. 阻止 renderer 跳到非本地 URL（renderer 始终在 file:// 或 vite localhost）
+  // 2. 阻止 renderer 跳到非本地 URL（renderer 始终在 file:// 或 vite localhost 或 tialynn-asset://）
   win.webContents.on('will-navigate', (event, url) => {
-    const isLocal = url.startsWith('file://') || url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:')
+    const isLocal =
+      url.startsWith('file://') ||
+      url.startsWith('tialynn-asset://') ||
+      url.startsWith('http://localhost:') ||
+      url.startsWith('http://127.0.0.1:')
     if (!isLocal) {
       event.preventDefault()
       if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
     }
   })
 
-  // 3. 注入 CSP header — 限制 script/connect/img 来源，即使 SOP 失效也阻止外部加载
-  // 对所有 file:// + vite localhost 响应注入。pixi 用 eval 所以 script-src 含 unsafe-eval。
-  // connect-src 允许 https + ws (vite hmr)；img/font 允许 data: + file:
+  // 3. 注入 CSP header — H1 修紧后：
+  //    - 删 script-src 'unsafe-inline' （index.html 无 inline script，仅 src 引用）
+  //    - 保留 'unsafe-eval' （PIXI 内部用 eval，删了直接挂）
+  //    - 保留 style-src 'unsafe-inline' （index.html 有 <style> 块 + Vue scoped style）
+  //    - 所有 src 加 tialynn-asset: 让自定义协议资源能加载
+  //    - 仍然允许 file: 因为 vite/electron 主页面用 file:// 加载
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           [
-            "default-src 'self' file: blob: data:",
-            "script-src 'self' file: 'unsafe-eval' 'unsafe-inline' blob:",
+            "default-src 'self' file: tialynn-asset: blob: data:",
+            "script-src 'self' file: 'unsafe-eval' blob:",
             "style-src 'self' file: 'unsafe-inline'",
-            "img-src 'self' file: data: blob: https:",
-            "media-src 'self' file: blob: data:",
+            "img-src 'self' file: tialynn-asset: data: blob: https:",
+            "media-src 'self' file: tialynn-asset: blob: data:",
             "font-src 'self' file: data:",
-            "connect-src 'self' file: data: blob: https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+            "connect-src 'self' file: tialynn-asset: data: blob: https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
             "frame-src 'none'",
             "object-src 'none'",
             "base-uri 'self'",

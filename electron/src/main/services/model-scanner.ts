@@ -539,7 +539,12 @@ function walk(
   }
 }
 
+/**
+ * H1 (audit): 生成 tialynn-asset:// URL（不再是 file://）— renderer 通过自定义协议加载，
+ * webSecurity: true 仍能跨目录访问 + CSP 严格生效。
+ * 保留函数名 toFileUrl 不改 callers，但 scheme 变了。
+ */
 export function toFileUrl(absolute: string): string {
   const normalized = absolute.split(sep).map(encodeURIComponent).join('/')
-  return `file:///${normalized.replace(/^\//, '')}`
+  return `tialynn-asset:///${normalized.replace(/^\//, '')}`
 }

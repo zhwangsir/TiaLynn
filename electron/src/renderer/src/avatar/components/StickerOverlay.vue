@@ -59,7 +59,8 @@ function isVideoPath(p: string): boolean {
 }
 
 function fileUrl(p: string): string {
-  return `file://${encodeURI(p)}`
+  // H1: 走自定义协议 tialynn-asset://，main 端 handler 校验路径白名单
+  return `tialynn-asset://${encodeURI(p)}`
 }
 
 function spawnPosition(): { x: number; y: number } {
