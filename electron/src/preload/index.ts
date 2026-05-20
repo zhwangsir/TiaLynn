@@ -105,6 +105,46 @@ import {
   onlineListAssets,
   onlineListRecommended,
 } from '@shared/channels/online'
+import {
+  libraryApply,
+  libraryGet,
+  libraryList,
+  libraryReload,
+  librarySummary,
+  motionGenerate,
+  motionIntrospect,
+  motionSummarize,
+  motionWrite,
+} from '@shared/channels/motion-factory'
+import {
+  cursorPollStart,
+  cursorPollStop,
+  windowClose,
+  windowGetBounds,
+  windowMinimize,
+  windowSetBounds,
+  windowSetIgnoreMouse,
+  windowStartDrag,
+  windowTogglePin,
+} from '@shared/channels/window-control'
+import {
+  agentClick,
+  agentClickAndType,
+  agentCursorPos,
+  agentDoubleClick,
+  agentDrag,
+  agentFind,
+  agentFindAndClick,
+  agentHalt,
+  agentIsHalted,
+  agentKey,
+  agentMove,
+  agentRunTask,
+  agentScreenSize,
+  agentScreenshot,
+  agentScroll,
+  agentType,
+} from '@shared/channels/automation'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -191,20 +231,19 @@ const api: TialynnApi = {
     },
   },
   window: {
-    startDrag: () => invoke('window:start-drag') as Promise<{ ok: boolean; reason?: string }>,
+    startDrag: () => invokeChannel(windowStartDrag, undefined as never),
     softDrag: (x: number, y: number): void => send('window:soft-drag', { x, y }),
     setIgnoreMouse: (ignore: boolean, forward = true) =>
-      invoke('window:set-ignore-mouse', { ignore, forward }) as Promise<{ ok: boolean }>,
-    getBounds: () => invoke('window:get-bounds') as Promise<Electron.Rectangle | null>,
-    setBounds: (b: Partial<Electron.Rectangle>) =>
-      invoke('window:set-bounds', b) as Promise<{ ok: boolean }>,
-    close: () => invoke('window:close') as Promise<void>,
-    minimize: () => invoke('window:minimize') as Promise<void>,
-    togglePin: (pin: boolean) => invoke('window:toggle-pin', pin) as Promise<void>,
+      invokeChannel(windowSetIgnoreMouse, { ignore, forward }),
+    getBounds: () => invokeChannel(windowGetBounds, undefined as never),
+    setBounds: (b: Partial<Electron.Rectangle>) => invokeChannel(windowSetBounds, b),
+    close: () => invokeChannel(windowClose, undefined as never),
+    minimize: () => invokeChannel(windowMinimize, undefined as never),
+    togglePin: (pin: boolean) => invokeChannel(windowTogglePin, pin),
   },
   cursor: {
-    pollStart: () => invoke('cursor:poll-start') as Promise<void>,
-    pollStop: () => invoke('cursor:poll-stop') as Promise<void>,
+    pollStart: () => invokeChannel(cursorPollStart, undefined as never),
+    pollStop: () => invokeChannel(cursorPollStop, undefined as never),
     onTick: (cb: (pt: { x: number; y: number; inside: boolean }) => void): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,
@@ -387,16 +426,12 @@ const api: TialynnApi = {
     clear: () => invoke('history:clear') as Promise<{ deleted: number }>,
   },
   motion: {
-    summarize: (modelDir: string) =>
-      invoke('motion:summarize', modelDir) as ReturnType<TialynnApi['motion']['summarize']>,
-    introspect: (modelDir: string) =>
-      invoke('motion:introspect', modelDir) as ReturnType<TialynnApi['motion']['introspect']>,
+    summarize: (modelDir: string) => invokeChannel(motionSummarize, modelDir),
+    introspect: (modelDir: string) => invokeChannel(motionIntrospect, modelDir),
     introspectDebug: (modelDir: string) =>
       invoke('motion:introspect-debug', modelDir) as Promise<string>,
-    generate: (payload) =>
-      invoke('motion:generate', payload) as ReturnType<TialynnApi['motion']['generate']>,
-    write: (payload) =>
-      invoke('motion:write', payload) as ReturnType<TialynnApi['motion']['write']>,
+    generate: (payload) => invokeChannel(motionGenerate, payload),
+    write: (payload) => invokeChannel(motionWrite, payload),
     onWritten: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,
@@ -407,13 +442,11 @@ const api: TialynnApi = {
     },
   },
   library: {
-    summary: () => invoke('library:summary') as ReturnType<TialynnApi['library']['summary']>,
-    list: () => invoke('library:list') as ReturnType<TialynnApi['library']['list']>,
-    get: (id: string) =>
-      invoke('library:get', id) as ReturnType<TialynnApi['library']['get']>,
-    reload: () => invoke('library:reload') as ReturnType<TialynnApi['library']['reload']>,
-    apply: (payload) =>
-      invoke('library:apply', payload) as ReturnType<TialynnApi['library']['apply']>,
+    summary: () => invokeChannel(librarySummary, undefined as never),
+    list: () => invokeChannel(libraryList, undefined as never),
+    get: (id: string) => invokeChannel(libraryGet, id),
+    reload: () => invokeChannel(libraryReload, undefined as never),
+    apply: (payload) => invokeChannel(libraryApply, payload),
   },
   attention: {
     getConfig: () => invokeChannel(attentionGetConfig, undefined as never),
@@ -554,23 +587,22 @@ const api: TialynnApi = {
     callTool: (payload) => invokeChannel(mcpCallTool, payload),
   },
   agent: {
-    halt: (on) => invoke('agent:halt', on) as ReturnType<TialynnApi['agent']['halt']>,
-    isHalted: () => invoke('agent:is-halted') as ReturnType<TialynnApi['agent']['isHalted']>,
-    cursorPos: () => invoke('agent:cursor-pos') as ReturnType<TialynnApi['agent']['cursorPos']>,
-    screenSize: () => invoke('agent:screen-size') as ReturnType<TialynnApi['agent']['screenSize']>,
-    move: (p) => invoke('agent:move', p) as ReturnType<TialynnApi['agent']['move']>,
-    click: (p) => invoke('agent:click', p) as ReturnType<TialynnApi['agent']['click']>,
-    doubleClick: (p) => invoke('agent:double-click', p) as ReturnType<TialynnApi['agent']['doubleClick']>,
-    scroll: (p) => invoke('agent:scroll', p) as ReturnType<TialynnApi['agent']['scroll']>,
-    drag: (p) => invoke('agent:drag', p) as ReturnType<TialynnApi['agent']['drag']>,
-    type: (p) => invoke('agent:type', p) as ReturnType<TialynnApi['agent']['type']>,
-    key: (p) => invoke('agent:key', p) as ReturnType<TialynnApi['agent']['key']>,
-    clickAndType: (p) => invoke('agent:click-and-type', p) as ReturnType<TialynnApi['agent']['clickAndType']>,
-    screenshot: (region) =>
-      invoke('agent:screenshot', region) as ReturnType<TialynnApi['agent']['screenshot']>,
-    find: (p) => invoke('agent:find', p) as ReturnType<TialynnApi['agent']['find']>,
-    findAndClick: (p) => invoke('agent:find-and-click', p) as ReturnType<TialynnApi['agent']['findAndClick']>,
-    runTask: (p) => invoke('agent:run-task', p) as ReturnType<TialynnApi['agent']['runTask']>,
+    halt: (on) => invokeChannel(agentHalt, on),
+    isHalted: () => invokeChannel(agentIsHalted, undefined as never),
+    cursorPos: () => invokeChannel(agentCursorPos, undefined as never),
+    screenSize: () => invokeChannel(agentScreenSize, undefined as never),
+    move: (p) => invokeChannel(agentMove, p),
+    click: (p) => invokeChannel(agentClick, p),
+    doubleClick: (p) => invokeChannel(agentDoubleClick, p),
+    scroll: (p) => invokeChannel(agentScroll, p),
+    drag: (p) => invokeChannel(agentDrag, p),
+    type: (p) => invokeChannel(agentType, p),
+    key: (p) => invokeChannel(agentKey, p),
+    clickAndType: (p) => invokeChannel(agentClickAndType, p),
+    screenshot: (region) => invokeChannel(agentScreenshot, region),
+    find: (p) => invokeChannel(agentFind, p),
+    findAndClick: (p) => invokeChannel(agentFindAndClick, p),
+    runTask: (p) => invokeChannel(agentRunTask, p),
     onStep: (cb): (() => void) => {
       const handler = (
         _e: Electron.IpcRendererEvent,

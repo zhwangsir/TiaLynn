@@ -774,10 +774,10 @@ export interface TialynnApi {
 
   /** v0.17 E：Agent 自动化 — TiaLynn 操控鼠标 / 键盘 / 截屏 */
   agent: {
-    halt(on: boolean): Promise<{ halted: boolean }>
-    isHalted(): Promise<{ halted: boolean }>
-    cursorPos(): Promise<{ x: number; y: number }>
-    screenSize(): Promise<{ width: number; height: number }>
+    halt(on: boolean): Promise<{ halted: boolean } | { ok: false; error: string }>
+    isHalted(): Promise<{ halted: boolean } | { ok: false; error: string }>
+    cursorPos(): Promise<{ x: number; y: number } | { ok: false; error: string }>
+    screenSize(): Promise<{ width: number; height: number } | { ok: false; error: string }>
     move(p: { x: number; y: number; duration_ms?: number }): Promise<{ ok: boolean; error?: string }>
     click(p: { x: number; y: number; button?: 'left' | 'right' | 'middle' }): Promise<{ ok: boolean; error?: string }>
     doubleClick(p: { x: number; y: number }): Promise<{ ok: boolean; error?: string }>

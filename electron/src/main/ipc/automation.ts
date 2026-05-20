@@ -1,16 +1,33 @@
 /**
- * Agent 自动化 IPC handlers — TiaLynn 操控鼠标 / 键盘 / 截屏
+ * Agent 自动化 IPC handlers — type-safe channels (Phase 1 G).
  *
- * 审计 C2：
+ * 审计 C2 保留：
  * - agent:run-task 整个 task 一次性审批（goal 显示给用户确认）
- * - 其他 agent:* 原语（click/type/key 等）只允许主窗口 sender 调（webview/子窗口拒绝）
- * - 原语本意是 agent-loop 内部 service 调用，renderer 直调路径用 sender 校验防 XSS 利用
+ * - 其他 agent:* 原语 (click/type/key 等) 只允许主窗口 sender 调（webview/子窗口拒绝）
  */
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
+import {
+  agentClick,
+  agentClickAndType,
+  agentCursorPos,
+  agentDoubleClick,
+  agentDrag,
+  agentFind,
+  agentFindAndClick,
+  agentHalt,
+  agentIsHalted,
+  agentKey,
+  agentMove,
+  agentRunTask,
+  agentScreenSize,
+  agentScreenshot,
+  agentScroll,
+  agentType,
+} from '@shared/channels/automation'
 import * as auto from '../services/automation'
-import { findOnScreen, findAndClick } from '../services/automation/vision-grounding'
+import { findAndClick, findOnScreen } from '../services/automation/vision-grounding'
 import { runAgentTask, type AgentStep } from '../services/automation/agent-loop'
-import type { BrowserWindow } from 'electron'
+import { handleInvoke } from './channel-helpers'
 import { requestAgentTaskApproval } from './tools'
 
 export function registerAutomationIpc(getWindow?: () => BrowserWindow | null): void {
@@ -22,97 +39,78 @@ export function registerAutomationIpc(getWindow?: () => BrowserWindow | null): v
   }
   const REJECT_SENDER = { ok: false as const, error: 'untrusted sender (sender check failed)' }
 
-  ipcMain.handle('agent:halt', (evt, on: boolean) => {
+  /** action 类原语统一: sender check + try/catch */
+  async function runPrim(
+    evt: IpcMainInvokeEvent,
+    fn: () => Promise<void> | void,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!checkSender(evt)) return REJECT_SENDER
+    try {
+      await fn()
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  }
+
+  handleInvoke(agentHalt, (on, evt) => {
     if (!checkSender(evt)) return REJECT_SENDER
     auto.setHalted(on)
     return { halted: auto.isHalted() }
   })
-  ipcMain.handle('agent:is-halted', (evt) => {
+  handleInvoke(agentIsHalted, (_p, evt) => {
     if (!checkSender(evt)) return REJECT_SENDER
     return { halted: auto.isHalted() }
   })
 
   // 只读 IPC（cursor-pos / screen-size）也加 sender check 防 fingerprint
-  ipcMain.handle('agent:cursor-pos', async (evt) => {
+  handleInvoke(agentCursorPos, (_p, evt) => {
     if (!checkSender(evt)) return REJECT_SENDER
     return auto.getCursorPosition()
   })
-  ipcMain.handle('agent:screen-size', async (evt) => {
+  handleInvoke(agentScreenSize, (_p, evt) => {
     if (!checkSender(evt)) return REJECT_SENDER
     return auto.screenSize()
   })
 
-  ipcMain.handle('agent:move', async (evt, p: { x: number; y: number; duration_ms?: number }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.move(p.x, p.y, p.duration_ms); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
+  handleInvoke(agentMove, (p, evt) => runPrim(evt, () => auto.move(p.x, p.y, p.duration_ms)))
+  handleInvoke(agentClick, (p, evt) => runPrim(evt, () => auto.click(p.x, p.y, p.button)))
+  handleInvoke(agentDoubleClick, (p, evt) => runPrim(evt, () => auto.doubleClick(p.x, p.y)))
+  handleInvoke(agentScroll, (p, evt) => runPrim(evt, () => auto.scroll(p.dy, p.dx)))
+  handleInvoke(agentDrag, (p, evt) =>
+    runPrim(evt, () => auto.drag(p.from_x, p.from_y, p.to_x, p.to_y)),
+  )
+  handleInvoke(agentType, (p, evt) => runPrim(evt, () => auto.type(p.text)))
+  handleInvoke(agentKey, (p, evt) => runPrim(evt, () => auto.key(p.combo)))
+  handleInvoke(agentClickAndType, (p, evt) =>
+    runPrim(evt, () => auto.clickAndType(p.x, p.y, p.text)),
+  )
 
-  ipcMain.handle('agent:click', async (evt, p: { x: number; y: number; button?: 'left' | 'right' | 'middle' }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.click(p.x, p.y, p.button); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:double-click', async (evt, p: { x: number; y: number }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.doubleClick(p.x, p.y); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:scroll', async (evt, p: { dy: number; dx?: number }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.scroll(p.dy, p.dx); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:drag', async (evt, p: { from_x: number; from_y: number; to_x: number; to_y: number }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.drag(p.from_x, p.from_y, p.to_x, p.to_y); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:type', async (evt, p: { text: string }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.type(p.text); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:key', async (evt, p: { combo: string[] }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.key(p.combo); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:click-and-type', async (evt, p: { x: number; y: number; text: string }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
-    try { await auto.clickAndType(p.x, p.y, p.text); return { ok: true } }
-    catch (e) { return { ok: false, error: String(e) } }
-  })
-
-  ipcMain.handle('agent:screenshot', async (evt, region?: { x: number; y: number; w: number; h: number }) => {
+  handleInvoke(agentScreenshot, async (region, evt) => {
     if (!checkSender(evt)) return REJECT_SENDER
     try {
       const r = await auto.screenshot(region)
-      return { ok: true, base64: r.base64, width: r.width, height: r.height }
+      return { ok: true as const, base64: r.base64, width: r.width, height: r.height }
     } catch (e) {
-      return { ok: false, error: String(e) }
+      return { ok: false as const, error: String(e) }
     }
   })
 
   // === Vision Grounding：看图找位置 ===
-  ipcMain.handle('agent:find', async (evt, p: { description: string }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
+  handleInvoke(agentFind, (p, evt) => {
+    if (!checkSender(evt)) return { ok: false, error: REJECT_SENDER.error }
     return findOnScreen(p.description)
   })
-  ipcMain.handle('agent:find-and-click', async (evt, p: { description: string }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
+  handleInvoke(agentFindAndClick, (p, evt) => {
+    if (!checkSender(evt)) return { ok: false, error: REJECT_SENDER.error }
     return findAndClick(p.description)
   })
 
   // === Agent Loop：目标驱动的循环（goal 走用户审批） ===
-  ipcMain.handle('agent:run-task', async (evt, p: { goal: string; max_steps?: number }) => {
-    if (!checkSender(evt)) return REJECT_SENDER
+  handleInvoke(agentRunTask, async (p, evt) => {
+    if (!checkSender(evt)) {
+      return { ok: false, goal: p.goal, steps: [], reason: REJECT_SENDER.error }
+    }
     // C2: prompt injection → plan-executor agent_task action 可能携带恶意 goal，
     // 弹窗让用户看清 goal 后才开始 agent loop
     const approved = await requestAgentTaskApproval(getWindow ?? null, p.goal, p.max_steps ?? 10)

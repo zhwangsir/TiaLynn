@@ -1,5 +1,5 @@
 /**
- * 窗口控制 IPC handler。
+ * 窗口控制 IPC handler — type-safe channels (Phase 1 G).
  *
  * 关键：
  *   - `start-drag`: 调用 electron-click-drag-plugin 触发 native 拖动
@@ -8,7 +8,19 @@
  *     带 `forward: true` 让 webview 仍能收到 mousemove（关键魔法）
  */
 import { BrowserWindow, ipcMain, screen } from 'electron'
+import {
+  cursorPollStart,
+  cursorPollStop,
+  windowClose,
+  windowGetBounds,
+  windowMinimize,
+  windowSetBounds,
+  windowSetIgnoreMouse,
+  windowStartDrag,
+  windowTogglePin,
+} from '@shared/channels/window-control'
 import { platform } from '../windows/shared'
+import { handleInvoke } from './channel-helpers'
 
 interface ClickDragPlugin {
   startDrag(handle: Buffer): void
@@ -31,7 +43,7 @@ async function loadClickDragPlugin(): Promise<unknown> {
 }
 
 export function registerWindowControlIpc(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle('window:start-drag', async () => {
+  handleInvoke(windowStartDrag, async () => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return { ok: false, reason: 'no-window' }
     const plugin = await loadClickDragPlugin()
@@ -50,6 +62,7 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
   })
 
   // 软件 fallback：渲染层每 16ms 发送一次屏幕坐标，主进程 setPosition
+  // (ipcMain.on 一次性 send，不走 invoke channel)
   ipcMain.on('window:soft-drag', (_evt, payload: { x: number; y: number }) => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
@@ -64,29 +77,26 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
    * @param forward 必须 true：穿透状态下仍把 mousemove 转发到 webview，
    *                让前端 alpha 检测能知道何时切回非穿透。
    */
-  ipcMain.handle(
-    'window:set-ignore-mouse',
-    (_evt, payload: { ignore: boolean; forward?: boolean }) => {
-      const win = getWindow()
-      if (!win || win.isDestroyed()) return { ok: false }
-      try {
-        const ignore = !!payload.ignore
-        const forward = payload.forward !== false
-        win.setIgnoreMouseEvents(ignore, ignore ? { forward } : undefined)
-        return { ok: true, ignore, forward }
-      } catch (e) {
-        return { ok: false, reason: String(e) }
-      }
-    },
-  )
+  handleInvoke(windowSetIgnoreMouse, (payload) => {
+    const win = getWindow()
+    if (!win || win.isDestroyed()) return { ok: false }
+    try {
+      const ignore = !!payload.ignore
+      const forward = payload.forward !== false
+      win.setIgnoreMouseEvents(ignore, ignore ? { forward } : undefined)
+      return { ok: true, ignore, forward }
+    } catch (e) {
+      return { ok: false, reason: String(e) }
+    }
+  })
 
-  ipcMain.handle('window:get-bounds', () => {
+  handleInvoke(windowGetBounds, () => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return null
     return win.getBounds()
   })
 
-  ipcMain.handle('window:set-bounds', (_evt, bounds: Partial<Electron.Rectangle>) => {
+  handleInvoke(windowSetBounds, (bounds) => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return { ok: false }
     try {
@@ -97,19 +107,19 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
     }
   })
 
-  ipcMain.handle('window:close', () => {
+  handleInvoke(windowClose, () => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     win.close()
   })
 
-  ipcMain.handle('window:minimize', () => {
+  handleInvoke(windowMinimize, () => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     win.minimize()
   })
 
-  ipcMain.handle('window:toggle-pin', (_evt, pin: boolean) => {
+  handleInvoke(windowTogglePin, (pin) => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     win.setAlwaysOnTop(!!pin, 'screen-saver')
@@ -140,6 +150,6 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
       pollTimer = null
     }
   }
-  ipcMain.handle('cursor:poll-start', () => startCursorPolling())
-  ipcMain.handle('cursor:poll-stop', () => stopCursorPolling())
+  handleInvoke(cursorPollStart, () => startCursorPolling())
+  handleInvoke(cursorPollStop, () => stopCursorPolling())
 }
