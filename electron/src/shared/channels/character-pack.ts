@@ -14,6 +14,8 @@ export interface CharacterPackExportPayload {
   includeEmotional?: boolean
   /** 是否含 thumb (默认 true) */
   includeThumb?: boolean
+  /** 是否含 memory.db (默认 false，隐私敏感) */
+  includeMemory?: boolean
 }
 
 export interface CharacterPackExportResult {
@@ -36,6 +38,8 @@ export interface CharacterPackImportPayload {
   newName?: string
   /** 是否导入 emotional state (默认 true) */
   includeEmotional?: boolean
+  /** 是否导入 memory.db (默认 true 若 pack 含) */
+  includeMemory?: boolean
 }
 
 export interface CharacterPackImportResult {

@@ -27,6 +27,7 @@ export function registerCharacterPackIpc(getWindow: () => BrowserWindow | null):
         includeEmotional: payload.includeEmotional,
       }),
       ...(payload?.includeThumb !== undefined && { includeThumb: payload.includeThumb }),
+      ...(payload?.includeMemory !== undefined && { includeMemory: payload.includeMemory }),
       appVersion: app.getVersion(),
     })
     if (!r.ok || !r.buffer) return { ok: false, reason: r.reason ?? 'export failed' }
@@ -84,6 +85,7 @@ export function registerCharacterPackIpc(getWindow: () => BrowserWindow | null):
       ...(payload?.includeEmotional !== undefined && {
         includeEmotional: payload.includeEmotional,
       }),
+      ...(payload?.includeMemory !== undefined && { includeMemory: payload.includeMemory }),
     })
     return {
       ok: r.ok,

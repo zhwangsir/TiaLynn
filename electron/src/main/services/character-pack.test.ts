@@ -122,6 +122,31 @@ describe('exportCharacterPack', () => {
     const r = exportCharacterPack(fx.id, { appVersion: '0.18.0' })
     expect(r.meta!.app_version).toBe('0.18.0')
   })
+
+  it('memory.db 默认 NOT 包含（隐私敏感）', () => {
+    const fx = makeFixture()
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('FAKE_SQLITE'))
+    const r = exportCharacterPack(fx.id)
+    expect(r.meta!.contents.memory).toBe(false)
+  })
+
+  it('opts.includeMemory=true 显式 opt-in 才包含', () => {
+    const fx = makeFixture()
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('FAKE_SQLITE_DATA'))
+    const r = exportCharacterPack(fx.id, { includeMemory: true })
+    expect(r.meta!.contents.memory).toBe(true)
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip(r.buffer!)
+    expect(zip.getEntry('memory.db')).not.toBeNull()
+    expect(zip.getEntry('memory.db')!.getData().toString()).toBe('FAKE_SQLITE_DATA')
+  })
+
+  it('memory.db 不存在时 includeMemory=true 也不报错 (meta.memory=false)', () => {
+    const fx = makeFixture()
+    const r = exportCharacterPack(fx.id, { includeMemory: true })
+    expect(r.ok).toBe(true)
+    expect(r.meta!.contents.memory).toBe(false)
+  })
 })
 
 describe('importCharacterPack', () => {
@@ -248,6 +273,24 @@ describe('importCharacterPack', () => {
     const imp = importCharacterPack(zip.toBuffer())
     expect(imp.ok).toBe(false)
     expect(imp.reason).toMatch(/identity\.yaml/)
+  })
+
+  it('import memory.db 复制到新 characterDir', () => {
+    const fx = makeFixture()
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('ROUND_TRIP_MEMORY'))
+    const exp = exportCharacterPack(fx.id, { includeMemory: true })
+    const imp = importCharacterPack(exp.buffer!)
+    const newMem = join(characterDir(imp.character!.id), 'memory.db')
+    expect(existsSync(newMem)).toBe(true)
+    expect(readFileSync(newMem).toString()).toBe('ROUND_TRIP_MEMORY')
+  })
+
+  it('import includeMemory=false → 不复制 memory.db', () => {
+    const fx = makeFixture()
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('SKIP_ME'))
+    const exp = exportCharacterPack(fx.id, { includeMemory: true })
+    const imp = importCharacterPack(exp.buffer!, { includeMemory: false })
+    expect(existsSync(join(characterDir(imp.character!.id), 'memory.db'))).toBe(false)
   })
 
   it('round-trip: export → import → export 第二次内容字节一致', () => {

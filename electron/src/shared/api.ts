@@ -797,10 +797,12 @@ export interface TialynnApi {
       characterId?: string
       includeEmotional?: boolean
       includeThumb?: boolean
+      includeMemory?: boolean
     }): Promise<import('./channels/character-pack').CharacterPackExportResult>
     import(payload?: {
       newName?: string
       includeEmotional?: boolean
+      includeMemory?: boolean
     }): Promise<import('./channels/character-pack').CharacterPackImportResult>
   }
 

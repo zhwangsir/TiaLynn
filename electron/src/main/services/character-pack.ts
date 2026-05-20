@@ -46,6 +46,8 @@ export interface CharacterPackMeta {
     preferences: boolean
     emotional: boolean
     thumb: boolean
+    /** memory.db (隐私敏感 — 含主人对话提取的 fact/preference/event 嵌入) */
+    memory?: boolean
   }
 }
 
@@ -54,6 +56,11 @@ export interface ExportOptions {
   includeEmotional?: boolean
   /** 是否含 thumb (默认 true) */
   includeThumb?: boolean
+  /**
+   * 是否含 memory.db (默认 false — 隐私敏感)
+   * 跨机器自己迁移建议开；分享给朋友建议关。
+   */
+  includeMemory?: boolean
   appVersion?: string
 }
 
@@ -69,6 +76,8 @@ export interface ImportOptions {
   newName?: string
   /** 是否导入 emotional state (默认 true) */
   includeEmotional?: boolean
+  /** 是否导入 memory.db (默认 true — 若 pack 含的话) */
+  includeMemory?: boolean
 }
 
 export interface ImportResult {
@@ -131,7 +140,17 @@ export function exportCharacterPack(
     }
   }
 
-  // 5. meta.json
+  // 5. memory.db (可选，隐私敏感，默认关)
+  let memoryIncluded = false
+  if (opts.includeMemory === true) {
+    const memPath = join(dir, 'memory.db')
+    if (existsSync(memPath)) {
+      zip.addFile('memory.db', readFileSync(memPath))
+      memoryIncluded = true
+    }
+  }
+
+  // 6. meta.json
   const meta: CharacterPackMeta = {
     version: CHARACTER_PACK_VERSION,
     exported_at: Date.now(),
@@ -143,6 +162,7 @@ export function exportCharacterPack(
       preferences: prefsIncluded,
       emotional: emotionalIncluded,
       thumb: thumbIncluded,
+      memory: memoryIncluded,
     },
   }
   zip.addFile('meta.json', Buffer.from(JSON.stringify(meta, null, 2), 'utf-8'))
@@ -248,6 +268,18 @@ export function importCharacterPack(
       fs.writeFileSync(join(thumbDir, `${created.id}.webp`), thumbEntry.getData())
     } catch (e) {
       console.warn('[character-pack] thumb import failed (skipped):', e)
+    }
+  }
+
+  // 8. memory.db (可选 — 默认 true 若 pack 含)
+  if (opts.includeMemory !== false) {
+    const memEntry = zip.getEntry('memory.db')
+    if (memEntry) {
+      try {
+        writeFileSync(join(characterDir(created.id), 'memory.db'), memEntry.getData())
+      } catch (e) {
+        console.warn('[character-pack] memory.db import failed (skipped):', e)
+      }
     }
   }
 

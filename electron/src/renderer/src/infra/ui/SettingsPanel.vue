@@ -480,11 +480,14 @@ async function openDataDir(): Promise<void> {
 
 // P5: character pack export/import
 const packStatus = ref('')
+const packIncludeMemory = ref(false) // memory.db 隐私敏感默认关
 
 async function exportPack(): Promise<void> {
   packStatus.value = '导出中...'
   try {
-    const r = await window.api.characterPack.export({})
+    const r = await window.api.characterPack.export({
+      includeMemory: packIncludeMemory.value,
+    })
     if (r.canceled) {
       packStatus.value = '已取消'
       return
@@ -870,9 +873,18 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
       <section style="margin-top: 18px">
         <h3>角色 pack（导入/导出）</h3>
         <p class="hint">
-          把当前角色打包成 .zip 文件分享给朋友 (含 soul + 情感状态 + 缩略图，
-          不含对话历史)；或导入别人的 pack 创建新角色。
+          把当前角色打包成 .zip 文件分享给朋友 (含 soul + 情感状态 + 缩略图)；
+          或导入别人的 pack 创建新角色。
         </p>
+        <div class="check-row" style="margin: 6px 0">
+          <input type="checkbox" v-model="packIncludeMemory" id="pack-mem" />
+          <label for="pack-mem" class="check-label">
+            含长期记忆库 (memory.db)
+            <span class="check-hint">
+              ⚠ 含主人对话提取的事实/偏好/事件。跨机器自己迁移可开；分享给朋友建议关。
+            </span>
+          </label>
+        </div>
         <div class="row">
           <button class="ghost" @click="exportPack">📤 导出当前角色 pack</button>
           <button class="ghost" @click="importPack">📥 导入 pack</button>
