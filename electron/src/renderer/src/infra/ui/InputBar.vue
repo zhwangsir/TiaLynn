@@ -207,10 +207,20 @@ onBeforeUnmount(() => {
         @keydown="onKey"
       />
       <button
-        v-if="sttSupported && !dialog.replying"
+        v-if="!dialog.replying"
         class="mic"
-        :class="{ listening: sttListening }"
-        :title="sttListening ? '停止录音' : '语音输入 (中文识别)'"
+        :class="{ listening: sttListening, unsupported: !sttSupported }"
+        :disabled="!sttSupported"
+        :title="!sttSupported
+          ? '当前浏览器/Electron 不支持 Web Speech API'
+          : sttListening
+            ? '停止录音'
+            : '语音输入 (中文识别)'"
+        :aria-label="!sttSupported
+          ? '语音输入: 浏览器不支持'
+          : sttListening
+            ? '停止录音'
+            : '语音输入'"
         @click="toggleStt"
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -423,6 +433,15 @@ onBeforeUnmount(() => {
   color: var(--color-accent-text);
   border-color: var(--color-accent);
   animation: mic-pulse 1.2s var(--ease-in-out) infinite;
+}
+/* R94: unsupported 时半透明 + cursor: not-allowed */
+.mic.unsupported {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.mic.unsupported:hover {
+  background: transparent;
+  border-color: transparent;
 }
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 oklch(72% 0.18 18 / 0); }
