@@ -33,7 +33,8 @@ import { handleInvoke } from './channel-helpers'
 const pendingApprovals = new Map<string, (decision: ApprovalDecision) => void>()
 
 export function registerToolIpc(getWindow: () => BrowserWindow | null): void {
-  registerBuiltins()
+  // M7: getWindow 传给 builtins 让 creative.generate_sticker 能 emit comfyui:progress
+  registerBuiltins(getWindow)
 
   handleInvoke(toolsList, () => listTools())
 

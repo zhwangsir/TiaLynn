@@ -18,7 +18,7 @@ export interface ToolDefinition {
   }
   /** 风险等级：low(read-only) / medium(本地无害) / high(可能修改/外发) */
   risk: 'low' | 'medium' | 'high'
-  category: 'fs' | 'shell' | 'system' | 'other'
+  category: 'fs' | 'shell' | 'system' | 'creative' | 'other'
 }
 
 export interface ToolInvocation {

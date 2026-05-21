@@ -3,13 +3,23 @@
  *
  * 安全：fs.* 受白名单根限制（~/.tialynn + ~/Documents/TiaLynn 默认）。
  * 用户可在 settings 增加额外根（v0.7）。
+ *
+ * M7 创造统一（v0.21）：
+ *   - 新增 creative.generate_sticker —— 让 LLM 在 dialog 路径里调 ComfyUI 出图。
+ *     和 BehaviorPlanner 的 `generate_sticker` action 走同一个 workflow，
+ *     但调用方是 dialog LLM 而不是 attention LLM。
+ *   - 出图后 emit `comfyui:progress {kind:'sticker', state:'done'}` 给 renderer，
+ *     StickerOverlay 自动浮在桌面上。
  */
-import { Notification, shell } from 'electron'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { Notification, shell, type BrowserWindow } from 'electron'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join, normalize, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { register } from './registry'
 import { getPaths } from '../paths'
+import { ComfyClient, ComfyError } from '../comfyui/client'
+import { buildStickerWorkflow } from '../comfyui/workflows'
+import { loadConfig } from '../config-store'
 
 function allowedRoots(): string[] {
   const home = homedir()
@@ -38,7 +48,136 @@ function safeResolve(input: string): string {
   return normalized
 }
 
-export function registerBuiltins(): void {
+/** ComfyUI client 单例（dialog tool 路径用，跟 ipc/comfyui.ts 各持一份生命周期独立） */
+let toolComfyClient: ComfyClient | null = null
+function getComfyClient(): ComfyClient {
+  const cfg = loadConfig()
+  const endpoint = cfg.comfyui_endpoint?.trim()
+  if (!endpoint) {
+    throw new ComfyError('ComfyUI endpoint 未配置（Settings → ComfyUI endpoint）')
+  }
+  if (!toolComfyClient || toolComfyClient.endpoint !== endpoint) {
+    toolComfyClient = new ComfyClient({ endpoint })
+  }
+  return toolComfyClient
+}
+
+function ensureDir(p: string): string {
+  if (!existsSync(p)) mkdirSync(p, { recursive: true })
+  return p
+}
+
+const VALID_EMOTIONS = [
+  'neutral',
+  'happy',
+  'sad',
+  'angry',
+  'shy',
+  'tease',
+  'sleepy',
+  'surprise',
+] as const
+type StickerEmotion = (typeof VALID_EMOTIONS)[number]
+
+function isValidEmotion(s: string): s is StickerEmotion {
+  return (VALID_EMOTIONS as readonly string[]).includes(s)
+}
+
+/**
+ * M7：注册 creative.generate_sticker 让 dialog LLM 主动出图。
+ * 跟 BehaviorPlanner 的 `generate_sticker` action 复用 buildStickerWorkflow。
+ * 生成后通过 webContents.send 给 renderer，StickerOverlay 自动浮窗。
+ */
+function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
+  register(
+    {
+      name: 'creative.generate_sticker',
+      description:
+        '画一张表情贴纸送主人（通过 ComfyUI）。当主人说想看你画的东西、或想给主人惊喜时调用。' +
+        '生成后会自动浮在桌面上，不需要再额外发文件路径给主人。一次只生成 1 张。' +
+        '调用频繁会让主人烦（每张需 6-30 秒），合适场景再用。',
+      risk: 'medium',
+      category: 'creative',
+      input_schema: {
+        type: 'object',
+        properties: {
+          emotion: {
+            type: 'string',
+            description: '贴纸主题情绪',
+            enum: [...VALID_EMOTIONS],
+          },
+          extra_prompt: {
+            type: 'string',
+            description:
+              '可选额外英文描述（如 "fireworks, celebration", "holding a gift", "starry night sky"）',
+          },
+        },
+        required: ['emotion'],
+      },
+    },
+    async (input) => {
+      const emotionRaw = String(input.emotion ?? 'happy')
+      if (!isValidEmotion(emotionRaw)) {
+        throw new Error(
+          `emotion 必须是 ${VALID_EMOTIONS.join(' / ')} 之一，收到：${emotionRaw}`,
+        )
+      }
+      const emotion = emotionRaw
+      const extraRaw = input.extra_prompt
+      const extraPrompt =
+        typeof extraRaw === 'string' && extraRaw.trim().length > 0 ? extraRaw.trim() : undefined
+
+      const client = getComfyClient()
+      const wf = buildStickerWorkflow({
+        emotion,
+        ...(extraPrompt !== undefined ? { extraPrompt } : {}),
+      })
+
+      // 通知 renderer 开始（让 StickerOverlay 知道有任务在跑，可显 spinner）
+      const win0 = getWindow()
+      if (win0 && !win0.isDestroyed()) {
+        win0.webContents.send('comfyui:progress', { kind: 'sticker', state: 'queued', emotion })
+      }
+
+      const r = await client.generate(wf, {
+        onProgress: (state) => {
+          const win = getWindow()
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('comfyui:progress', { kind: 'sticker', state, emotion })
+          }
+        },
+      })
+
+      // 下载到 ~/.tialynn/stickers/
+      const destDir = ensureDir(join(getPaths().userDataDir, 'stickers'))
+      const saved: string[] = []
+      for (const img of r.images) {
+        const fname = `sticker_${emotion}_${Date.now()}_${basename(img.filename)}`
+        const dest = join(destDir, fname)
+        try {
+          await client.downloadImage(img.filename, img.subfolder, img.type, dest)
+          saved.push(dest)
+        } catch (e) {
+          console.warn('[creative.generate_sticker] download skipped', img.filename, e)
+        }
+      }
+
+      // emit done — StickerOverlay 会调 listRecent 拿最新一张浮窗
+      const winEnd = getWindow()
+      if (winEnd && !winEnd.isDestroyed()) {
+        winEnd.webContents.send('comfyui:progress', { kind: 'sticker', state: 'done', emotion })
+      }
+
+      if (saved.length === 0) {
+        throw new Error('ComfyUI 没返回任何图片')
+      }
+      const extraDesc = extraPrompt ? `(${extraPrompt})` : ''
+      return `已画好一张「${emotion}」${extraDesc}贴纸送主人，已浮在桌面上 ❤️`
+    },
+  )
+}
+
+export function registerBuiltins(getWindow?: () => BrowserWindow | null): void {
   register(
     {
       name: 'fs.list_dir',
@@ -162,4 +301,9 @@ export function registerBuiltins(): void {
       return `已发送：${title}${body ? ' / ' + body : ''}`
     },
   )
+
+  // M7：注册 creative.* 工具（需要 getWindow 才能 emit comfyui:progress 给 renderer）
+  if (getWindow) {
+    registerCreativeTools(getWindow)
+  }
 }
