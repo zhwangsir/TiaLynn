@@ -424,6 +424,37 @@ export const useDialogStore = defineStore('dialog', () => {
     }
   }
 
+  /**
+   * R41: 重试最后一次失败的对话 — 找最后 user turn，删后续 error/空 assistant，再 send。
+   * 无失败 turn / 正在 replying → no-op
+   */
+  async function retryLast(): Promise<void> {
+    if (replying.value) return
+    // 从末尾找 — 必须是 assistant 且 error 或文本空
+    let assistantIdx = -1
+    for (let i = turns.value.length - 1; i >= 0; i--) {
+      const t = turns.value[i]
+      if (!t) continue
+      if (t.role === 'assistant') {
+        if (t.error || !t.text.trim()) {
+          assistantIdx = i
+          break
+        }
+        // 找到最新 assistant 但是成功的 → 无可重试
+        return
+      }
+    }
+    if (assistantIdx < 0) return
+    // 前一个 user turn
+    const userIdx = assistantIdx - 1
+    const userTurn = turns.value[userIdx]
+    if (!userTurn || userTurn.role !== 'user') return
+    const text = userTurn.text
+    // 不可变更新: 移除 user + failed assistant
+    turns.value = turns.value.slice(0, userIdx)
+    await send(text)
+  }
+
   /** v0.8: BehaviorPlanner 主动发起的 utterance（不经 LLM 生成，直接注入） */
   function injectAssistantUtterance(text: string, emotion: EmotionId, intensity: number): void {
     const turn: DialogTurn = {
@@ -460,6 +491,7 @@ export const useDialogStore = defineStore('dialog', () => {
     bootstrap,
     teardown,
     send,
+    retryLast,
     abort,
     clear,
     injectGreeting,

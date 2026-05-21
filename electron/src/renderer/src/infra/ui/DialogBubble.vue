@@ -113,6 +113,12 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
   sleepy: { icon: '😴', label: '困' },
 }
 
+// R41: 重试 — 仅在最后 assistant turn 有 error 时可见
+const canRetry = computed<boolean>(() => !!latest.value?.error && !dialog.replying)
+async function retryLast(): Promise<void> {
+  await dialog.retryLast()
+}
+
 // R38: 复制 LLM reply — hover 时显示按钮
 async function copyText(): Promise<void> {
   const t = latest.value?.text
@@ -133,13 +139,14 @@ async function copyText(): Promise<void> {
 <template>
   <transition name="bubble">
     <div
-      v-if="latest && (latest.text || latest.streaming) && visible"
+      v-if="latest && (latest.text || latest.streaming || latest.error) && visible"
       class="bubble"
       :style="{ background: bubbleBg(latest.emotion) }"
       @mouseenter="onMouseEnter"
       @mouseleave="onMouseLeave"
     >
       <span v-if="latest.text" class="text">{{ latest.text }}</span>
+      <span v-else-if="latest.error" class="text error-text">没收到回复 — 试试重试或检查 LLM 设置</span>
       <span v-if="latest.streaming" class="typing-indicator" aria-label="正在输入">
         <span class="dot"></span>
         <span class="dot"></span>
@@ -160,6 +167,13 @@ async function copyText(): Promise<void> {
         aria-label="复制对话"
         @click.stop="copyText"
       >📋</button>
+      <button
+        v-if="canRetry"
+        class="retry-btn"
+        title="重试这条 (上次失败 — 移除并重新生成)"
+        aria-label="重试上次对话"
+        @click.stop="retryLast"
+      >🔄 重试</button>
     </div>
   </transition>
 </template>
@@ -302,6 +316,31 @@ async function copyText(): Promise<void> {
   .copy-btn:hover {
     background: oklch(0% 0 0 / 0.6);
   }
+}
+/* R41: 重试按钮 — error 时常显（不靠 hover, 错误已经够吸引注意） */
+.retry-btn {
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+  flex-shrink: 0;
+}
+.retry-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.retry-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.error-text {
+  color: var(--color-danger);
+  font-style: italic;
 }
 
 .bubble-enter-active,
