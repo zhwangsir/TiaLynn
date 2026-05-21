@@ -171,6 +171,20 @@ function colorOf(s: DotStatus): string {
   }
 }
 
+/** R57-fix: pulse ring 颜色匹配真实状态 — down 时不再显绿色 ring */
+function pulseColorOf(s: DotStatus): string {
+  switch (s) {
+    case 'ok':
+      return 'oklch(70% 0.18 145 / 0.3)'
+    case 'down':
+      return 'oklch(60% 0.22 25 / 0.35)'
+    case 'unconfigured':
+      return 'oklch(60% 0.01 250 / 0.2)'
+    case 'untested':
+      return 'oklch(75% 0.16 90 / 0.3)'
+  }
+}
+
 function labelOf(svc: 'llm' | 'tts' | 'vision', s: DotStatus): string {
   const svcName = svc === 'llm' ? 'LLM' : svc === 'tts' ? 'TTS' : 'Vision'
   switch (s) {
@@ -238,7 +252,10 @@ async function onPillClick(): Promise<void> {
     <span
       class="dot"
       :class="{ pulsing: dialog.replying }"
-      :style="{ background: colorOf(llmState.status) }"
+      :style="{
+        background: colorOf(llmState.status),
+        '--pulse-color': pulseColorOf(llmState.status),
+      }"
       :aria-label="labelOf('llm', llmState.status)"
       role="img"
       @mouseenter="hovered = 'llm'"
@@ -316,17 +333,20 @@ async function onPillClick(): Promise<void> {
 .dot:hover {
   transform: scale(1.4);
 }
-/* R53: LLM streaming 时脉冲动画 — 让用户看到"正在工作" */
+/* R53: LLM streaming 时脉冲动画 — 让用户看到"正在工作"
+   R57-fix: ring 颜色用实际 dot 背景 (CSS var --pulse-color) 反映真实状态,
+   避免 down 时仍显绿色 ring 给用户错误信号 */
 .dot.pulsing {
   animation: dot-pulse 1.2s ease-in-out infinite;
+  --pulse-color: oklch(70% 0.18 145 / 0.3); /* 默认绿 fallback */
 }
 @keyframes dot-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 currentColor;
+    box-shadow: 0 0 0 0 transparent;
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 4px oklch(70% 0.18 145 / 0.3);
+    box-shadow: 0 0 0 4px var(--pulse-color);
     transform: scale(1.15);
   }
 }

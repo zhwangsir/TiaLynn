@@ -26,14 +26,25 @@ const bubbleEl = ref<HTMLDivElement | null>(null)
 /** R54: 用户主动关闭后的 turn id, 同 id 不重显, 下一条 turn 时清空 */
 const dismissedTurnId = ref<string | null>(null)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+/** R57-fix (HIGH): 保留 rAF handle 以便卸载时取消, 避免 leak + 重复 schedule */
+let scrollRaf: number | null = null
 
-/** R52: 流式回复时自动滚到底部, 让用户看到最新 token */
+/**
+ * R52+R56: 流式回复时自动滚到底部, 但尊重用户手动向上滚 — 行业标准聊天 UI 做法。
+ * 若用户已经向上滚 > 20px (即不在底部), 不强制滚 → 让用户阅读不被打断。
+ */
+const SCROLL_BOTTOM_THRESHOLD = 20
 function scrollToBottom(): void {
   const el = bubbleEl.value
   if (!el) return
-  // 用 requestAnimationFrame 等下一帧, 此时 DOM 已更新到新 text
-  requestAnimationFrame(() => {
-    el.scrollTop = el.scrollHeight
+  // 检查滚动前是否已在底部 (允许 20px 抖动)
+  const wasAtBottom =
+    el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_BOTTOM_THRESHOLD
+  if (!wasAtBottom) return // 用户在阅读上文, 不打扰
+  if (scrollRaf !== null) cancelAnimationFrame(scrollRaf)
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = null
+    if (bubbleEl.value) bubbleEl.value.scrollTop = bubbleEl.value.scrollHeight
   })
 }
 
@@ -50,10 +61,12 @@ watch(
   () => [latest.value?.id, latest.value?.text, latest.value?.error],
   ([newId]) => {
     if (!latest.value) return
+    // R57-fix (HIGH): 显式收窄 string | undefined → string | null, 避免 undefined ≠ null 类型空洞
+    const id: string | null = typeof newId === 'string' ? newId : null
     // R54: 用户已主动关掉当前 turn → 不重显
-    if (dismissedTurnId.value === newId) return
+    if (dismissedTurnId.value !== null && dismissedTurnId.value === id) return
     // 新 turn → 清掉旧 dismiss
-    if (newId !== dismissedTurnId.value) dismissedTurnId.value = null
+    if (id !== dismissedTurnId.value) dismissedTurnId.value = null
     visible.value = true
     // R52: streaming 中 / 文本变化时 auto-scroll 到底部
     if (latest.value.streaming || latest.value.text) scrollToBottom()
@@ -67,7 +80,8 @@ watch(
 function dismiss(): void {
   if (hideTimer) clearTimeout(hideTimer)
   visible.value = false
-  dismissedTurnId.value = (latest.value?.id ?? null) as string | null
+  // R57-fix: 删无意义的 `as string | null` 断言 — ?? null 已经是该类型
+  dismissedTurnId.value = latest.value?.id ?? null
 }
 
 function onMouseEnter(): void {
@@ -79,6 +93,7 @@ function onMouseLeave(): void {
 
 onBeforeUnmount(() => {
   if (hideTimer) clearTimeout(hideTimer)
+  if (scrollRaf !== null) cancelAnimationFrame(scrollRaf)
   mql?.removeEventListener('change', systemListener)
 })
 
