@@ -52,6 +52,8 @@ function blankConfig(): RuntimeConfig {
 
 const form = reactive<RuntimeConfig>(blankConfig())
 const selectedModel = ref<string>('')
+// R74: API Key show/hide 切换 — 默认 password 隐藏, 用户点👁切到 text
+const showApiKey = ref(false)
 /** 用户是否已在面板上做过编辑（true 后停止从 store 覆盖，避免 IPC 推送把输入回退） */
 const userEdited = ref(false)
 /** 最近一次保存反馈 */
@@ -698,7 +700,23 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </label>
         <label>
           <span>API Key</span>
-          <input v-model="form.llm_api_key" type="password" placeholder="（本地服务可留空）" @input="markDirty" />
+          <div class="input-with-toggle">
+            <input
+              v-model="form.llm_api_key"
+              :type="showApiKey ? 'text' : 'password'"
+              placeholder="（本地服务可留空）"
+              @input="markDirty"
+            />
+            <button
+              v-if="form.llm_api_key"
+              type="button"
+              class="toggle-show-btn"
+              :title="showApiKey ? '隐藏' : '显示'"
+              :aria-label="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+              :aria-pressed="showApiKey"
+              @click="showApiKey = !showApiKey"
+            >{{ showApiKey ? '🙈' : '👁' }}</button>
+          </div>
         </label>
         <label v-if="form.llm_provider === 'openai_compat'">
           <span>兼容模式</span>
@@ -1239,6 +1257,41 @@ select:focus {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* R74: API Key input + show toggle 复合布局 */
+.input-with-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-toggle input {
+  flex: 1;
+  padding-right: 36px; /* 给 toggle 让位 */
+}
+.toggle-show-btn {
+  position: absolute;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-muted);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.toggle-show-btn:hover {
+  background: var(--color-bubble-surface-hover);
+  color: var(--color-bubble-text);
+}
+.toggle-show-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .check-row {
   display: flex;
   align-items: flex-start;
