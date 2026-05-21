@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
+import { useThemeMode } from './useThemeMode'
+import { bus } from '../eventbus'
 
 /** 按文字长度动态：保底 5 秒，每字 +250ms，上限 18 秒（防止超长文本永驻） */
 function hideMsFor(text: string | undefined): number {
@@ -47,6 +49,7 @@ function onMouseLeave(): void {
 
 onBeforeUnmount(() => {
   if (hideTimer) clearTimeout(hideTimer)
+  mql?.removeEventListener('change', systemListener)
 })
 
 /* v0.17：不透明度从 0.94 降到 0.82 — 桌面颜色能透一点过来，强化"飘在桌面"而非"实色 panel" */
@@ -72,15 +75,26 @@ const emotionTintDark: Record<string, string> = {
   sleepy: 'oklch(28% 0.04 250 / 0.82)',
 }
 
-const isDark = ref(
+// R38 fix: 联动 R33 主题切换 — 用户强制 light/dark 时尊重设定，auto 时跟系统
+const theme = useThemeMode()
+const systemDark = ref(
   typeof window !== 'undefined' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches,
 )
-if (typeof window !== 'undefined') {
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    isDark.value = e.matches
-  })
+let mql: MediaQueryList | null = null
+const systemListener = (e: MediaQueryListEvent): void => {
+  systemDark.value = e.matches
 }
+onMounted(() => {
+  if (typeof window === 'undefined') return
+  mql = window.matchMedia('(prefers-color-scheme: dark)')
+  mql.addEventListener('change', systemListener)
+})
+const isDark = computed(() => {
+  if (theme.mode.value === 'light') return false
+  if (theme.mode.value === 'dark') return true
+  return systemDark.value
+})
 
 function bubbleBg(emotion: string | undefined): string {
   const e = emotion ?? 'neutral'
@@ -97,6 +111,22 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
   shy: { icon: '😳', label: '害羞' },
   tease: { icon: '😈', label: '撒娇' },
   sleepy: { icon: '😴', label: '困' },
+}
+
+// R38: 复制 LLM reply — hover 时显示按钮
+async function copyText(): Promise<void> {
+  const t = latest.value?.text
+  if (!t) return
+  try {
+    await navigator.clipboard.writeText(t)
+    bus.emit('ui:toast', { kind: 'success', message: '✓ 已复制', ttl_ms: 1500 })
+  } catch (e) {
+    bus.emit('ui:toast', {
+      kind: 'warn',
+      message: `复制失败：${String(e).slice(0, 60)}`,
+      ttl_ms: 3000,
+    })
+  }
 }
 </script>
 
@@ -123,6 +153,13 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
         <span class="emo-icon">{{ emotionLabel[latest.emotion]!.icon }}</span>
         <span class="emo-text">{{ emotionLabel[latest.emotion]!.label }}</span>
       </span>
+      <button
+        v-if="latest.text && !latest.streaming"
+        class="copy-btn"
+        title="复制这条 (Cmd+C)"
+        aria-label="复制对话"
+        @click.stop="copyText"
+      >📋</button>
     </div>
   </transition>
 </template>
@@ -232,6 +269,39 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
 }
 .emo-text {
   font-weight: 500;
+}
+/* R38: 复制按钮 — hover bubble 时浮出 */
+.copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: oklch(100% 0 0 / 0.6);
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.bubble:hover .copy-btn,
+.copy-btn:focus-visible {
+  opacity: 1;
+}
+.copy-btn:hover {
+  background: oklch(100% 0 0 / 0.85);
+}
+@media (prefers-color-scheme: dark) {
+  .copy-btn {
+    background: oklch(0% 0 0 / 0.4);
+  }
+  .copy-btn:hover {
+    background: oklch(0% 0 0 / 0.6);
+  }
 }
 
 .bubble-enter-active,
