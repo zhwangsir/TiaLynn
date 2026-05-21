@@ -257,7 +257,13 @@ select:focus {
    scale 由 DialogBubble.vue scoped style 自己合写（避免 specificity 战 + transform 覆盖） */
 
 
-/* R80: 全局 .input-with-toggle 复合输入 — Settings/Onboarding/RVC/TTS API key 显隐共用 */
+/* R80: 全局 .input-with-toggle 复合输入 — Settings/Onboarding/RVC/TTS API key 显隐共用
+ *
+ * ⚠ specificity 注意 (reviewer R86 MED):
+ * 子选择器 .input-with-toggle > input 是 0-2-1, Vue scoped 组件内 .field input 等
+ * 后代选择器经 [data-v-xxx] 加成会变 0-3-1 高于这里 — 子组件内若给 input 加
+ * padding-right 会覆盖此处的 36px 让 toggle 按钮被遮。新增 scoped 规则前先确认。
+ */
 .input-with-toggle {
   position: relative;
   display: flex;

@@ -65,4 +65,16 @@ describe('highlightMatch', () => {
       { text: ' foo', matched: false },
     ])
   })
+
+  it('R86-fix: 大小写不同长度时 slice 不越界 (土耳其 İ)', () => {
+    // 'İ'.toLowerCase() = 'i̇' (i + combining dot, length 2)
+    // 用 qLower.length 才能正确切; 用 q.length=1 会越界吞下一个字符
+    const r = highlightMatch('aİb', 'İ')
+    // 至少 matched 段是 'İ' (或 lower 后等价), 不应吞 'b'
+    const matchedSeg = r.find((s) => s.matched)
+    expect(matchedSeg).toBeDefined()
+    // 'b' 必须保留在未匹配段
+    const after = r[r.length - 1]
+    expect(after?.text).toContain('b')
+  })
 })

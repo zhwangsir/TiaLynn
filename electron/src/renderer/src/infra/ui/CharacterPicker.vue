@@ -448,12 +448,13 @@ h2 {
   font-size: var(--text-sm);
   margin-top: 6px;
 }
-/* R82: 复用 R81 highlight-match - scoped 内本地颜色 */
+/* R82+R86: 复用 R81 highlight-match - scoped 内本地颜色, font-weight 与 Spotlight 对齐 */
 .match-hl {
   background: oklch(85% 0.15 90 / 0.55);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
+  font-weight: 600;
 }
 @media (prefers-color-scheme: dark) {
   .match-hl {

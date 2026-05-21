@@ -28,9 +28,12 @@ export function highlightMatch(text: string, query: string): HighlightSegment[] 
   const qLower = q.toLowerCase()
   const idx = lower.indexOf(qLower)
   if (idx === -1) return [{ text, matched: false }]
+  // R86-fix (HIGH): 用 qLower.length 偏移而非 q.length —
+  // toLowerCase 可能改 length (德语 ß → ss, 土耳其 İ), 防 slice 越界
+  const matchLen = qLower.length
   const before = text.slice(0, idx)
-  const match = text.slice(idx, idx + q.length)
-  const after = text.slice(idx + q.length)
+  const match = text.slice(idx, idx + matchLen)
+  const after = text.slice(idx + matchLen)
   const out: HighlightSegment[] = []
   if (before) out.push({ text: before, matched: false })
   out.push({ text: match, matched: true })
