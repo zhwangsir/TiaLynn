@@ -28,10 +28,15 @@
 - `character-pack` zip 导出/导入（含 memory.db opt-in）跨机器迁移
 - `emotional-state/cross-character` 跨灵魂情感联动（A 对话提到 B → B 累积"被主人提到"印记）
 
-**仍要做的：**
-- 多灵魂同框对话（M8 灵魂社会）
-- 灵魂之间能互相说话、互相记得对方
-- 灵魂自己提建议改自己（M9 自主进化）
+**进行中(M8 灵魂社会):**
+- v0.21 Round I-N 后端 + UI 入口:`character-store.mountedCharacterIds` API、`getPlanner(characterId)` per-character factory(每灵魂独立 budget/state)、IPC `characters:list-mounted` / `set-mounted`、CharacterPicker 卡片 📌 toggle、`notifyOtherMountedCharacters` passive listening(active 说的话写进其他 mounted character 的 memory.db kind='event')。
+- 当前可:用户能 mount 多个灵魂并行运行,active 切换时其他灵魂"记得"曾听过的话。
+
+**M8 仍要做的:**
+- 多灵魂同框立绘渲染(Live2DStage 多实例,Round Q deferred)
+- active LLM 通过 RAG 主动 surface 跨灵魂 event memory(等 embedding sidecar)
+- 灵魂之间 active reactive 对话(目前 passive only,避免 ping-pong)
+- 灵魂自己提建议改自己(M9 自主进化)
 
 ---
 

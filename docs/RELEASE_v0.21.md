@@ -162,3 +162,39 @@ TiaLynn.app                  285 MB(Info.plist LSUIElement=true)
 **剩下唯一需要主人做的事:macOS Apple Developer 证书 + GitHub upload v0.21 release**。
 
 代码已就绪。下一个 session 直接说"继续 v0.22" 我从 P0 backlog 开始推。
+
+---
+
+## v0.21 后续 Round(E-N)进展 — autonomous iteration
+
+发布快照后,sessions 持续自主迭代多个 Round 把"待办"逐步收掉:
+
+| Round | Commit | 内容 | Reviewer |
+|---|---|---|---|
+| E | `f27e928b` + `9bd4d184` | docs/ARCHITECTURE.md 重写 v0.21 + E2E Playwright basic | 1 HIGH 4 MEDIUM 2 LOW |
+| F | `a2f200a2` | DECISIONS.md 补 ADR-200-205 | (架构 doc,无 reviewer) |
+| G | `6565d256` | USER_GUIDE.md + SIDECAR_SETUP.md(0→1 用户上手) | (新增 doc) |
+| H | `8cb45785` + `23217ce7` | planner 单例 → `getPlanner(characterId?)` factory(M8 前置)+ CONTRIBUTING 完善 | 1 HIGH 3 MEDIUM 2 LOW |
+| I | `fb417e44` + `c0b57c40` | character-store `mountedCharacterIds` API + SchedulerDecision target_character_id | 2 HIGH 3 MEDIUM 1 LOW |
+| J | `2950aec4` | IPC `characters:list-mounted` / `set-mounted` + preload api | 3 MEDIUM |
+| K | `74dc2c61` | attention onTrigger 用 active character 作 planner target | (无 reviewer,1 行变更) |
+| L | `aa6040a3` | character-pack import 自动 mount 新角色 + Round J reviewer 收尾 | 3 MEDIUM |
+| M | `1bf71cda` | CharacterPicker mount toggle UI(📌 卡片按钮 + header 并行计数 chip) | 2 MEDIUM 2 LOW |
+| N | `ddaabcce` | M8 灵魂↔灵魂 passive listening(active 说话 → 其他 mounted 灵魂 memory.db 写 event) | 1 HIGH 1 MEDIUM |
+
+**M8 灵魂社会** 从 v0.21 发布时的"待办"变成 v0.21+ 的 partial-shipping:
+- ✓ 后端 mountedCharacterIds + per-character planner factory
+- ✓ IPC + preload + renderer store
+- ✓ GUI mount toggle UI(CharacterPicker)
+- ✓ 跨灵魂 passive event memory
+- ⚠ 多 Live2D 同框立绘(Round Q deferred — 风险大)
+- ⚠ active LLM reactive 反应(等 embedding sidecar)
+
+**测试数**:606 → 617(Round N 加 11 个跨灵魂 memory unit test)。
+
+**Subagent 守护工作流持续生效**:
+- Round H reviewer 抓到 `getPlanner('')` 空字符串 bypass sentinel(HIGH)
+- Round I reviewer 抓到 `setActiveCharacterId` 覆盖 mounted_ids(HIGH)
+- Round N reviewer 抓到 test helper 漏 `llm_generated` boolean(HIGH — vitest esbuild 跳 typecheck,tsc 真编译时 TS2741)
+
+每轮 typecheck + 全单测 + typescript-reviewer subagent 三连后才 commit,M8 从纯 backend → 可用 UI 链路全在 main branch 直接 push,无 PR(autonomous mode 直接 commit + reviewer 兜底)。

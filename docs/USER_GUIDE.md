@@ -111,6 +111,26 @@ TiaLynn 启动后:
 ### 3.4 灵魂自演化
 v0.20+:每 24h `soul-learner` 自动从对话累积的 `topic_imprints`(主人爱聊的话题)写回 `learned_traits.yaml`。一个月后她跟你聊天会"更懂你"。
 
+### 3.5 灵魂社会 — 多灵魂并行 (v0.21 Round M+N)
+TiaLynn 是「容器」,你可以装载多个灵魂同时存活在代码层。
+
+**怎么用**:
+- 设置 → 角色 → 选个她(picker 面板) → 鼠标移到非当前角色卡片 → 右上角 **📌** 按钮 → 让她「并行运行」
+- header 显示「📌 N 并行」表示当前并行运行的角色数
+- 卡片右下角小 📌 徽标表示该角色处于 mounted(并行)状态
+
+**当前并行运行的灵魂能做什么**:
+- 每个 mounted 灵魂有**独立的 planner 实例**(独立 LLM rate budget, 独立 attention state)
+- 当前 active 灵魂跟你说话时,**其他 mounted 灵魂会"听到"这句话**,作为 `event` memory 写进她们各自的 `memory.db`。当你切换到她们时,她们会"记得"曾听到过你跟别的灵魂说什么。
+- 单方向 passive listening:不会触发其他灵魂的 LLM 反应,避免 ping-pong + 流量爆炸
+
+**约束**:
+- 上限 16 个灵魂同时 mounted (DoS 防护)
+- 当前 active 永远 mounted(不能取消并行,否则代码层就没人活了)
+- 立绘渲染依然是单个 active 的(多灵魂同框立绘是 Round Q 未来工作)
+
+**用例**:导入新灵魂 zip 时会自动 mount(让她马上"活进来",而非只是文件层注册)。
+
 ---
 
 ## 4. macOS 权限授权(分别授,首次会弹窗)
