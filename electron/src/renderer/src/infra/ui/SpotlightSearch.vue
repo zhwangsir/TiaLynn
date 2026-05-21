@@ -292,10 +292,13 @@ function onKey(e: KeyboardEvent): void {
   if (!props.open) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
-    selected.value = Math.min(selected.value + 1, results.value.length - 1)
+    // R102: ↑↓ wrap (terminal/Spotlight 标准行为, 长列表更顺手)
+    const len = results.value.length
+    if (len > 0) selected.value = (selected.value + 1) % len
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
-    selected.value = Math.max(selected.value - 1, 0)
+    const len = results.value.length
+    if (len > 0) selected.value = (selected.value - 1 + len) % len
   } else if (e.key === 'Enter') {
     e.preventDefault()
     const item = results.value[selected.value]
