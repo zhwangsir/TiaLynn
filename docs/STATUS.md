@@ -15,6 +15,7 @@
 | [RELEASE_v0.19.md](RELEASE_v0.19.md) | v0.19 多角色生态闭环 | v0.19 当前 |
 | [RELEASE_v0.18.md](RELEASE_v0.18.md) | v0.18 三层人格 + 情感系统 | v0.18 当前 |
 | [RELEASE_v0.17.md](RELEASE_v0.17.md) | v0.17 长期记忆 M2 + MCP | v0.17 当前 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构(五大域 / 9 BehaviorAction / ComfyUI / MCP / 25 IPC) | **v0.21 当前**(本 session 重写) |
 | [ARCHITECTURE_MOTION_SYSTEM.md](ARCHITECTURE_MOTION_SYSTEM.md) | 动作工业链（v0.7 落地） | v0.7+ 当前 |
 | [SOUL_SCHEMA.md](SOUL_SCHEMA.md) | 灵魂档案 schema（4 yaml 拆分） | v0.5+ 当前 |
 | [../README.md](../README.md) | 用户视角 quick-start + 功能概览 | v0.13 部分过时（需补 v0.20 内容） |
@@ -25,7 +26,6 @@
 
 | 文档 | 说明 |
 |------|------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | v0.1 Tauri 架构 — 现在是 Electron 五大能力域 + Planner 9 BehaviorAction。新架构主要在 SILICON_LIFE_VISION + 代码本身 |
 | [DECISIONS.md](DECISIONS.md) | v0.1 时代 ADR — 当时选 Tauri，但 v0.6 改 Electron。新决策没补 ADR |
 | [AIRI_STUDY.md](AIRI_STUDY.md) | v0.6 转 Electron 前研究 airi 的笔记，是历史决策依据 |
 | [M0_COMPLETION.md](M0_COMPLETION.md) | v0.4 M0 重写完成记录 |
@@ -38,7 +38,7 @@
 
 ## 🔴 已知文档债
 
-- **新 ARCHITECTURE.md**：覆盖五大能力域 + IPC 设计 + sidecar pipeline + Planner 9 BehaviorAction + ComfyUI 集成路径
+- ~~**新 ARCHITECTURE.md**~~ — ✅ v0.21 本 session 重写(完整 9 BehaviorAction + ComfyUI 创造路径 + dialog tool 跨 provider)
 - **新 DECISIONS ADR**：转 Electron / 引入 RVC / Attention Scheduler / TS Tier 3 / 手写 MCP / 硅基生命转向
 - **TTS 安装文档**：sidecar/install.sh 流程 + 各 backend (Edge / CosyVoice / F5-TTS / RVC) 各自的依赖坑
 - **USER_GUIDE.md**：onboarding 流程 + 常见问题 + 性能调优

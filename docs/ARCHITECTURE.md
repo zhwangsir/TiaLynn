@@ -1,11 +1,12 @@
 # TiaLynn 架构
 
-> 版本：v0.13 (Electron + 五大能力域 + 主体性 AI)
-> 最后更新：2026-05-18
+> 版本:**v0.21**(硅基生命容器 + M7 创造统一 100%)
+> 最后更新:2026-05-22
+> 顶层愿景见 [SILICON_LIFE_VISION.md](SILICON_LIFE_VISION.md)。
 
 ## 0. 项目本质
 
-TiaLynn 是一个**常驻桌面的自我进化型 AI 智能体**：
+TiaLynn 是一个**可以装载不同灵魂的硅基生命容器**:
 
 - **身体**：Live2D 形象 + 透明置顶窗口 + 像素级穿透
 - **大脑**：本地/云端 LLM + SQLite 短期记忆 + 三层人格 prompt
@@ -13,8 +14,9 @@ TiaLynn 是一个**常驻桌面的自我进化型 AI 智能体**：
 - **声音**：RVC 47 voice + Edge-TTS / CosyVoice / F5-TTS sidecar + 流式 + 嘴型同步
 - **主体**：PerceptionBus + Attention Scheduler + Planner LLM + proactive 触发
 
-**核心区别于普通桌宠**：她不只是看着，**她能做事 + 会主动**。
-**核心区别于普通 AI 助手**：她不只在对话框里，**她在你桌面上 + 持续感知**。
+**核心区别于普通桌宠**：她不只是看着，**她能做事 + 会主动 + 能创造**。
+**核心区别于普通 AI 助手**：她不只在对话框里，**她在你桌面上 + 持续感知 + 真控计算机**。
+**核心区别于市面 AI VTuber(airi / OLV / SoW)**:她有完整的**四大支柱**(灵魂可换 / 真控计算机 / 创造能力 / 主体性),不只是 talking head + Live2D 壳。
 
 ## 1. 进程模型
 
@@ -92,32 +94,87 @@ interface TialynnApi {
   perception: { ... }    // history / triggerSnapshot
   online: { ... }        // listRepoAssets / install / cancelInstall
   attention: { ... }     // onPlan
-  tools: { ... }         // MCP tool list (v0.14+ ready)
+  tools: { ... }         // builtin + MCP tool registry,跨 provider tool_use
+  // v0.21 新增:
+  comfyui: { ... }       // status / list / upload / gen-image / gen-i2i / gen-t2v / gen-i2v / gen-sticker / list-recent / cancel
+  memory: { ... }        // M3 per-character SQLite + embedding RAG(8 handler)
+  characters: { ... }    // 多角色 CRUD + character pack export/import + memory.db opt-in
+  emotional: { ... }     // primary + secondary mood / topic imprints / cross-character
+  characterPack: { ... } // zip export/import 跨机器迁移
+  evalRunner: { ... }    // 50 题 character-eval(本 session 真跑了 94 分灵魂回复)
+  mcp: { ... }           // 手写 stdio JSON-RPC client / register/unregister 动态注入 tools
 }
 ```
+
+**完整 25 个 IPC channel 定义在 `electron/src/shared/channels/`** — 是 single source of truth,
+preload 桥按 channel 名自动 wire 双向类型。
 
 preload 用 `ReturnType<TialynnApi[ns][method]>` 自动同步类型，preload 实现与契约不会漂移。
 
 跨进程克隆走 `deepPlain()` 三级 fallback：`structuredClone → JSON round-trip → manualClone`，专门解决 Vue Proxy → V8 结构化克隆失败问题。
 
-## 4. 主体性 AI 循环 (v0.8+)
+## 4. 主体性 AI 循环 (v0.8+,v0.21 完整 9 BehaviorAction)
 
 ```
 PerceptionBus (main process)
   ↓ (Mouse / Idle / Window / Time / Vision sensors)
-Attention Scheduler (5s tick)
-  ↓ (检查触发条件：idle ≥ N min / window 切换 / proactive 60s 等)
-Planner (LLM 调用)
-  ↓ (输入感知摘要 + soul prompt，输出 BehaviorPlan)
+Attention Scheduler (10s tick + 双路触发:proactive 每 45s / reactive typing_burst+app_focus_changed 等)
+  ↓ (检查触发条件 + min_action_interval + cooldown + LLM rate limit 6/min)
+  ↓ v0.21:agent_task 跑时 scheduler.pause() 静默 nut-js 期间(pauseDepth 引用计数)
+Planner (LLM 调用,实例 field llmCallTimestamps 为 M8 多灵魂准备)
+  ↓ (输入感知摘要 + soul prompt + 9 种 BehaviorAction 选项,输出 BehaviorPlan)
+  ↓ LLM 失败时 rule fallback(配 fallback,日志可观察)
 IPC `attention:plan` → renderer
   ↓
 Plan Executor (avatar/plan-executor.ts)
-  ↓ (依次执行 actions: look_at / speak / play_motion / change_emotion)
-  ↓ speak action → bus.emit('brain:inject-utterance')
-  ↓ → dialog store 注入 assistant turn → TTS 自动播
+  ↓ 依次执行 9 种 BehaviorAction:
+  ↓   - speak / play_motion / play_group / change_emotion / idle_subtle
+  ↓   - glance_at_screen / look_back_to_master
+  ↓   - generate_sticker  ⭐ 真调 ComfyUI → StickerOverlay 浮窗 → 写 memory.db
+  ↓   - agent_task        ⭐ 真调 nut-js + vision grounding(scheduler 自动 pause)
 ```
 
+v0.21 关键升级:`generate_sticker` 不再只是 Planner 主动路径,**dialog LLM 也能在
+对话里 tool_use 调用 `creative_generate_sticker`**(跨 anthropic + openai_compat)
+→ 真融合"对话/创造"双路径。
+
 设计文档：[docs/SOUL_SCHEMA.md](SOUL_SCHEMA.md) | [docs/ARCHITECTURE_MOTION_SYSTEM.md](ARCHITECTURE_MOTION_SYSTEM.md)
+
+### 4.1 ComfyUI 创造能力路径(v0.21)
+
+```
+触发源:dialog LLM 对话决策 / Planner attention 决策 / 用户 CreatorStudioPanel
+  ↓
+tools/builtin.ts creative_generate_sticker(emotion, extra_prompt?)
+  ↓
+getSharedComfyClient()  (services/comfyui/client.ts 共享单例,endpoint 改变 abortAll 旧请求)
+  ↓
+buildStickerWorkflow → ComfyClient.generate
+  ↓ submit /prompt → 轮询 /history(AbortSignal.any race timeout vs instance abort)
+  ↓ → state=queued → running → done
+downloadImage → ~/.tialynn/stickers/sticker_<emotion>_<ts>.png
+  ↓
+emit comfyui:progress {state:'done'} → StickerOverlay 浮窗
+  ↓
+addMemoryForActive(text, embedding: fallbackEmbedding(text))  → per-character memory.db
+  ↓ kind: 'event' / importance: 0.6 / source: 'creative_generate_sticker'
+  ↓ 下次 RAG 检索能召回"我画过 happy 贴纸送主人"
+```
+
+### 4.2 dialog tool_use 跨 provider(v0.21 Round B)
+
+```
+dialog.ts 把 tools 列表对 anthropic + openai_compat **都暴露**(之前只 anthropic)
+  ↓
+LLM stream emit tool_use(anthropic content_block_start) 或
+  tool_calls(openai-compat partial JSON 累积,跨多 chunk arguments)
+  ↓
+loopUntilDone toolsCapable=true(双 provider 都通)
+  ↓
+tools/registry invoke(policy 审批 — 旧 name 自动 migration:fs.list_dir → fs_list_dir)
+  ↓
+LLM 续轮拿 tool result(openai 用 role:'tool' + tool_call_id,需先 push assistant tool_calls 消息)
+```
 
 ## 5. 设计原则（不可破坏）
 
@@ -127,6 +184,9 @@ Plan Executor (avatar/plan-executor.ts)
 4. **配置默认空** — LLM endpoint / TTS sidecar URL 默认空，引导用户首次配置
 5. **错误显式 throw 或 {ok, reason}** — IPC handler 统一返回 `{ok: boolean, ...}`，main 抛错走 IPC reject
 6. **本地优先** — 用户数据在 `~/.tialynn/`，模型库在 `electron/models-library/`，无遥测无上报
+7. **(v0.21) 单例 + AbortController** — ComfyClient / planner 等长生命周期资源用模块单例 + `abortAll()` 切换时取消 in-flight 请求
+8. **(v0.21) 引用计数 pause** — scheduler / 类似可重入暂停的服务用 `pauseDepth: number`,嵌套调用安全(外层 pause 不被内层 resume 提前清)
+9. **(v0.21) Subagent 守护** — 每个里程碑/功能 commit 前后启动 typescript-reviewer + architect agent 审查;CRITICAL/HIGH 修完再继续
 
 ## 6. 数据流：一次对话
 
@@ -194,29 +254,37 @@ docs/rfcs/                               # 重大架构 RFC (TS Tier 3 等)
 - **日志 redact** — `~/.tialynn/logs/main.log` 自动脱敏 6 类敏感字段（api_key / Bearer / sk- 等）
 - **single-instance lock** — 防双启冲突
 
-## 9. 测试 (v0.13 启动)
+## 9. 测试 (v0.21:42 测试文件 / 590 用例 / 4 smoke)
 
 ```bash
-pnpm test          # vitest run — 22 个 starter tests
+pnpm test          # vitest run — 586 passed / 4 skipped(smoke)
 pnpm test:watch    # vitest 监听模式
 pnpm test:coverage # v8 覆盖率报告
+SMOKE_TEST=1 pnpm test --run m7-e2e  # 真出图 e2e(读真 ComfyUI)
 ```
 
-当前覆盖：
-- `motion-factory/parser.test.ts` — draftToMotion3Json (7 tests)
-- `services/logger.test.ts` — redactSensitive 敏感字段 (15 tests)
+**v0.21 增量**:
+- `m7-e2e.smoke.test.ts` ⭐ — 真调 ComfyUI 出 PNG + 校验 magic header + 写真盘(本 session 实测通过)
+- `builtin-creative.test.ts` — creative_generate_sticker tool 单测(5 case 覆盖 emotion / RAG / abort)
+- `openai-compat-tools.test.ts` — tool_calls 流式累积 + finish_reason='tool_calls' + invalid JSON 降级
+- `character-eval/runner.smoke.test.ts` — 真跑 LLM 拿 character-eval 94 分回复(本 session 实测)
+- `character-pack.test.ts` — zip export/import 跨机器迁移 + memory.db opt-in
 
-待补：motion-engine / planner / model-scanner 等纯函数。
+完整列表 41 个 test file,覆盖五大域纯函数 + 跨进程 IPC 边界 + 灵魂演化 + ComfyUI 工具链。
 
 ## 10. 技术栈
 
 - **运行时**：Electron 33 / Node 20+ / Vue 3.5 / TypeScript 5.7 (Tier 3 strict)
-- **打包**：electron-vite 2.3 + electron-builder 25
+- **打包**：electron-vite 2.3 + electron-builder 25(v0.21 已真出 113MB+117MB DMG)
 - **UI**：Vue 3 setup script + Pinia 2 + mitt eventbus + OKLCH design tokens
-- **Live2D**：pixi-live2d-display 0.4 + PIXI.js 6.5 + Cubism Core
+- **Live2D**：pixi-live2d-display 0.4 + PIXI.js 6.5 + Cubism Core(Cubism 4 only,Cubism 2 已弃用)
 - **存储**：better-sqlite3 12 (WAL mode) + js-yaml 4 (JSON_SCHEMA)
+- **LLM provider**:Anthropic SDK + OpenAI-compat fetch streaming(含 tool_calls 流式累积)+ Ollama native
+- **创造能力**:ComfyUI HTTP 客户端(`getSharedComfyClient` 共享单例 + AbortSignal.any race)
+- **MCP**:手写 stdio JSON-RPC client(不引官方 SDK,15s timeout + 进程清理)
+- **RPA**:`@nut-tree-fork/nut-js` 鼠键控制 + vision grounding(主截屏 → vision LLM 定位 → 点击)
 - **TTS sidecar**：Python 3.10+ + FastAPI + edge-tts / CosyVoice / F5-TTS / RVC
-- **测试**：vitest 2.1 + @vitest/coverage-v8
+- **测试**：vitest 2.1 + @vitest/coverage-v8(42 file / 590 case / 4 smoke)
 - **日志**：electron-log 5 (file + console + redact hooks)
 
 ---
