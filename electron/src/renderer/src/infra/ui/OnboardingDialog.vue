@@ -12,6 +12,7 @@ import type { RuntimeConfig } from '@shared/types'
 import LlmAutoDetectPanel from './LlmAutoDetectPanel.vue'
 import { useFocusTrap } from './useFocusTrap'
 import { normalizeLlmEndpoint } from '../../brain/normalize-endpoint'
+import { toFriendlyError } from '../friendly-error'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const cfg = useConfigStore()
@@ -85,11 +86,16 @@ async function probeLlm(): Promise<void> {
       model: llmModel.value,
       api_key: llmApiKey.value,
     })
-    checkResult.value = r.ok
-      ? { ok: true, message: `✓ ${r.message}` }
-      : { ok: false, message: `✗ ${r.message}` }
+    if (r.ok) {
+      checkResult.value = { ok: true, message: `✓ ${r.message}` }
+    } else {
+      // R60: 失败时走 friendly-error 给可操作中文提示
+      const fe = toFriendlyError(r.message, 'llm')
+      checkResult.value = { ok: false, message: `✗ ${fe.title}：${fe.detail}` }
+    }
   } catch (e) {
-    checkResult.value = { ok: false, message: `✗ ${String(e).slice(0, 80)}` }
+    const fe = toFriendlyError(e, 'llm')
+    checkResult.value = { ok: false, message: `✗ ${fe.title}：${fe.detail}` }
   } finally {
     checking.value = false
   }
@@ -110,11 +116,15 @@ async function tryTts(): Promise<void> {
     const resp = await fetch(`${url.replace(/\/+$/, '')}/`, {
       signal: AbortSignal.timeout(3000),
     })
-    ttsResult.value = resp.ok
-      ? { ok: true, message: `✓ 连上了（HTTP ${resp.status}）` }
-      : { ok: false, message: `✗ HTTP ${resp.status} — 检查 sidecar 是否启动` }
+    if (resp.ok) {
+      ttsResult.value = { ok: true, message: `✓ 连上了（HTTP ${resp.status}）` }
+    } else {
+      const fe = toFriendlyError(`HTTP ${resp.status}`, 'tts')
+      ttsResult.value = { ok: false, message: `✗ ${fe.title}：${fe.detail}` }
+    }
   } catch (e) {
-    ttsResult.value = { ok: false, message: `✗ ${String(e).slice(0, 80)}` }
+    const fe = toFriendlyError(e, 'tts')
+    ttsResult.value = { ok: false, message: `✗ ${fe.title}：${fe.detail}` }
   } finally {
     ttsTrying.value = false
   }
