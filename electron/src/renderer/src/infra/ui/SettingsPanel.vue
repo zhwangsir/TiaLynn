@@ -12,6 +12,8 @@ import SoulChangeLogPanel from './SoulChangeLogPanel.vue'
 import { normalizeLlmEndpoint, normalizeSimpleUrl } from '../../brain/normalize-endpoint'
 import type { RuntimeConfig } from '@shared/types'
 
+/** R119: 接 initialTab prop, 让 ServiceStatusPill 等组件能定向跳转 */
+const props = defineProps<{ initialTab?: 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp' }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const cfg = useConfigStore()
@@ -62,7 +64,7 @@ const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 const diskUsageOpen = ref(false)
 /** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
 type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
-const activeTab = ref<SettingsTab>('llm')
+const activeTab = ref<SettingsTab>(props.initialTab ?? 'llm')
 
 /** R107+R109-fix (HIGH): tabs ←→ 键盘导航, 切换后 focus 转移到新 tab (WAI-ARIA roving tabindex 标准) */
 async function onTabsKeydown(e: KeyboardEvent): Promise<void> {

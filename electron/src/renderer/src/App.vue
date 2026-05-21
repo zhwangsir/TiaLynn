@@ -45,6 +45,7 @@ const character = useCharacterStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
+const settingsInitialTab = ref<'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp' | undefined>(undefined)
 const keyboardHelpOpen = ref(false)
 const spotlightOpen = ref(false)
 const creatorStudioOpen = ref(false)
@@ -544,7 +545,11 @@ onBeforeUnmount(() => {
         @close="closeMenu"
       />
       <ErrorBoundary scope="panel" label="设置面板">
-        <SettingsPanel v-if="settingsOpen" @close="closeSettings" />
+        <SettingsPanel
+          v-if="settingsOpen"
+          v-bind="settingsInitialTab !== undefined ? { initialTab: settingsInitialTab } : {}"
+          @close="closeSettings"
+        />
       </ErrorBoundary>
       <ErrorBoundary scope="panel" label="创作工坊">
         <CreatorStudioPanel v-if="creatorStudioOpen" @close="creatorStudioOpen = false" />
@@ -553,7 +558,10 @@ onBeforeUnmount(() => {
         <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
       </ErrorBoundary>
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
-      <ServiceStatusPill v-if="ready" @open-settings="settingsOpen = true" />
+      <ServiceStatusPill
+        v-if="ready"
+        @open-settings="(tab) => { settingsInitialTab = tab; settingsOpen = true }"
+      />
       <KeyboardHelpCard :open="keyboardHelpOpen" @close="keyboardHelpOpen = false" />
       <SpotlightSearch
         :open="spotlightOpen"

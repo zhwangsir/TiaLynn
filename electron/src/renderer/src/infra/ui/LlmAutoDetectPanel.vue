@@ -34,16 +34,21 @@ function toggleExpand(endpoint: string): void {
   expandedEndpoints.value = next
 }
 
-/** R115: latency 颜色: <100ms 绿 / <500ms 黄 / >=500ms 红 */
+/**
+ * R115+R120-fix (MED): latency 颜色阈值放宽兼容云 API
+ *   - <150ms 极快 (本地 Ollama/LM Studio 典型)
+ *   - <800ms 正常 (云 API 首 token 典型 200-800ms)
+ *   - >=800ms 较慢 (可能流式卡顿)
+ */
 function latencyClass(ms: number): string {
-  if (ms < 100) return 'fast'
-  if (ms < 500) return 'medium'
+  if (ms < 150) return 'fast'
+  if (ms < 800) return 'medium'
   return 'slow'
 }
 function latencyHint(ms: number): string {
-  if (ms < 100) return `极快 (${ms}ms)`
-  if (ms < 500) return `正常 (${ms}ms)`
-  return `较慢 (${ms}ms) — 可能影响流式响应`
+  if (ms < 150) return `极快 (${ms}ms) — 本机服务`
+  if (ms < 800) return `正常 (${ms}ms)`
+  return `较慢 (${ms}ms) — 可能影响流式首字符`
 }
 
 async function autoDetect(): Promise<void> {

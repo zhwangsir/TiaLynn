@@ -241,13 +241,12 @@ async function copyText(): Promise<void> {
     <div
       v-if="latest && (latest.text || latest.streaming || latest.error) && visible"
       ref="bubbleEl"
-      :title="bubbleTimestamp"
       :class="['bubble', { expanded }]"
       :style="{ background: bubbleBg(latest.emotion) }"
       @mouseenter="onMouseEnter"
       @mouseleave="onMouseLeave"
     >
-      <span v-if="latest.text" class="text">
+      <span v-if="latest.text" class="text" :title="bubbleTimestamp">
         <template v-for="(seg, i) in segments" :key="i">
           <strong v-if="seg.type === 'bold'" class="md-bold">{{ seg.text }}</strong>
           <code v-else-if="seg.type === 'code'" class="md-code">{{ seg.text }}</code>

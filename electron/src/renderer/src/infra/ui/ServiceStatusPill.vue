@@ -27,7 +27,10 @@ interface ServiceState {
   ts: number
 }
 
-const emit = defineEmits<{ (e: 'open-settings'): void }>()
+// R119: 支持定向 tab — pill click 时定位到对应 service 的 settings tab
+// (vision 配置在 llm tab 内, 所以映射成 'llm')
+type SettingsTabHint = 'llm' | 'tts'
+const emit = defineEmits<{ (e: 'open-settings', tab?: SettingsTabHint): void }>()
 const cfg = useConfigStore()
 const dialog = useDialogStore()
 
@@ -245,14 +248,22 @@ function currentConfigHint(svc: 'llm' | 'tts' | 'vision'): string {
   return ''
 }
 
-function openSettings(): void {
-  emit('open-settings')
+function openSettings(tab?: SettingsTabHint): void {
+  emit('open-settings', tab)
 }
 
 /** R47: 有任一 down 时让 pill click 先重 probe (不打扰健康态 → 跳设置) */
 const anyDown = computed(() =>
   [llmState.value, ttsState.value, visionState.value].some((s) => s.status === 'down'),
 )
+
+/** R119: 找第一个 down 的 service, 用于 click 定向 tab (vision 映射 llm) */
+function firstDownService(): SettingsTabHint | undefined {
+  if (llmState.value.status === 'down') return 'llm'
+  if (ttsState.value.status === 'down') return 'tts'
+  if (visionState.value.status === 'down') return 'llm' // vision 设置在 llm tab 内
+  return undefined
+}
 
 async function onPillClick(): Promise<void> {
   if (!anyDown.value) {
@@ -265,8 +276,8 @@ async function onPillClick(): Promise<void> {
   // R49-fix (HIGH): await 后组件可能已卸载, 守卫避免对已死组件 emit/state read
   if (!mounted) return
   if (anyDown.value) {
-    // 仍然 down → 跳设置
-    openSettings()
+    // R119: 仍然 down → 跳设置, 定向第一个 down 的 service tab
+    openSettings(firstDownService())
   } else {
     bus.emit('ui:toast', { kind: 'success', message: '✓ 服务已恢复', ttl_ms: 2000 })
   }
