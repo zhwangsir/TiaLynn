@@ -232,12 +232,13 @@ function skip(): void {
                 placeholder="本地端点通常留空"
               />
               <button
-                v-if="llmApiKey"
+                v-show="llmApiKey"
                 type="button"
                 class="toggle-show-btn"
+                :disabled="!llmApiKey"
                 :title="showApiKey ? '隐藏' : '显示'"
                 :aria-label="showApiKey ? '隐藏 API Key' : '显示 API Key'"
-                :aria-pressed="showApiKey"
+                :aria-pressed="showApiKey ? 'true' : 'false'"
                 @click="showApiKey = !showApiKey"
               >{{ showApiKey ? '🙈' : '👁' }}</button>
             </div>

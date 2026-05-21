@@ -17,6 +17,7 @@ import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
 import SpotlightSearch from './infra/ui/SpotlightSearch.vue'
 import BootSplash from './infra/ui/BootSplash.vue'
 import { THEME_LABEL, useThemeMode } from './infra/ui/useThemeMode'
+import { CMD_KEY } from './infra/ui/useCmdKey'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -73,13 +74,6 @@ const passthroughEnabled = computed(
     !inputOpen.value,
 )
 
-// R77: platform 感知快捷键标签 — mac ⌘ 其他 Ctrl
-const cmdKey: string = (() => {
-  const uad = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData
-  const isMac = uad?.platform === 'macOS' || /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
-  return isMac ? '⌘' : 'Ctrl'
-})()
-
 const menuItems = computed<MenuItem[]>(() => [
   { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '💬 打开对话', icon: iconChat, shortcut: 'Space' },
   { id: 'sep0', label: '', separator: true },
@@ -100,7 +94,7 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'sep-zoom', label: '', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
-  { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}`, shortcut: `${cmdKey}+⇧T` },
+  { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}`, shortcut: `${CMD_KEY}+⇧T` },
   { id: 'keyboard-help', label: '⌨️ 快捷键帮助', icon: iconGear, shortcut: '?' },
   { id: 'sep-sys', label: '', separator: true },
   // 窗口

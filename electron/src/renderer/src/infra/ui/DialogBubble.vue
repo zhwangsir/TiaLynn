@@ -182,7 +182,8 @@ const emotionTooltip = computed<string>(() => {
   const e = latest.value?.emotion
   if (!e) return ''
   const i = latest.value?.intensity
-  const label = emotionLabel[e]?.label ?? e
+  // R79-fix (LOW): 未知 emotion 用 [bracket] 标记, 防 EmotionId 扩展时原始 key 直接暴露给用户
+  const label = emotionLabel[e]?.label ?? `[${e}]`
   if (typeof i === 'number' && Number.isFinite(i)) {
     return `${label} · 强度 ${Math.round(Math.max(0, Math.min(1, i)) * 100)}%`
   }

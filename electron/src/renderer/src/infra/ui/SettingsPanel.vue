@@ -708,12 +708,13 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
               @input="markDirty"
             />
             <button
-              v-if="form.llm_api_key"
+              v-show="form.llm_api_key"
               type="button"
               class="toggle-show-btn"
+              :disabled="!form.llm_api_key"
               :title="showApiKey ? '隐藏' : '显示'"
               :aria-label="showApiKey ? '隐藏 API Key' : '显示 API Key'"
-              :aria-pressed="showApiKey"
+              :aria-pressed="showApiKey ? 'true' : 'false'"
               @click="showApiKey = !showApiKey"
             >{{ showApiKey ? '🙈' : '👁' }}</button>
           </div>

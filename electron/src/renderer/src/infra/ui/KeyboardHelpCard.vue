@@ -7,6 +7,7 @@
  */
 import { computed, ref, toRefs } from 'vue'
 import { useFocusTrap } from './useFocusTrap'
+import { CMD_KEY } from './useCmdKey'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -15,15 +16,8 @@ const cardRef = ref<HTMLElement | null>(null)
 const { open: openRef } = toRefs(props)
 useFocusTrap(cardRef, openRef)
 
-/** R23-fix: navigator.platform 已弃用，优先 userAgentData; fallback userAgent (Electron 上没 userAgentData 但 userAgent 总有) */
-const isMac = computed(() => {
-  const uad = (navigator as unknown as {
-    userAgentData?: { platform?: string }
-  }).userAgentData
-  if (uad?.platform) return uad.platform === 'macOS'
-  return /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
-})
-const cmdKey = computed(() => (isMac.value ? '⌘' : 'Ctrl'))
+/** R79: 复用全局 CMD_KEY 单例, 不再每组件各算一份 */
+const cmdKey = computed(() => CMD_KEY)
 
 interface Shortcut {
   keys: string[]

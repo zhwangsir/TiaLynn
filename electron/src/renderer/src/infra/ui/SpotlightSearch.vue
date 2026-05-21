@@ -19,6 +19,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { bus } from '../eventbus'
 import { useCharacterStore } from '../stores/character'
 import { useThemeMode } from './useThemeMode'
+import { CMD_KEY } from './useCmdKey'
 import type { Character } from '@shared/character'
 
 interface ResultItem {
@@ -90,13 +91,6 @@ async function refreshSources(): Promise<void> {
 }
 
 // ——— 命令源（始终可用，不需要 IPC）———
-/** R78: platform 感知快捷键标签 */
-const cmdKey: string = (() => {
-  const uad = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData
-  const isMac = uad?.platform === 'macOS' || /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
-  return isMac ? '⌘' : 'Ctrl'
-})()
-
 interface Command {
   title: string
   hint: string
@@ -112,9 +106,10 @@ const commands: Command[] = [
   { title: '重载模型 / 灵魂', hint: '🔄', do: () => emit('reload-model') },
   { title: '清空对话历史', hint: '🧹', do: () => emit('clear-dialog') },
   { title: '重新打开引导 (Onboarding)', hint: '🪄', do: () => emit('open-onboarding') },
-  { title: '主题：跟随系统', hint: '🌓', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('auto') },
-  { title: '主题：浅色模式', hint: '☀️', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('light') },
-  { title: '主题：深色模式', hint: '🌙', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('dark') },
+  // R79-fix (MED): 三主题命令是"直接进入", 与 ⌘+⇧T 的 cycle 行为语义不同 — 不挂误导性 shortcut
+  { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },
+  { title: '主题：浅色模式', hint: '☀️', do: () => theme.setMode('light') },
+  { title: '主题：深色模式', hint: '🌙', do: () => theme.setMode('dark') },
 ]
 
 // ——— 设置索引（静态关键词 → 跳设置）———
