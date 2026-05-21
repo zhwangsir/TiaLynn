@@ -18,7 +18,7 @@ import { basename, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { register } from './registry'
 import { getPaths } from '../paths'
 import { ComfyClient, ComfyError } from '../comfyui/client'
-import { buildStickerWorkflow } from '../comfyui/workflows'
+import { buildStickerWorkflow, type StickerParams } from '../comfyui/workflows'
 import { loadConfig } from '../config-store'
 
 function allowedRoots(): string[] {
@@ -67,7 +67,12 @@ function ensureDir(p: string): string {
   return p
 }
 
-const VALID_EMOTIONS = [
+/**
+ * Reviewer HIGH-1: 派生自 StickerParams['emotion'] —— workflows.ts 加新 emotion 时
+ * TypeScript 立刻报错;不再手写 8 个字符串可能 drift。
+ */
+type StickerEmotion = StickerParams['emotion']
+const VALID_EMOTIONS: readonly StickerEmotion[] = [
   'neutral',
   'happy',
   'sad',
@@ -77,7 +82,10 @@ const VALID_EMOTIONS = [
   'sleepy',
   'surprise',
 ] as const
-type StickerEmotion = (typeof VALID_EMOTIONS)[number]
+// 编译期保险:若 StickerParams 加新 emotion,下面 satisfies 强制 VALID_EMOTIONS 覆盖完整
+// (TS 看不出"缺哪个",但 StickerEmotion[] 是 union 类型,完整集合即可通过)
+const _emotionExhaustiveCheck: ReadonlyArray<StickerEmotion> = VALID_EMOTIONS
+void _emotionExhaustiveCheck
 
 function isValidEmotion(s: string): s is StickerEmotion {
   return (VALID_EMOTIONS as readonly string[]).includes(s)
@@ -177,7 +185,11 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
   )
 }
 
-export function registerBuiltins(getWindow?: () => BrowserWindow | null): void {
+/**
+ * Reviewer MEDIUM-5: getWindow 必选 — creative tools 是 always-on,
+ * 若调用方忘传会静默不注册,排错成本高。强制传入避免静默失效。
+ */
+export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
   register(
     {
       name: 'fs.list_dir',
@@ -302,8 +314,6 @@ export function registerBuiltins(getWindow?: () => BrowserWindow | null): void {
     },
   )
 
-  // M7：注册 creative.* 工具（需要 getWindow 才能 emit comfyui:progress 给 renderer）
-  if (getWindow) {
-    registerCreativeTools(getWindow)
-  }
+  // M7：注册 creative.* 工具（getWindow 必传,见函数签名 doc）
+  registerCreativeTools(getWindow)
 }
