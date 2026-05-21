@@ -20,6 +20,7 @@ import { bus } from '../eventbus'
 import { useCharacterStore } from '../stores/character'
 import { useThemeMode } from './useThemeMode'
 import { CMD_KEY } from './useCmdKey'
+import { highlightMatch } from './highlight-match'
 import type { Character } from '@shared/character'
 
 interface ResultItem {
@@ -336,7 +337,12 @@ function onBackdrop(e: MouseEvent): void {
           >
             <span class="item-icon">{{ r.icon }}</span>
             <div class="item-main">
-              <div class="item-title">{{ r.title }}</div>
+              <div class="item-title">
+                <template v-for="(seg, si) in highlightMatch(r.title, query)" :key="si">
+                  <mark v-if="seg.matched" class="match-hl">{{ seg.text }}</mark>
+                  <template v-else>{{ seg.text }}</template>
+                </template>
+              </div>
               <div v-if="r.subtitle" class="item-sub">{{ r.subtitle }}</div>
             </div>
             <span v-if="r.shortcut" class="item-shortcut">{{ r.shortcut }}</span>
@@ -450,6 +456,23 @@ function onBackdrop(e: MouseEvent): void {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* R81: 查询匹配高亮 */
+.match-hl {
+  background: oklch(85% 0.15 90 / 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  .match-hl {
+    background: oklch(60% 0.18 80 / 0.5);
+  }
+}
+.item.active .match-hl {
+  background: oklch(85% 0.18 80 / 0.7);
+}
+
 /* R78: 已绑定快捷键 hint */
 .item-shortcut {
   font-size: 10px;
