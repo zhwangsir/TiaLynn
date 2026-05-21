@@ -196,4 +196,92 @@ describe('setMood', () => {
     const negative = setMood(fresh(), 'happy', -0.3, 't', NOW)
     expect(negative.mood_intensity).toBe(0)
   })
+
+  it('P5: setMood 清空 secondary (手动选择视为重置)', () => {
+    const withSec = {
+      ...fresh(),
+      secondary_mood: 'shy' as const,
+      secondary_intensity: 0.5,
+    }
+    const next = setMood(withSec, 'angry', 0.8, 't', NOW)
+    expect(next.secondary_mood).toBeUndefined()
+    expect(next.secondary_intensity).toBeUndefined()
+  })
+})
+
+describe('P5: 多 mood 并存', () => {
+  it('applyChatSentiment 切换时 primary intensity > 0.5 → 旧 mood 留为 secondary', () => {
+    const s = { ...fresh(), current_mood: 'shy' as const, mood_intensity: 0.8 }
+    // sentiment > 0.5 → 切 happy
+    const next = applyChatSentiment(s, 0.7, NOW)
+    expect(next.current_mood).toBe('happy')
+    expect(next.secondary_mood).toBe('shy')
+    expect(next.secondary_intensity).toBeCloseTo(0.8 * 0.7, 2) // 降级时打折
+  })
+
+  it('primary intensity < 0.5 → 不保留为 secondary (强度不够)', () => {
+    const s = { ...fresh(), current_mood: 'shy' as const, mood_intensity: 0.3 }
+    const next = applyChatSentiment(s, 0.7, NOW)
+    expect(next.current_mood).toBe('happy')
+    expect(next.secondary_mood).toBeUndefined()
+  })
+
+  it('切换到 tease (shy + 高 sentiment) → secondary 保留旧 shy', () => {
+    const s = { ...fresh(), current_mood: 'shy' as const, mood_intensity: 0.7 }
+    const next = applyChatSentiment(s, 0.9, NOW) // 触发 tease (>0.85)
+    expect(next.current_mood).toBe('tease')
+    expect(next.secondary_mood).toBe('shy')
+  })
+
+  it('applyTick: secondary 衰减 2x 速率', () => {
+    // 1 小时后衰减计算: primary 0.7 * (1-0.05)^1 ≈ 0.665
+    // secondary 0.7 * (1-0.1)^1 = 0.63
+    const s = {
+      ...fresh(),
+      current_mood: 'happy' as const,
+      mood_intensity: 0.7,
+      secondary_mood: 'shy' as const,
+      secondary_intensity: 0.7,
+      updated_at: NOW - 3600_000,
+      last_chat_at: NOW - 60_000, // 防 missing 触发
+    }
+    const next = applyTick(s, NOW)
+    expect(next.mood_intensity).toBeCloseTo(0.665, 2)
+    expect(next.secondary_intensity).toBeCloseTo(0.63, 2)
+    expect(next.secondary_intensity!).toBeLessThan(next.mood_intensity)
+  })
+
+  it('applyTick: secondary 衰减到 <0.15 自动清空', () => {
+    const s = {
+      ...fresh(),
+      current_mood: 'happy' as const,
+      mood_intensity: 0.7,
+      secondary_mood: 'shy' as const,
+      secondary_intensity: 0.1, // 已经 <0.15
+      updated_at: NOW - 3600_000,
+      last_chat_at: NOW - 60_000,
+    }
+    const next = applyTick(s, NOW)
+    expect(next.secondary_mood).toBeUndefined()
+    expect(next.secondary_intensity).toBeUndefined()
+  })
+
+  it('无 secondary 时 applyTick 不报错', () => {
+    const s = {
+      ...fresh(),
+      mood_intensity: 0.5,
+      updated_at: NOW - 3600_000,
+      last_chat_at: NOW - 60_000,
+    }
+    const next = applyTick(s, NOW)
+    expect(next.secondary_mood).toBeUndefined()
+  })
+
+  it('原 mood = new mood 不应替换为 secondary (无意义)', () => {
+    // sentiment 触发 happy 但当前已是 happy → 啥都不变
+    const s = { ...fresh(), current_mood: 'happy' as const, mood_intensity: 0.7 }
+    const next = applyChatSentiment(s, 0.7, NOW)
+    expect(next.current_mood).toBe('happy')
+    expect(next.secondary_mood).toBeUndefined() // 不会把自己当 secondary
+  })
 })

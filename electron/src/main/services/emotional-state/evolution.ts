@@ -11,6 +11,12 @@ const TOPIC_IMPRINTS_MAX = 60
 const MISSING_HALF_DAY_MS = 12 * 60 * 60 * 1000
 /** 心情每小时向 baseline 衰减比率（0.05 = 1h 衰减 5%） */
 const MOOD_DECAY_PER_HOUR = 0.05
+/** P5 多 mood: secondary 衰减是 primary 的 2 倍（残留情绪应该消得更快） */
+const SECONDARY_DECAY_MULTIPLIER = 2.0
+/** secondary intensity 低于此值时自动清空（不再渲染到 prompt） */
+const SECONDARY_CLEAR_THRESHOLD = 0.15
+/** primary 切换时保留为 secondary 的最低 intensity 门槛（避免无强度 mood 残留干扰） */
+const PROMOTE_TO_SECONDARY_MIN = 0.5
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v
@@ -74,23 +80,34 @@ export function applyChatSentiment(
   now: number = Date.now(),
 ): EmotionalState {
   const next: EmotionalState = { ...state, updated_at: now }
+  let newPrimary: Mood | undefined
+  let newIntensity = 0
   if (sentiment > 0.5 && state.current_mood !== 'happy' && state.current_mood !== 'tease') {
-    next.current_mood = sentiment > 0.85 ? 'tease' : 'happy'
-    next.mood_intensity = clamp(0.4 + (sentiment - 0.5) * 0.6, 0.4, 0.95)
-    next.mood_history = appendMoodHistory(state, {
-      ts: now,
-      mood: next.current_mood,
-      trigger: `chat_sentiment+${sentiment.toFixed(2)}`,
-    })
+    newPrimary = sentiment > 0.85 ? 'tease' : 'happy'
+    newIntensity = clamp(0.4 + (sentiment - 0.5) * 0.6, 0.4, 0.95)
   } else if (sentiment < -0.5 && state.current_mood !== 'sad' && state.current_mood !== 'angry') {
-    next.current_mood = sentiment < -0.85 ? 'angry' : 'sad'
-    next.mood_intensity = clamp(0.4 + Math.abs(sentiment + 0.5) * 0.6, 0.4, 0.9)
-    next.mood_history = appendMoodHistory(state, {
-      ts: now,
-      mood: next.current_mood,
-      trigger: `chat_sentiment${sentiment.toFixed(2)}`,
-    })
+    newPrimary = sentiment < -0.85 ? 'angry' : 'sad'
+    newIntensity = clamp(0.4 + Math.abs(sentiment + 0.5) * 0.6, 0.4, 0.9)
   }
+  if (!newPrimary) return next
+
+  // P5 多 mood: 若当前 primary intensity 还高，保留为 secondary（"我开心，但还有点害羞"）
+  if (state.mood_intensity >= PROMOTE_TO_SECONDARY_MIN && state.current_mood !== newPrimary) {
+    next.secondary_mood = state.current_mood
+    next.secondary_intensity = state.mood_intensity * 0.7 // 降级时打个折
+  } else {
+    // intensity 不够，丢
+    delete next.secondary_mood
+    delete next.secondary_intensity
+  }
+
+  next.current_mood = newPrimary
+  next.mood_intensity = newIntensity
+  next.mood_history = appendMoodHistory(state, {
+    ts: now,
+    mood: newPrimary,
+    trigger: `chat_sentiment${sentiment >= 0 ? '+' : ''}${sentiment.toFixed(2)}`,
+  })
   return next
 }
 
@@ -122,6 +139,19 @@ export function applyTick(
     missing_intensity: missingClamped,
     mood_intensity: newIntensity,
     updated_at: now,
+  }
+
+  // P5 多 mood: secondary 衰减更快 (2x)，<0.15 自动清空
+  if (state.secondary_mood && typeof state.secondary_intensity === 'number') {
+    const secDecayed =
+      state.secondary_intensity *
+      Math.pow(1 - MOOD_DECAY_PER_HOUR * SECONDARY_DECAY_MULTIPLIER, dtMs / 3_600_000)
+    if (secDecayed < SECONDARY_CLEAR_THRESHOLD) {
+      delete next.secondary_mood
+      delete next.secondary_intensity
+    } else {
+      next.secondary_intensity = clamp(secDecayed, 0, 1)
+    }
   }
 
   // mood 强度衰减到 < 0.2 → 回归 baseline（情绪自然平复）
@@ -214,11 +244,15 @@ export function setMood(
   trigger: string,
   now: number = Date.now(),
 ): EmotionalState {
-  return {
+  // P5 多 mood: 手动 setMood 视为显式选择，清空 secondary（没有"残留"含义）
+  const next: EmotionalState = {
     ...state,
     current_mood: mood,
     mood_intensity: clamp(intensity, 0, 1),
     updated_at: now,
     mood_history: appendMoodHistory(state, { ts: now, mood, trigger }),
   }
+  delete next.secondary_mood
+  delete next.secondary_intensity
+  return next
 }

@@ -105,6 +105,45 @@ describe('emotionalStateToPromptFragment', () => {
   })
 })
 
+describe('P5: 多 mood 渲染', () => {
+  it('promptFragment 渲染 secondary "同时也带点"', () => {
+    const s = {
+      ...fresh(),
+      current_mood: 'happy' as const,
+      mood_intensity: 0.7,
+      secondary_mood: 'shy' as const,
+      secondary_intensity: 0.5,
+    }
+    const out = emotionalStateToPromptFragment(s)
+    expect(out).toContain('心情很好，话多')
+    expect(out).toContain('但同时也带点')
+    expect(out).toContain('害羞，话少')
+    expect(out).toContain('残留 intensity=0.50')
+  })
+
+  it('无 secondary 时不渲染同时句', () => {
+    const out = emotionalStateToPromptFragment(fresh())
+    expect(out).not.toContain('但同时也带点')
+    expect(out).not.toContain('残留')
+  })
+
+  it('oneLiner 含 + 形式 secondary', () => {
+    const s = {
+      ...fresh(),
+      current_mood: 'happy' as const,
+      mood_intensity: 0.7,
+      secondary_mood: 'shy' as const,
+      secondary_intensity: 0.4,
+    }
+    expect(emotionalStateOneLiner(s)).toContain('+')
+    expect(emotionalStateOneLiner(s)).toContain('害羞')
+  })
+
+  it('oneLiner 无 secondary 时不加 +', () => {
+    expect(emotionalStateOneLiner(fresh())).not.toContain('+')
+  })
+})
+
 describe('emotionalStateOneLiner', () => {
   it('基础形态', () => {
     expect(emotionalStateOneLiner(fresh())).toContain('平静')

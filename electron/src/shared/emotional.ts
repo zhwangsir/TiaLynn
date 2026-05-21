@@ -37,6 +37,10 @@ export interface EmotionalState {
   baseline_mood: Mood
   current_mood: Mood
   mood_intensity: number
+  /** P5 多 mood: primary 被切换时，旧 mood 残留（>0.5 intensity 才保留）。
+   *  按 2x 速率衰减，<0.15 自动清空。让"我开心，但有点害羞"成为可能。 */
+  secondary_mood?: Mood
+  secondary_intensity?: number
   missing_intensity: number
   last_chat_at: number
   updated_at: number

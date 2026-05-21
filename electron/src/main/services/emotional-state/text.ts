@@ -56,9 +56,18 @@ export function emotionalStateToPromptFragment(state: EmotionalState): string {
 
   const moodLabel = MOOD_LABELS[state.current_mood]
   const intensityWord = describeIntensity(state.mood_intensity)
-  parts.push(
-    `- 心情: ${intensityWord}${moodLabel}（intensity=${state.mood_intensity.toFixed(2)}）`,
-  )
+  // P5 多 mood: secondary 渲染成"同时也带点..."自然语言
+  if (state.secondary_mood && typeof state.secondary_intensity === 'number') {
+    const secLabel = MOOD_LABELS[state.secondary_mood]
+    parts.push(
+      `- 心情: ${intensityWord}${moodLabel}（intensity=${state.mood_intensity.toFixed(2)}），` +
+        `但同时也带点${secLabel}（残留 intensity=${state.secondary_intensity.toFixed(2)}） — 让两层情绪自然融入语气`,
+    )
+  } else {
+    parts.push(
+      `- 心情: ${intensityWord}${moodLabel}（intensity=${state.mood_intensity.toFixed(2)}）`,
+    )
+  }
 
   const missingDesc = describeMissing(state.missing_intensity, sinceChatMs)
   if (missingDesc) parts.push(`- ${missingDesc}`)
@@ -112,6 +121,10 @@ export function emotionalStateOneLiner(state: EmotionalState): string {
   const moodLabel = MOOD_LABELS[state.current_mood]
   const intensityWord = describeIntensity(state.mood_intensity)
   let s = `${intensityWord}${moodLabel}`
+  // P5 多 mood: secondary 加 "+ X" 形式 (一行内)
+  if (state.secondary_mood && typeof state.secondary_intensity === 'number') {
+    s += ` + ${MOOD_LABELS[state.secondary_mood]}`
+  }
   if (state.missing_intensity > 0.4) {
     s += ` · 想念 ${state.missing_intensity.toFixed(1)}`
   }

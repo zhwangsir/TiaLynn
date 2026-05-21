@@ -107,6 +107,15 @@ onBeforeUnmount(() => {
         <div class="row1">
           <span class="mood-emoji">{{ MOOD_OPTIONS.find((o) => o.id === state!.current_mood)?.emoji ?? '😐' }}</span>
           <span class="mood-label">{{ MOOD_OPTIONS.find((o) => o.id === state!.current_mood)?.label ?? state!.current_mood }}</span>
+          <!-- P5 多 mood: secondary 残留以 + 小标签显示 -->
+          <span
+            v-if="state!.secondary_mood && state!.secondary_intensity"
+            class="secondary-tag"
+            :title="`secondary intensity: ${state!.secondary_intensity.toFixed(2)}`"
+          >
+            +{{ MOOD_OPTIONS.find((o) => o.id === state!.secondary_mood)?.emoji ?? '?' }}
+            {{ MOOD_OPTIONS.find((o) => o.id === state!.secondary_mood)?.label ?? state!.secondary_mood }}
+          </span>
           <span class="baseline-tag" :title="`baseline: ${state!.baseline_mood}`">↺ {{ state!.baseline_mood }}</span>
         </div>
         <div class="bar-row">
@@ -231,6 +240,17 @@ onBeforeUnmount(() => {
 .mood-label {
   font-size: 16px;
   font-weight: 700;
+}
+.secondary-tag {
+  padding: 2px 8px;
+  background: oklch(95% 0.06 250 / 0.5);
+  border: 1px dashed oklch(60% 0.18 250 / 0.5);
+  border-radius: 999px;
+  font-size: 11px;
+  color: oklch(45% 0.15 250);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .baseline-tag {
   margin-left: auto;
