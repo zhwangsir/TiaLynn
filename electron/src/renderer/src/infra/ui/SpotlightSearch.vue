@@ -49,6 +49,9 @@ const emit = defineEmits<{
   (e: 'reload-model'): void
   (e: 'clear-dialog'): void
   (e: 'export-dialog'): void
+  (e: 'open-help'): void
+  (e: 'reset-ui-scale'): void
+  (e: 'abort-llm'): void
 }>()
 
 const query = ref('')
@@ -113,6 +116,10 @@ const commands: Command[] = [
   { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },
   { title: '主题：浅色模式', hint: '☀️', do: () => theme.setMode('light') },
   { title: '主题：深色模式', hint: '🌙', do: () => theme.setMode('dark') },
+  // R128: 新增 3 个常用命令
+  { title: '查看快捷键帮助', hint: '⌨️', shortcut: '?', do: () => emit('open-help') },
+  { title: '重置 UI 缩放', hint: '↻', shortcut: `${CMD_KEY}+0`, do: () => emit('reset-ui-scale') },
+  { title: '中止当前 LLM 回复', hint: '⏹', shortcut: `${CMD_KEY}+.`, do: () => emit('abort-llm') },
 ]
 
 // ——— 设置索引（静态关键词 → 跳设置）———

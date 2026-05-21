@@ -576,6 +576,9 @@ onBeforeUnmount(() => {
         @reload-model="bus.emit('avatar:reload-model')"
         @clear-dialog="dialog.clear()"
         @export-dialog="exportDialogToClipboard()"
+        @open-help="keyboardHelpOpen = true"
+        @reset-ui-scale="applyUIScale(1)"
+        @abort-llm="dialog.replying && dialog.abort()"
       />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
