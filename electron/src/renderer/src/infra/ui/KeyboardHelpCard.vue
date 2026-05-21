@@ -68,6 +68,15 @@ const sections = computed<Section[]>(() => [
     ],
   },
   {
+    title: 'Spotlight 内 (Cmd+K)',
+    items: [
+      { keys: ['/', '...'], label: '前缀过滤: 仅命令' },
+      { keys: ['@', '...'], label: '前缀过滤: 仅角色' },
+      { keys: [cmdKey.value, '1-9'], label: '直选第 N 项' },
+      { keys: ['↑', '↓'], label: '上下选择 (wrap)' },
+    ],
+  },
+  {
     title: '调试',
     items: [
       { keys: [cmdKey.value, 'Alt', 'I'], label: '打开 DevTools（需 TIALYNN_DEBUG=1）' },
