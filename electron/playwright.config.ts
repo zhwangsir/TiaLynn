@@ -20,7 +20,9 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
-  workers: 1, // electron 单实例(避免 dev server 端口冲突 / userData 锁)
+  // 单 worker:避免 userData / single-instance lock 冲突(本 spec 已用 --user-data-dir 隔离,
+  // 未来 workers > 1 时只要每 test 自己 tmpdir userData,理论安全)
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     // electron 自己管 webContents,不需要 baseURL / browserName
