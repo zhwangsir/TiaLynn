@@ -59,6 +59,10 @@ export function applyChatTurn(
         mood: state.baseline_mood,
         trigger: 'chat_relief',
       })
+      // ts-reviewer MEDIUM: chat_relief 是非 sentiment 切换 — 旧 secondary 已失去
+      // 来源 primary，清空避免下次 prompt 渲染 calm + tease 这种语义矛盾
+      delete next.secondary_mood
+      delete next.secondary_intensity
     } else {
       next.mood_intensity = newIntensity
     }

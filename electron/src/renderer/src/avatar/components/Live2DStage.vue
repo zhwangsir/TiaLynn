@@ -61,13 +61,15 @@ onMounted(async () => {
   const emotionHandler = ({ emotion, intensity }: { emotion: string; intensity: number }): void => {
     currentEmotion.value = emotion
     currentIntensity.value = intensity
-    if (renderer && intensity > 0.3) {
+    // ts-reviewer HIGH: 防 race — 动态 import 的 Promise resolve 时 renderer 可能已被
+    // onBeforeUnmount 置 null。把 renderer 闭包成 snapshot 并显式 guard
+    const snapshot = renderer
+    if (snapshot && intensity > 0.3) {
       void import('../render/expression-matcher').then(({ matchExpression }) => {
-        const available = renderer!.listExpressions()
+        if (!snapshot || snapshot !== renderer) return // 组件已卸载或 renderer 已重建
+        const available = snapshot.listExpressions()
         const matched = matchExpression(emotion, available)
-        if (matched) {
-          renderer!.setExpression(matched)
-        }
+        if (matched) snapshot.setExpression(matched)
       })
     }
   }

@@ -77,7 +77,16 @@ avatar:
   // 缩略图
   const thumbsDir = join(charactersRoot(), '..', 'thumbs')
   mkdirSync(thumbsDir, { recursive: true })
-  writeFileSync(join(thumbsDir, `${c.id}.webp`), Buffer.from([0x52, 0x49, 0x46, 0x46])) // 假 WebP magic
+  // P0 SEC H1: 用合法 WebP magic (RIFF + 4 bytes size + WEBP)
+  writeFileSync(
+    join(thumbsDir, `${c.id}.webp`),
+    Buffer.concat([
+      Buffer.from('RIFF', 'ascii'),
+      Buffer.alloc(4),
+      Buffer.from('WEBP', 'ascii'),
+      Buffer.alloc(20),
+    ]),
+  )
   return { id: c.id, name: c.name }
 }
 
@@ -246,6 +255,126 @@ describe('importCharacterPack', () => {
     expect(imp.reason).toMatch(/zip/i)
   })
 
+  it('P0 SEC C2: 输入 zip > 50 MB → 拒绝', () => {
+    const huge = Buffer.alloc(51 * 1024 * 1024)
+    const imp = importCharacterPack(huge)
+    expect(imp.ok).toBe(false)
+    expect(imp.reason).toMatch(/过大|超限/)
+  })
+
+  it('P0 SEC C2: 空 buffer → 拒绝', () => {
+    const imp = importCharacterPack(Buffer.alloc(0))
+    expect(imp.ok).toBe(false)
+    expect(imp.reason).toMatch(/空/)
+  })
+
+  it('P0 SEC C1: 非法 filename 在 soul/ 内 → 跳过不写 (filename regex 拦截)', () => {
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip()
+    zip.addFile(
+      'meta.json',
+      Buffer.from(
+        JSON.stringify({
+          version: '1.0',
+          source_id: 'x',
+          source_name: 'Test',
+          exported_at: 0,
+          contents: { soul: true, preferences: false, emotional: false, thumb: false },
+        }),
+      ),
+    )
+    zip.addFile(
+      'soul/identity.yaml',
+      Buffer.from(
+        `name: T\nmaster: M\ncall_master_as: 主人\navatar:\n  model_dir: x\n  model_file: x.model3.json`,
+      ),
+    )
+    // 恶意 entry: filename 含 ../ 或特殊字符 — 应该被 [a-zA-Z0-9_-]+ regex 拒
+    // 注：adm-zip 会 normalize 一些路径，但 'soul/with..dots.yaml' 这种保留 soul/ 前缀
+    // 且 filename 含 dots → 命中第二层防御
+    zip.addFile('soul/with..attack.yaml', Buffer.from('attacker: payload'))
+    zip.addFile('soul/has space.yaml', Buffer.from('also: bad'))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const imp = importCharacterPack(zip.toBuffer())
+    expect(imp.ok).toBe(true) // 主流程仍 ok (合法 soul/identity 在)
+    // 非法 filename 不应被写
+    const soulDir = `${charactersRoot()}/${imp.character!.id}/soul`
+    expect(existsSync(`${soulDir}/with..attack.yaml`)).toBe(false)
+    expect(existsSync(`${soulDir}/has space.yaml`)).toBe(false)
+    // identity.yaml 合法应该写了
+    expect(existsSync(`${soulDir}/identity.yaml`)).toBe(true)
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('P0 SEC H1: 伪 SQLite memory.db → 拒绝写盘', () => {
+    const fx = makeFixture()
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('FAKE_NOT_SQLITE_XXXX'))
+    const exp = exportCharacterPack(fx.id, { includeMemory: true })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const imp = importCharacterPack(exp.buffer!)
+    expect(imp.ok).toBe(true)
+    expect(existsSync(join(characterDir(imp.character!.id), 'memory.db'))).toBe(false)
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('P0 SEC H1: 真 SQLite magic header → 接受', () => {
+    const fx = makeFixture()
+    const realSqliteHeader = Buffer.concat([
+      Buffer.from('SQLite format 3\0', 'binary'),
+      Buffer.alloc(100),
+    ])
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), realSqliteHeader)
+    const exp = exportCharacterPack(fx.id, { includeMemory: true })
+    const imp = importCharacterPack(exp.buffer!)
+    expect(existsSync(join(characterDir(imp.character!.id), 'memory.db'))).toBe(true)
+  })
+
+  it('P0 SEC H1: 伪 .webp 头 → 拒绝写', () => {
+    const fx = makeFixture()
+    // 覆盖 makeFixture 写的合法 webp，用伪 webp (PNG header 改名)
+    const thumbsDir = join(charactersRoot(), '..', 'thumbs')
+    writeFileSync(
+      join(thumbsDir, `${fx.id}.webp`),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), // PNG header
+    )
+    const exp = exportCharacterPack(fx.id, { includeThumb: true })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const imp = importCharacterPack(exp.buffer!)
+    const thumbPath = join(charactersRoot(), '..', 'thumbs', `${imp.character!.id}.webp`)
+    expect(existsSync(thumbPath)).toBe(false)
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('P0 SEC H1: 真 WebP RIFF....WEBP → 接受', () => {
+    const fx = makeFixture()
+    const validWebp = Buffer.concat([
+      Buffer.from('RIFF', 'ascii'),
+      Buffer.alloc(4),
+      Buffer.from('WEBP', 'ascii'),
+      Buffer.alloc(100),
+    ])
+    const thumbDir = join(charactersRoot(), '..', 'thumbs')
+    if (!existsSync(thumbDir)) mkdirSync(thumbDir, { recursive: true })
+    writeFileSync(join(thumbDir, `${fx.id}.webp`), validWebp)
+    const exp = exportCharacterPack(fx.id, { includeThumb: true })
+    const imp = importCharacterPack(exp.buffer!)
+    expect(
+      existsSync(join(charactersRoot(), '..', 'thumbs', `${imp.character!.id}.webp`)),
+    ).toBe(true)
+  })
+
+  it('P0 SEC M2: 超长 newName 截断到 64 字符', () => {
+    const fx = makeFixture()
+    const exp = exportCharacterPack(fx.id)
+    const longName = 'x'.repeat(500)
+    const imp = importCharacterPack(exp.buffer!, { newName: longName })
+    expect(imp.ok).toBe(true)
+    expect(imp.character!.name.length).toBeLessThanOrEqual(64)
+  })
+
   it('zip 但缺 meta.json → 拒绝', () => {
     const AdmZip = require('adm-zip')
     const zip = new AdmZip()
@@ -277,17 +406,27 @@ describe('importCharacterPack', () => {
 
   it('import memory.db 复制到新 characterDir', () => {
     const fx = makeFixture()
-    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('ROUND_TRIP_MEMORY'))
+    // P0 SEC H1: 用合法 SQLite header
+    const sqliteContent = Buffer.concat([
+      Buffer.from('SQLite format 3\0', 'binary'),
+      Buffer.from('ROUND_TRIP_MEMORY'),
+    ])
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), sqliteContent)
     const exp = exportCharacterPack(fx.id, { includeMemory: true })
     const imp = importCharacterPack(exp.buffer!)
     const newMem = join(characterDir(imp.character!.id), 'memory.db')
     expect(existsSync(newMem)).toBe(true)
-    expect(readFileSync(newMem).toString()).toBe('ROUND_TRIP_MEMORY')
+    // 确认内容含 ROUND_TRIP_MEMORY 标记
+    expect(readFileSync(newMem).toString()).toContain('ROUND_TRIP_MEMORY')
   })
 
   it('import includeMemory=false → 不复制 memory.db', () => {
     const fx = makeFixture()
-    writeFileSync(join(characterDir(fx.id), 'memory.db'), Buffer.from('SKIP_ME'))
+    const sqliteContent = Buffer.concat([
+      Buffer.from('SQLite format 3\0', 'binary'),
+      Buffer.from('SKIP_ME'),
+    ])
+    writeFileSync(join(characterDir(fx.id), 'memory.db'), sqliteContent)
     const exp = exportCharacterPack(fx.id, { includeMemory: true })
     const imp = importCharacterPack(exp.buffer!, { includeMemory: false })
     expect(existsSync(join(characterDir(imp.character!.id), 'memory.db'))).toBe(false)

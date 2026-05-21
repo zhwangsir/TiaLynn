@@ -284,4 +284,20 @@ describe('P5: 多 mood 并存', () => {
     expect(next.current_mood).toBe('happy')
     expect(next.secondary_mood).toBeUndefined() // 不会把自己当 secondary
   })
+
+  it('ts-reviewer MEDIUM: applyChatTurn chat_relief 同时清 secondary', () => {
+    // 场景：missing 心情 + 有 secondary (tease 残留) → 主人回来 chat → relief
+    // 此时旧 primary (missing) 被 chat_relief 重置到 baseline；secondary 失去来源
+    const s = {
+      ...fresh(),
+      current_mood: 'missing' as const,
+      mood_intensity: 0.3, // 触发 relief (0.3 * 0.5 = 0.15 < 0.2)
+      secondary_mood: 'tease' as const,
+      secondary_intensity: 0.5,
+    }
+    const next = applyChatTurn(s, NOW)
+    expect(next.current_mood).toBe('calm') // baseline
+    expect(next.secondary_mood).toBeUndefined() // 已清，避免渲染 "calm + tease" 语义矛盾
+    expect(next.secondary_intensity).toBeUndefined()
+  })
 })

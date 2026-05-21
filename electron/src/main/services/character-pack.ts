@@ -19,7 +19,7 @@
  *   - 角色市场分发（社区分享 soul + 美化好的 emotional baseline）
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import AdmZip from 'adm-zip'
 import type { Character } from '@shared/character'
 import {
@@ -32,6 +32,40 @@ import {
 } from './character-store'
 
 export const CHARACTER_PACK_VERSION = '1.0'
+
+// P0 SEC (security review C2): zip 输入 / 解压上限，防 zip bomb
+const MAX_ZIP_INPUT_BYTES = 50 * 1024 * 1024 // 50 MB 压缩 zip 上限
+const MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES = 200 * 1024 * 1024 // 200 MB 总解压
+// P0 SEC (M2/M3): 名字 / 路径字符上限防 DoS
+const MAX_IMPORT_NAME_LEN = 64
+
+// 文件 magic byte (H1)
+const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'binary')
+const WEBP_RIFF_HEAD = Buffer.from('RIFF', 'ascii')
+const WEBP_TYPE_TAG = Buffer.from('WEBP', 'ascii')
+
+function isValidSqlite(buf: Buffer): boolean {
+  if (buf.length < SQLITE_MAGIC.length) return false
+  return buf.subarray(0, SQLITE_MAGIC.length).equals(SQLITE_MAGIC)
+}
+
+function isValidWebp(buf: Buffer): boolean {
+  // WebP: 'RIFF' xxxx 'WEBP'
+  if (buf.length < 12) return false
+  if (!buf.subarray(0, 4).equals(WEBP_RIFF_HEAD)) return false
+  if (!buf.subarray(8, 12).equals(WEBP_TYPE_TAG)) return false
+  return true
+}
+
+/**
+ * P0 SEC (C1): 防 zip path traversal — 拒绝 entry name 解析后逃出目标目录。
+ * resolve(baseDir, entryName) 必须以 baseDir + sep 开头。
+ */
+function isSafeZipPath(baseDir: string, entryName: string): boolean {
+  const absBase = resolve(baseDir)
+  const absTarget = resolve(absBase, entryName)
+  return absTarget === absBase || absTarget.startsWith(absBase + sep)
+}
 
 export interface CharacterPackMeta {
   version: string
@@ -175,11 +209,34 @@ export function importCharacterPack(
   buffer: Buffer,
   opts: ImportOptions = {},
 ): ImportResult {
+  // P0 SEC (C2): 输入 zip 大小上限
+  if (!buffer || buffer.length === 0) {
+    return { ok: false, reason: '空文件' }
+  }
+  if (buffer.length > MAX_ZIP_INPUT_BYTES) {
+    return {
+      ok: false,
+      reason: `pack 文件过大 (${(buffer.length / 1024 / 1024).toFixed(1)} MB > ${MAX_ZIP_INPUT_BYTES / 1024 / 1024} MB)`,
+    }
+  }
+
   let zip: AdmZip
   try {
     zip = new AdmZip(buffer)
   } catch (e) {
     return { ok: false, reason: `不是有效的 zip: ${e instanceof Error ? e.message : String(e)}` }
+  }
+
+  // P0 SEC (C2): 总解压大小上限（zip bomb 防御）
+  let totalUncompressed = 0
+  for (const entry of zip.getEntries()) {
+    totalUncompressed += entry.header.size
+    if (totalUncompressed > MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES) {
+      return {
+        ok: false,
+        reason: `解压总大小超限 (${MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES / 1024 / 1024} MB) — 可能是 zip bomb`,
+      }
+    }
   }
 
   // 1. 读 meta.json
@@ -194,6 +251,8 @@ export function importCharacterPack(
   if (!meta.version || !meta.source_name) {
     return { ok: false, reason: 'meta 缺 version 或 source_name' }
   }
+  // P0 SEC (M3): meta.source_name 长度截断
+  meta.source_name = String(meta.source_name).slice(0, MAX_IMPORT_NAME_LEN)
 
   // 2. 读 soul/identity.yaml 拿 live2d 配置
   const identityEntry = zip.getEntry('soul/identity.yaml')
@@ -202,22 +261,20 @@ export function importCharacterPack(
   }
   const identityRaw = identityEntry.getData().toString('utf-8')
   // 简易 yaml 解析: 只拉关键 line（不引 js-yaml 避免循环 import）
-  // 真实场景调用方应该用 js-yaml 解析，这里只需要 model_dir / model_file
   const modelDirMatch = identityRaw.match(/model_dir:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
   const modelFileMatch = identityRaw.match(/model_file:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
   const callMasterMatch = identityRaw.match(/call_master_as:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
 
   // 3. 创建新 character (自动生成新 id 避免与现有冲突)
-  const newName = opts.newName ?? meta.source_name
+  // P0 SEC (M2): newName 长度截断防 DoS
+  const newName = (opts.newName ?? meta.source_name).slice(0, MAX_IMPORT_NAME_LEN)
   let created: Character
   try {
     created = createCharacter({
       name: newName,
-      call_master_as: callMasterMatch?.[1] ?? '主人',
-      live2d_model_dir: modelDirMatch?.[1] ?? 'HuTao-Live2D',
-      live2d_model_file: modelFileMatch?.[1] ?? 'Hu Tao.model3.json',
-      // template 用 'custom' (SoulTemplate 不含 'imported')；createCharacter 会先写
-      // 一份合成 soul，下面 step 4 会被 pack 内真实 soul/*.yaml 覆盖
+      call_master_as: (callMasterMatch?.[1] ?? '主人').slice(0, MAX_IMPORT_NAME_LEN),
+      live2d_model_dir: (modelDirMatch?.[1] ?? 'HuTao-Live2D').slice(0, 200),
+      live2d_model_file: (modelFileMatch?.[1] ?? 'Hu Tao.model3.json').slice(0, 200),
       template: 'custom',
     })
   } catch (e) {
@@ -225,10 +282,21 @@ export function importCharacterPack(
   }
 
   // 4. 写 soul/*.yaml (覆盖 createCharacter 写入的合成 soul)
+  // P0 SEC (C1): 每个 entry name 必须解析后仍在 soulDir 内 (防 ../../etc/passwd)
   const soulDir = characterSoulDir(created.id)
   for (const entry of zip.getEntries()) {
     if (entry.entryName.startsWith('soul/') && /\.ya?ml$/i.test(entry.entryName)) {
       const filename = entry.entryName.slice('soul/'.length)
+      // 额外限制 filename 只能是 [a-zA-Z0-9_-]+.yaml (跟 writeCharacterSoulFile 一致)
+      if (!/^[a-zA-Z0-9_-]+\.ya?ml$/.test(filename)) {
+        console.warn(`[character-pack] skip 非法 soul filename: ${filename}`)
+        continue
+      }
+      // 双保险：path traversal 检查
+      if (!isSafeZipPath(soulDir, filename)) {
+        console.warn(`[character-pack] skip 路径穿越 entry: ${entry.entryName}`)
+        continue
+      }
       writeFileSync(join(soulDir, filename), entry.getData())
     }
   }
@@ -258,27 +326,38 @@ export function importCharacterPack(
   }
 
   // 7. thumb (可选 — 写到 thumbs 目录)
+  // P0 SEC (H1): magic byte 校验 — 拒绝伪装成 .webp 的其他格式
   const thumbEntry = zip.getEntry('thumb.webp')
   if (thumbEntry) {
-    const thumbDir = join(charactersRoot(), '..', 'thumbs')
-    // ensureDir
-    try {
-      const fs = require('node:fs') as typeof import('node:fs')
-      fs.mkdirSync(thumbDir, { recursive: true })
-      fs.writeFileSync(join(thumbDir, `${created.id}.webp`), thumbEntry.getData())
-    } catch (e) {
-      console.warn('[character-pack] thumb import failed (skipped):', e)
+    const thumbData = thumbEntry.getData()
+    if (isValidWebp(thumbData)) {
+      const thumbDir = join(charactersRoot(), '..', 'thumbs')
+      try {
+        const fs = require('node:fs') as typeof import('node:fs')
+        fs.mkdirSync(thumbDir, { recursive: true })
+        fs.writeFileSync(join(thumbDir, `${created.id}.webp`), thumbData)
+      } catch (e) {
+        console.warn('[character-pack] thumb write failed (skipped):', e)
+      }
+    } else {
+      console.warn('[character-pack] thumb.webp magic byte 校验失败，已拒绝')
     }
   }
 
   // 8. memory.db (可选 — 默认 true 若 pack 含)
+  // P0 SEC (H1): SQLite magic byte 校验
   if (opts.includeMemory !== false) {
     const memEntry = zip.getEntry('memory.db')
     if (memEntry) {
-      try {
-        writeFileSync(join(characterDir(created.id), 'memory.db'), memEntry.getData())
-      } catch (e) {
-        console.warn('[character-pack] memory.db import failed (skipped):', e)
+      const memData = memEntry.getData()
+      if (isValidSqlite(memData)) {
+        try {
+          writeFileSync(join(characterDir(created.id), 'memory.db'), memData)
+        } catch (e) {
+          console.warn('[character-pack] memory.db write failed (skipped):', e)
+        }
+      } else {
+        console.warn('[character-pack] memory.db SQLite magic byte 校验失败，已拒绝')
       }
     }
   }

@@ -136,3 +136,46 @@ describe('clearSoulChangeLog', () => {
     expect(loadSoulChangeLog(c.id)).toEqual([])
   })
 })
+
+describe('P0 SEC H2: characterId 验证防路径污染', () => {
+  it('record: 路径穿越 characterId → 拒绝 (返 null)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(recordSoulChange('../etc', 'identity.yaml', 'a: 1', 'a: 2')).toBeNull()
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('record: 非法字符 characterId → 拒绝', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(recordSoulChange('/etc/cron', 'identity.yaml', 'a: 1', 'a: 2')).toBeNull()
+    expect(recordSoulChange('with space', 'identity.yaml', 'a: 1', 'a: 2')).toBeNull()
+    expect(recordSoulChange('', 'identity.yaml', 'a: 1', 'a: 2')).toBeNull()
+    warnSpy.mockRestore()
+  })
+
+  it('record: 不存在的 characterId → 拒绝', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(recordSoulChange('nonexistent-id', 'identity.yaml', 'a: 1', 'a: 2')).toBeNull()
+    warnSpy.mockRestore()
+  })
+
+  it('record: 非法 filename → 拒绝', () => {
+    const c = mkChar()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(recordSoulChange(c.id, '../passwd', 'a: 1', 'a: 2')).toBeNull()
+    expect(recordSoulChange(c.id, 'shell.sh', 'a: 1', 'a: 2')).toBeNull()
+    expect(recordSoulChange(c.id, '/etc/passwd', 'a: 1', 'a: 2')).toBeNull()
+    warnSpy.mockRestore()
+  })
+
+  it('load: 非法 characterId → 空数组 (不读 fs)', () => {
+    expect(loadSoulChangeLog('../etc')).toEqual([])
+    expect(loadSoulChangeLog('/etc/cron')).toEqual([])
+    expect(loadSoulChangeLog('nonexistent')).toEqual([])
+  })
+
+  it('clear: 非法 characterId → 静默 no-op', () => {
+    expect(() => clearSoulChangeLog('../etc')).not.toThrow()
+    expect(() => clearSoulChangeLog('nonexistent')).not.toThrow()
+  })
+})

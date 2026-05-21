@@ -8,6 +8,7 @@ import RvcSettingsSection from './settings/RvcSettingsSection.vue'
 import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import EvalRunner from './EvalRunner.vue'
 import EmotionalDebugPanel from './EmotionalDebugPanel.vue'
+import SoulChangeLogPanel from './SoulChangeLogPanel.vue'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -868,6 +869,9 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       <!-- P3 UI: 情感状态 debug (J 可视化) -->
       <EmotionalDebugPanel />
+
+      <!-- P5: soul yaml 改动审计历史 -->
+      <SoulChangeLogPanel />
 
       <!-- P5: character pack export/import — 分享角色 -->
       <section style="margin-top: 18px">

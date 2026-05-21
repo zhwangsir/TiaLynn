@@ -14,7 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { diffSoulConfigs, type FieldChange, type SoulConfig } from '@tialynn/soul-loader'
-import { characterDir } from './character-store'
+import { characterDir, getCharacter } from './character-store'
 
 const MAX_LOG_ENTRIES = 200
 
@@ -24,6 +24,16 @@ export interface SoulChangeLogEntry {
   filename: string
   summary: string
   changes: FieldChange[]
+}
+
+/**
+ * P0 SEC (H2): characterId 在用于 fs path 之前必须验证存在，
+ * 防 '../etc' / '/etc/cron' 类路径污染从 IPC 传入。
+ */
+function isValidCharacterId(characterId: string): boolean {
+  if (!characterId || typeof characterId !== 'string') return false
+  if (!/^[a-zA-Z0-9_-]+$/.test(characterId)) return false
+  return getCharacter(characterId) !== null
 }
 
 function logPath(characterId: string): string {
@@ -40,6 +50,16 @@ export function recordSoulChange(
   beforeYaml: string,
   afterYaml: string,
 ): SoulChangeLogEntry | null {
+  // P0 SEC (H2): characterId 必须验证
+  if (!isValidCharacterId(characterId)) {
+    console.warn('[soul-change-log] 非法 characterId 拒绝写 log:', characterId)
+    return null
+  }
+  // filename 必须是合法 yaml 文件名 (跟 writeCharacterSoulFile 约束一致)
+  if (!/^[a-zA-Z0-9_-]+\.ya?ml$/.test(filename)) {
+    console.warn('[soul-change-log] 非法 filename 拒绝:', filename)
+    return null
+  }
   try {
     const beforeObj = parseYamlSafe(beforeYaml)
     const afterObj = parseYamlSafe(afterYaml)
@@ -102,6 +122,8 @@ function appendToFile(characterId: string, entry: SoulChangeLogEntry): void {
 
 /** 读出某 character 的全部历史（按时间倒序 newest first） */
 export function loadSoulChangeLog(characterId: string): SoulChangeLogEntry[] {
+  // P0 SEC (H2): 验证 characterId 防路径污染
+  if (!isValidCharacterId(characterId)) return []
   const p = logPath(characterId)
   if (!existsSync(p)) return []
   try {
@@ -122,6 +144,8 @@ export function loadSoulChangeLog(characterId: string): SoulChangeLogEntry[] {
 }
 
 export function clearSoulChangeLog(characterId: string): void {
+  // P0 SEC (H2): 验证 characterId 防路径污染
+  if (!isValidCharacterId(characterId)) return
   const p = logPath(characterId)
   if (existsSync(p)) writeFileSync(p, '', 'utf-8')
 }
