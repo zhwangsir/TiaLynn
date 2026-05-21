@@ -133,7 +133,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
 
     await provider.chatStream(
       [{ role: 'user', content: '画一张开心的' }],
-      { model: 'test-model' },
+      { model: 'test-model', temperature: 0.8 },
       (evt) => events.push(evt),
       undefined,
       { tools: [] }, // 触发 tools 路径
@@ -178,7 +178,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
 
     await provider.chatStream(
       [{ role: 'user', content: '画给我' }],
-      { model: 'test-model' },
+      { model: 'test-model', temperature: 0.8 },
       (evt) => events.push(evt),
       undefined,
       { tools: [] },
@@ -215,7 +215,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
 
     await provider.chatStream(
       [{ role: 'user', content: '读文件' }],
-      { model: 'test-model' },
+      { model: 'test-model', temperature: 0.8 },
       (evt) => events.push(evt),
       undefined,
       { tools: [] },
@@ -236,7 +236,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
 
     await provider.chatStream(
       [{ role: 'user', content: '你好' }],
-      { model: 'test-model' },
+      { model: 'test-model', temperature: 0.8 },
       (evt) => events.push(evt),
       undefined,
       undefined, // 不传 extra

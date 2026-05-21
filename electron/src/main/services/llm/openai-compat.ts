@@ -165,15 +165,33 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
       body.tool_choice = 'auto'
     }
 
-    // v0.21 M7:上一轮 tool 结果作为 user/assistant 消息回流
-    // OpenAI 用 role='tool' + tool_call_id 把结果发回去,跟 Anthropic 不一样
+    // v0.21 M7:上一轮 tool 结果回流
+    // OpenAI 协议要求严格序列:`assistant {tool_calls} → tool {result}`
+    // 因为 ChatMessage 当前类型没保留 tool_calls 字段,这里反推一个占位 assistant 消息
+    // 让大多数 OAI-compat 服务器(LM Studio / vLLM / Ollama)能接受。
+    // 局限:真 OpenAI API 严格校验 function.name + arguments,占位 'unknown'+'{}' 会拒;
+    // 但目标用户群是本地 LLM,实际不阻断。后续 v0.22 改 ChatMessage 类型保留 tool_calls
+    // 让 dialog 串完整序列。
     if (extra?.tool_results && extra.tool_results.length > 0) {
-      const toolMessages = extra.tool_results.map((r) => ({
-        role: 'tool' as const,
-        content: r.content,
-        tool_call_id: r.tool_use_id,
-      }))
-      ;(body.messages as unknown[]).push(...toolMessages)
+      const messagesArr = body.messages as Array<Record<string, unknown>>
+      // 1. 插入对应的 assistant 消息(占位)
+      messagesArr.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: extra.tool_results.map((r) => ({
+          id: r.tool_use_id,
+          type: 'function',
+          function: { name: 'unknown', arguments: '{}' },
+        })),
+      })
+      // 2. 然后 push 所有 tool result 消息
+      for (const r of extra.tool_results) {
+        messagesArr.push({
+          role: 'tool',
+          content: r.content,
+          tool_call_id: r.tool_use_id,
+        })
+      }
     }
 
     let resp: Response

@@ -199,7 +199,10 @@ export const useDialogStore = defineStore('dialog', () => {
     const ragContext = await fetchRagContext(userTurn.text)
     const messages = buildMessages(userTurn.text, ragContext)
     await runOneRound(messages, undefined)
-    await loopUntilDone(messages, assistantTurn, cfg.config.llm_provider === 'anthropic')
+    // v0.21 M7:tool loop 对所有支持 tools 的 provider 启用,与 supportsTools 一致
+    const toolsCapable =
+      cfg.config.llm_provider === 'anthropic' || cfg.config.llm_provider === 'openai_compat'
+    await loopUntilDone(messages, assistantTurn, toolsCapable)
 
     finalizeAssistant(assistantTurn)
   }
