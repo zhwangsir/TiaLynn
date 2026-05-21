@@ -708,11 +708,12 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           role="tab"
           :tabindex="activeTab === t.id ? 0 : -1"
           :aria-selected="activeTab === t.id ? 'true' : 'false'"
-          :class="['tab', { active: activeTab === t.id }]"
+          :class="['tab', { active: activeTab === t.id, 'has-dirty': dirty && activeTab !== t.id }]"
           @click="activeTab = t.id"
         >
           <span class="tab-icon">{{ t.icon }}</span>
           <span class="tab-label">{{ t.label }}</span>
+          <span v-if="dirty && activeTab !== t.id" class="tab-dirty-dot" aria-label="有未保存"></span>
         </button>
       </nav>
 
@@ -1210,6 +1211,15 @@ header h2 {
 }
 .tab-label {
   font-size: var(--text-sm);
+}
+/* R111: dirty dot — 非当前 tab 但 form 有未保存 */
+.tab-dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warn);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 /* 窄面板降级 — 给 layout 自动堆叠 */
 @media (max-width: 520px) {
