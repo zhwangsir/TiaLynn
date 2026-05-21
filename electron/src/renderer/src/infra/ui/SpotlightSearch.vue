@@ -306,6 +306,12 @@ function onKey(e: KeyboardEvent): void {
   } else if (e.key === 'Escape') {
     e.preventDefault()
     emit('close')
+  } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+    // R110: ⌘+1-9 直选第 N 项 (macOS Spotlight 标准)
+    e.preventDefault()
+    const idx = parseInt(e.key, 10) - 1
+    const item = results.value[idx]
+    if (item) item.action()
   }
 }
 
@@ -360,6 +366,7 @@ function onBackdrop(e: MouseEvent): void {
               </div>
               <div v-if="r.subtitle" class="item-sub" :title="r.subtitle">{{ r.subtitle }}</div>
             </div>
+            <span v-if="i < 9" class="item-numkey" aria-hidden="true">{{ CMD_KEY }}{{ i + 1 }}</span>
             <span v-if="r.shortcut" class="item-shortcut">{{ r.shortcut }}</span>
             <span class="item-group">{{ r.group }}</span>
           </li>
@@ -486,6 +493,24 @@ function onBackdrop(e: MouseEvent): void {
 }
 .item.active .match-hl {
   background: oklch(85% 0.18 80 / 0.7);
+}
+
+/* R110: ⌘+N 数字快选 hint (默认半透明, hover/active 时高亮) */
+.item-numkey {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--color-muted);
+  opacity: 0.35;
+  flex-shrink: 0;
+  transition: opacity var(--duration-fast), color var(--duration-fast);
+}
+.item:hover .item-numkey,
+.item.active .item-numkey {
+  opacity: 1;
+  color: var(--color-accent);
 }
 
 /* R78: 已绑定快捷键 hint */
