@@ -16,6 +16,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useConfigStore } from '../stores/config'
+import { useDialogStore } from '../../brain/stores/dialog'
 import { bus } from '../eventbus'
 
 type DotStatus = 'ok' | 'down' | 'unconfigured' | 'untested'
@@ -28,6 +29,7 @@ interface ServiceState {
 
 const emit = defineEmits<{ (e: 'open-settings'): void }>()
 const cfg = useConfigStore()
+const dialog = useDialogStore()
 
 const llmState = ref<ServiceState>({ status: 'untested', ts: Date.now() })
 const ttsState = ref<ServiceState>({ status: 'untested', ts: Date.now() })
@@ -235,6 +237,7 @@ async function onPillClick(): Promise<void> {
   <button class="pill" :title="tooltip" :aria-label="tooltip" @click="onPillClick">
     <span
       class="dot"
+      :class="{ pulsing: dialog.replying }"
       :style="{ background: colorOf(llmState.status) }"
       :aria-label="labelOf('llm', llmState.status)"
       role="img"
@@ -312,6 +315,20 @@ async function onPillClick(): Promise<void> {
 }
 .dot:hover {
   transform: scale(1.4);
+}
+/* R53: LLM streaming 时脉冲动画 — 让用户看到"正在工作" */
+.dot.pulsing {
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 currentColor;
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px oklch(70% 0.18 145 / 0.3);
+    transform: scale(1.15);
+  }
 }
 /* 仅屏读器可见的 a11y live region */
 .sr-only {
