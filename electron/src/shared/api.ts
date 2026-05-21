@@ -777,6 +777,20 @@ export interface TialynnApi {
     }>
     /** 每日 reflection — 角色总结今天发生了什么 */
     dailyReflection(): Promise<{ ok: boolean; text?: string; reason?: string }>
+    /**
+     * v0.21 Round U:M8 灵魂社会 inspector 入口 — 列指定 character 的 cross-character
+     * event memory(Round N 写入)。renderer UI 用来展示"哪个灵魂记得听过哪些话"。
+     * limit 默认 20,主进程上限 100。character 不存在 / 空 id 返 []。
+     */
+    listCrossCharacter(payload: { characterId: string; limit?: number }): Promise<Array<{
+      id: string
+      kind: 'fact' | 'preference' | 'event' | 'reflection'
+      text: string
+      embedding: number[]
+      importance: number
+      source: string
+      ts: number
+    }>>
   }
 
   /** v0.17 P：外部 MCP server 客户端 */

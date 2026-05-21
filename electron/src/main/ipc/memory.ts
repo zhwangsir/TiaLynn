@@ -6,10 +6,11 @@ import {
   countMemories,
   deleteMemory,
   listMemories,
+  listMemoriesBySource,
   searchMemories,
 } from '../services/memory-store'
 import { buildRagContext, dailyReflection, extractMemoriesFromTurn } from '../services/memory-extractor'
-import { getActiveCharacter } from '../services/character-store'
+import { getActiveCharacter, getCharacter } from '../services/character-store'
 import {
   memoryAdd,
   memoryCount,
@@ -17,6 +18,7 @@ import {
   memoryDelete,
   memoryExtractFromTurn,
   memoryList,
+  memoryListCrossCharacter,
   memoryRagContext,
   memorySearch,
 } from '@shared/channels/memory'
@@ -73,5 +75,25 @@ export function registerMemoryIpc(): void {
 
   handleInvoke(memoryDailyReflection, async () => {
     return dailyReflection()
+  })
+
+  /**
+   * v0.21 Round U:M8 灵魂社会 inspector — 列指定 character 的
+   * cross-character event(Round N 写入,Round P 读到的)。
+   *
+   * 安全:校验 character 存在(避免任意路径打 memory.db),limit 上限 100。
+   */
+  handleInvoke(memoryListCrossCharacter, (payload) => {
+    if (!payload || typeof payload.characterId !== 'string' || payload.characterId.length === 0) {
+      return []
+    }
+    // 校验 character 存在 — 拒绝任意 id 探测(避免误触 character store create 路径)
+    const c = getCharacter(payload.characterId)
+    if (!c) return []
+    const limit = Math.min(Math.max(1, payload.limit ?? 20), 100)
+    return listMemoriesBySource(payload.characterId, 'cross_character:', {
+      kind: 'event',
+      limit,
+    })
   })
 }

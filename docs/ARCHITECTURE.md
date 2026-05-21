@@ -188,6 +188,59 @@ LLM 续轮拿 tool result(openai 用 role:'tool' + tool_call_id,需先 push assi
 -->
 
 
+### 4.3 M8 灵魂社会:跨灵魂事件 memory 闭环(v0.21 Round N-U)
+
+「mounted character = 代码层并行存活的灵魂(每个独立 planner / memory.db)」。
+当 active speak 时,所有其他 mounted character 都能"作为旁观者"听到这句话,
+作为 event memory 写进她们自己的 db。下次切到该灵魂为 active 时,她的 planner
+在 LLM prompt 里就会带上"我作为旁观者听到的"片段当 context。
+
+```mermaid
+sequenceDiagram
+  participant Sched as AttentionScheduler
+  participant AttIdx as attention/index.ts
+  participant PlanA as Planner(A)
+  participant MemB as memory.db(B)
+  participant MemA as memory.db(A)
+  participant PlanB as Planner(B)
+  participant LLM as LLM
+
+  Note over Sched: 假定 A 是 active,A+B 都 mounted
+
+  Sched->>AttIdx: onTrigger(decision)
+  AttIdx->>PlanA: getPlanner(A.id).plan(decision)
+  PlanA->>MemA: listMemoriesBySource(A,'cross_character:',3)
+  MemA-->>PlanA: [] (A 没有听过别人说话)
+  PlanA->>LLM: chatStream(prompt 无 cross-char section)
+  LLM-->>PlanA: BehaviorPlan { speak: "..." }
+  AttIdx->>AttIdx: send 'attention:plan' to renderer
+  Note over AttIdx: ⭐ Round N: 把 A 说的话 fanout 给其他 mounted
+  AttIdx->>MemB: addMemory(B, kind='event', source='cross_character:A.id')
+  MemB-->>AttIdx: { id, text:"A 对 master 说: ..." }
+
+  Note over Sched: 用户切 active → B(via charactersSwitch IPC)
+
+  Sched->>AttIdx: onTrigger(decision)
+  AttIdx->>PlanB: getPlanner(B.id).plan(decision)
+  Note over PlanB: ⭐ Round P: 读自己 db 里别人说过的话
+  PlanB->>MemB: listMemoriesBySource(B,'cross_character:',3)
+  MemB-->>PlanB: [event{ text:"A 对 master 说: ..." }]
+  PlanB->>LLM: chatStream(prompt 加 cross-char section)
+  LLM-->>PlanB: BehaviorPlan { speak: "我刚才听到 A 跟你说..." }
+```
+
+**单方向 passive listening** — 不触发 other planner 自己 LLM call,避免:
+- Ping-pong:A speak → B react → A react → ... 雪崩
+- LLM 流量爆:N-way mounted 一次 trigger N 次 LLM call
+- Rate limit 互相干扰
+
+**embedding=[] 取舍**:Round N 写入时 embedding 为空数组(待 Round 后续 sidecar
+接通),所以 `searchMemories` cosine 检索拿不到这些 event。Round P 走的是
+`listMemoriesBySource(prefix, kind, limit)` SQL 直接 ts desc 排序,不依赖 embedding。
+
+**入口 IPC(Round U,供未来 inspector UI)**:`memory:list-cross-character`
+({ characterId, limit }) → Memory[]。校验 character 存在 + limit 上限 100。
+
 ## 5. 设计原则（不可破坏）
 
 1. **域间通过 bus 通信** — 不直接 import 跨域 store（v0.13 plan-executor → brain:inject-utterance 案例）
@@ -266,23 +319,28 @@ docs/rfcs/                               # 重大架构 RFC (TS Tier 3 等)
 - **日志 redact** — `~/.tialynn/logs/main.log` 自动脱敏 6 类敏感字段（api_key / Bearer / sk- 等）
 - **single-instance lock** — 防双启冲突
 
-## 9. 测试 (v0.21:42 测试文件 / 590 用例 / 4 smoke)
+## 9. 测试 (v0.21+ Round U:46 测试文件 / 628 用例 / 7 skip-smoke)
 
 ```bash
-pnpm test          # vitest run — 586 passed / 4 skipped(smoke)
+pnpm test          # vitest run — 628 passed / 7 skipped(smoke)
 pnpm test:watch    # vitest 监听模式
 pnpm test:coverage # v8 覆盖率报告
-SMOKE_TEST=1 pnpm test --run m7-e2e  # 真出图 e2e(读真 ComfyUI)
+SMOKE_TEST=1 pnpm test --run m7-e2e         # 真出图 e2e(读真 ComfyUI)
+SMOKE_TEST=1 pnpm test --run m8-closed-loop # 真 better-sqlite3 跑 N→P 闭环 fixture
 ```
 
-**v0.21 增量**:
-- `m7-e2e.smoke.test.ts` ⭐ — 真调 ComfyUI 出 PNG + 校验 magic header + 写真盘(本 session 实测通过)
-- `builtin-creative.test.ts` — creative_generate_sticker tool 单测(5 case 覆盖 emotion / RAG / abort)
-- `openai-compat-tools.test.ts` — tool_calls 流式累积 + finish_reason='tool_calls' + invalid JSON 降级
-- `character-eval/runner.smoke.test.ts` — 真跑 LLM 拿 character-eval 94 分回复(本 session 实测)
+**v0.21+ 后续 Round 增量**:
+- `m7-e2e.smoke.test.ts` ⭐ — 真调 ComfyUI 出 PNG + 校验 magic header + 写真盘
+- `builtin-creative.test.ts` — creative_generate_sticker tool 单测
+- `openai-compat-tools.test.ts` — tool_calls 流式累积 + invalid JSON 降级
+- `character-eval/runner.smoke.test.ts` — 真跑 LLM 拿 character-eval 94 分回复
 - `character-pack.test.ts` — zip export/import 跨机器迁移 + memory.db opt-in
+- **Round N**:`attention/index.test.ts` — 11 case 验证 notifyOtherMountedCharacters 写入路径(mock memory-store)
+- **Round P**:`planner/cross-character-context.test.ts` — 7 case 验证 prompt section 拼接(mock listMemoriesBySource)
+- **Round P**:`planner/factory.test.ts` +4 case — characterId 字段
+- **Round T**:`m8-closed-loop.smoke.test.ts` ⭐ — 3 case 真 SQLite N→P→S 端到端(需 SMOKE_TEST=1)
 
-完整列表 41 个 test file,覆盖五大域纯函数 + 跨进程 IPC 边界 + 灵魂演化 + ComfyUI 工具链。
+完整列表 46 个 test file,覆盖五大域纯函数 + 跨进程 IPC 边界 + 灵魂演化 + ComfyUI 工具链 + M8 灵魂社会闭环。
 
 ## 10. 技术栈
 

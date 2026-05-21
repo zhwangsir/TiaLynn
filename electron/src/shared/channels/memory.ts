@@ -65,3 +65,20 @@ export const memoryDailyReflection = defineChannel<
   void,
   { ok: boolean; reflection?: Memory; reason?: string }
 >('memory:daily-reflection')
+
+/**
+ * v0.21 Round U(M8 灵魂社会 inspector 入口):列指定 character 的
+ * cross-character event memory(Round N 写入的 source='cross_character:<id>')。
+ *
+ * 跟 `memoryList` 区别:
+ *   - `memoryList`:active character only,所有 kind / 所有 source
+ *   - `memoryListCrossCharacter`:任意 character id(允许 inspect 非 active 的
+ *     mounted character),只返 kind='event' source 前缀 cross_character:
+ *
+ * UI consumer(未来 Round R):CharacterPicker 卡片展开 / Settings 面板
+ * "🌐 灵魂社会"tab,让用户能看到"哪个灵魂记得听过哪些话"。
+ */
+export const memoryListCrossCharacter = defineChannel<
+  { characterId: string; limit?: number },
+  Memory[]
+>('memory:list-cross-character')

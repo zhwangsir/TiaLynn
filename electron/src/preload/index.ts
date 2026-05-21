@@ -26,6 +26,7 @@ import {
   memoryDelete,
   memoryExtractFromTurn,
   memoryList,
+  memoryListCrossCharacter,
   memoryRagContext,
   memorySearch,
 } from '@shared/channels/memory'
@@ -638,6 +639,7 @@ const api: TialynnApi = {
     extractFromTurn: (payload) => invokeChannel(memoryExtractFromTurn, payload),
     ragContext: (payload) => invokeChannel(memoryRagContext, payload),
     dailyReflection: () => invokeChannel(memoryDailyReflection, undefined as never),
+    listCrossCharacter: (payload) => invokeChannel(memoryListCrossCharacter, payload),
   },
   mcp: {
     listServers: () => invokeChannel(mcpListServers, undefined as never),
