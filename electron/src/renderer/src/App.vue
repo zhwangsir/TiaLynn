@@ -16,7 +16,7 @@ import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
 import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
 import SpotlightSearch from './infra/ui/SpotlightSearch.vue'
 import BootSplash from './infra/ui/BootSplash.vue'
-import { useThemeMode } from './infra/ui/useThemeMode'
+import { THEME_LABEL, useThemeMode } from './infra/ui/useThemeMode'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -93,10 +93,7 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'sep-zoom', label: '', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
-  {
-    id: 'theme-cycle',
-    label: `🎨 主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色' : '深色'}`,
-  },
+  { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}` },
   { id: 'keyboard-help', label: '⌨️ 快捷键帮助 (?)', icon: iconGear },
   { id: 'sep-sys', label: '', separator: true },
   // 窗口
@@ -130,7 +127,7 @@ async function onMenuSelect(id: string): Promise<void> {
       theme.cycle()
       bus.emit('ui:toast', {
         kind: 'info',
-        message: `主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色模式' : '深色模式'}`,
+        message: `主题：${THEME_LABEL[theme.mode.value]}`,
         ttl_ms: 2500,
       })
       break
@@ -262,6 +259,15 @@ async function onDrop(e: DragEvent): Promise<void> {
       kind: 'info',
       message: `检测到 ${imgs.length} 张图片 — 头像 / 场景背景请在「角色管理」或「场景」设置里上传`,
       ttl_ms: 7000,
+    })
+    return
+  }
+  // R39 fix (MED): 混合 (yaml + 图片 + 其他) → 提示分开拖, 避免 Live2D 安装器吞错文件
+  if ((ymls.length > 0 || imgs.length > 0) && ymls.length + imgs.length < paths.length) {
+    bus.emit('ui:toast', {
+      kind: 'warn',
+      message: '混合文件拖入 — 请分别拖 yaml / 图片 / Live2D 模型',
+      ttl_ms: 5000,
     })
     return
   }
@@ -433,7 +439,7 @@ function onScaleKey(e: KeyboardEvent): void {
     theme.cycle()
     bus.emit('ui:toast', {
       kind: 'info',
-      message: `主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色模式' : '深色模式'}`,
+      message: `主题：${THEME_LABEL[theme.mode.value]}`,
       ttl_ms: 2000,
     })
     return

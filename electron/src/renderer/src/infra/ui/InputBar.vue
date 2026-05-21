@@ -46,6 +46,9 @@ async function submit(): Promise<void> {
   const v = text.value.trim()
   if (!v) return
   text.value = ''
+  // R39 fix (HIGH): 发送后重置历史浏览态 — 否则下次 ↑ 从旧位置继续, 行为偏离 terminal/Zsh
+  historyIdx.value = -1
+  draftBeforeBrowse.value = null
   await dialog.send(v)
   await nextTick()
   inputRef.value?.focus()
@@ -81,11 +84,13 @@ function onKey(e: KeyboardEvent): void {
     submit()
     return
   }
-  // ↑↓ 历史浏览 — 仅当 textarea 不是多行编辑中态 (cursor 在首/末行边界)
+  // ↑↓ 历史浏览 — 仅当 cursor 在首/末位置（无选区）且单行不跨行
+  // R39 fix (MED): cursor 必须严格在 selectionStart === 0 (Zsh 惯例)
   const ta = e.target as HTMLTextAreaElement
-  if (e.key === 'ArrowUp' && !e.shiftKey && !e.isComposing) {
+  const hasSelection = ta.selectionStart !== ta.selectionEnd
+  if (e.key === 'ArrowUp' && !e.shiftKey && !e.isComposing && !hasSelection) {
     const beforeCursor = ta.value.slice(0, ta.selectionStart)
-    if (!beforeCursor.includes('\n')) {
+    if (!beforeCursor.includes('\n') && ta.selectionStart === 0) {
       const hist = userHistory.value
       if (hist.length === 0) return
       if (historyIdx.value < 0) draftBeforeBrowse.value = text.value
@@ -99,10 +104,11 @@ function onKey(e: KeyboardEvent): void {
         })
       }
     }
-  } else if (e.key === 'ArrowDown' && !e.shiftKey && !e.isComposing) {
+  } else if (e.key === 'ArrowDown' && !e.shiftKey && !e.isComposing && !hasSelection) {
     if (historyIdx.value < 0) return
     const afterCursor = ta.value.slice(ta.selectionStart)
-    if (!afterCursor.includes('\n')) {
+    // R39 fix (MED): cursor 必须在最末位置
+    if (!afterCursor.includes('\n') && ta.selectionStart === ta.value.length) {
       e.preventDefault()
       const next = historyIdx.value - 1
       if (next < 0) {

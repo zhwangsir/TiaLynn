@@ -83,8 +83,13 @@
     --shadow-lg: 0 4px 8px oklch(0% 0 0 / 0.35), 0 16px 48px oklch(0% 0 0 / 0.45);
   }
 }
+/* 用户手动强制 light — 让浏览器原生 UI（滚动条、input）同步深浅 */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 /* 用户手动强制 dark — 不论系统设置 */
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --color-bubble: oklch(22% 0.012 25 / 0.92);
   --color-bubble-text: oklch(94% 0.012 25);
   --color-bubble-border: oklch(38% 0.015 25 / 0.6);

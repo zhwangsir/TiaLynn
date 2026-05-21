@@ -14,7 +14,15 @@ import { ref, watch, type Ref } from 'vue'
 export type ThemeMode = 'auto' | 'light' | 'dark'
 const STORAGE_KEY = 'tialynn-theme-mode'
 
+/** R39 fix: 单一 source of truth — UI 展示也用这个 map */
+export const THEME_LABEL: Record<ThemeMode, string> = {
+  auto: '跟随系统',
+  light: '浅色模式',
+  dark: '深色模式',
+}
+
 function readPersisted(): ThemeMode {
+  if (typeof localStorage === 'undefined') return 'auto'
   const v = localStorage.getItem(STORAGE_KEY)
   if (v === 'auto' || v === 'light' || v === 'dark') return v
   return 'auto'
@@ -22,6 +30,7 @@ function readPersisted(): ThemeMode {
 
 /** 应用到 DOM — auto 时移除属性让 @media 接管 */
 function apply(mode: ThemeMode): void {
+  if (typeof document === 'undefined') return
   if (mode === 'auto') {
     document.documentElement.removeAttribute('data-theme')
   } else {
@@ -40,7 +49,7 @@ function ensureInit(): void {
   watch(mode, (now) => {
     apply(now)
     try {
-      localStorage.setItem(STORAGE_KEY, now)
+      if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, now)
     } catch {
       // localStorage 满 / 隐私模式 — 静默忽略，运行期主题仍然生效
     }
