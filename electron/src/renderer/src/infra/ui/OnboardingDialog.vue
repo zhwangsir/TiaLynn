@@ -221,6 +221,7 @@ function skip(): void {
               v-model="llmModel"
               placeholder="qwen2.5:14b"
               @input="checkResult = null"
+              @keydown.enter="probeLlm"
             />
           </label>
           <label class="field">
@@ -278,6 +279,7 @@ $ uvicorn main:app --host 127.0.0.1 --port 8765</pre>
               v-model="ttsSidecarUrl"
               placeholder="http://127.0.0.1:8765 — 留空则不启用 TTS"
               @input="ttsResult = null"
+              @keydown.enter="finish"
             />
           </label>
 
