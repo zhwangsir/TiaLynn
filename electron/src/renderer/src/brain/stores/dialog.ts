@@ -279,7 +279,11 @@ export const useDialogStore = defineStore('dialog', () => {
       pendingResolve = resolve
     })
 
-    const toolsVal = cfg.config.llm_provider === 'anthropic' ? plain(availableTools.value) : undefined
+    // v0.21 M7:tools 对所有支持 tool 的 provider 暴露(anthropic + openai_compat 都已实现 tool_calls)
+    // ollama 走 OAI 兼容接口大多也支持 tool_calls;若个别模型/endpoint 不支持 LLM 会忽略 tools field
+    const supportsTools =
+      cfg.config.llm_provider === 'anthropic' || cfg.config.llm_provider === 'openai_compat'
+    const toolsVal = supportsTools ? plain(availableTools.value) : undefined
     const result = await window.api.llm.chatStream({
       streamId,
       messages: plain(messages),

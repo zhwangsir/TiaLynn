@@ -12,10 +12,37 @@
  *     3. 确保至少有 1 个 user message（如果只有 system，转成 user）
  */
 import type { ChatMessage, ChatOptions } from '@shared/types'
+import type { ToolDefinition } from '@shared/tools'
 import type { ChatExtraOptions, ChatStreamCallback, LlmProviderImpl } from './types'
 import { consumeSse } from './anthropic'
 import { loadConfig } from '../config-store'
 import { enhanceMessagesForChineseModel } from './chinese-models'
+
+/**
+ * v0.21 M7:OpenAI function-calling 转换 — 给 LM Studio / Ollama / vLLM 用户也开 tool。
+ * 格式来自 OpenAI Chat Completions API tools 规范:
+ *   { type: 'function', function: { name, description, parameters } }
+ * 其中 parameters 是 JSON Schema(我们的 input_schema 已经是子集)。
+ */
+export function toOpenAITool(t: ToolDefinition): {
+  type: 'function'
+  function: { name: string; description: string; parameters: ToolDefinition['input_schema'] }
+} {
+  return {
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema,
+    },
+  }
+}
+
+interface PendingOpenAIToolCall {
+  id: string
+  name: string
+  arguments_buf: string
+}
 
 /** 哪些错误内容意味着 prompt template 不支持当前 messages 结构 */
 const TEMPLATE_ERROR_PATTERNS = [
@@ -41,7 +68,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     options: ChatOptions,
     onEvent: ChatStreamCallback,
     abortSignal?: AbortSignal,
-    _extra?: ChatExtraOptions,
+    extra?: ChatExtraOptions,
   ): Promise<void> {
     const cfg = loadConfig()
     // 用户可在 settings 关闭（OpenAI 真版本对 system message 支持完美）
@@ -71,12 +98,22 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
         safeEvent,
         abortSignal,
         mergeFromConfig,
+        false,
+        extra,
       )
       if (success) return
 
       // 第二次尝试：第一次出现 jinja 错误且当时未合并 → 强制合并 retry
       if (!mergeFromConfig) {
-        const retried = await this.tryStream(messages, options, safeEvent, abortSignal, true, true)
+        const retried = await this.tryStream(
+          messages,
+          options,
+          safeEvent,
+          abortSignal,
+          true,
+          true,
+          extra,
+        )
         if (retried) return
       }
     } finally {
@@ -95,6 +132,7 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     abortSignal: AbortSignal | undefined,
     mergeSystem: boolean,
     isRetry = false,
+    extra?: ChatExtraOptions,
   ): Promise<boolean> {
     // v0.17：用户可能填的 endpoint 已含 /v1（如 http://x:8000/v1），也可能没含（http://x:1234）
     // 智能判断：若末尾已是 /v1 就不重复拼
@@ -112,12 +150,30 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
       `[openai-compat] tryStream merge=${mergeSystem} retry=${isRetry} in=${messages.length} out=${normalized.length} roles=[${normalized.map((m) => `${m.role}:${m.content.trim().length}`).join(',')}]`,
     )
 
-    const body = {
+    const body: Record<string, unknown> = {
       model: options.model,
       temperature: options.temperature,
       max_tokens: options.max_tokens ?? 8000, // v0.8.1: thinking 模型需要大空间
       stream: true,
       messages: normalized,
+    }
+
+    // v0.21 M7:tools 字段(OpenAI function-calling 格式)
+    if (extra?.tools && extra.tools.length > 0) {
+      body.tools = extra.tools.map((t) => toOpenAITool(t))
+      // tool_choice='auto' 让模型自决,'required' 强制调工具(default 是 'auto')
+      body.tool_choice = 'auto'
+    }
+
+    // v0.21 M7:上一轮 tool 结果作为 user/assistant 消息回流
+    // OpenAI 用 role='tool' + tool_call_id 把结果发回去,跟 Anthropic 不一样
+    if (extra?.tool_results && extra.tool_results.length > 0) {
+      const toolMessages = extra.tool_results.map((r) => ({
+        role: 'tool' as const,
+        content: r.content,
+        tool_call_id: r.tool_use_id,
+      }))
+      ;(body.messages as unknown[]).push(...toolMessages)
     }
 
     let resp: Response
@@ -156,11 +212,23 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
     let sawTemplateError = false
     let sawReasoningOnly = false
     let lastFinishReason: string | null = null
+    // v0.21 M7:tool_calls 累积。OpenAI streaming 把同一 tool_call 分多个 chunk 推
+    // (第一个含 id+function.name,后续 chunk function.arguments 累积 partial json)
+    const pendingToolCalls = new Map<number, PendingOpenAIToolCall>()
     await consumeSse(resp.body, (data) => {
       try {
         const ev = JSON.parse(data) as {
           choices?: Array<{
-            delta?: { content?: string; reasoning_content?: string }
+            delta?: {
+              content?: string
+              reasoning_content?: string
+              tool_calls?: Array<{
+                index?: number
+                id?: string
+                type?: string
+                function?: { name?: string; arguments?: string }
+              }>
+            }
             finish_reason?: string
           }>
           error?: { message?: string; code?: string }
@@ -190,10 +258,54 @@ export class OpenAiCompatProvider implements LlmProviderImpl {
           sawReasoningOnly = false
           onEvent({ delta })
         }
+        // v0.21 M7:累积 tool_calls
+        const toolCalls = choice?.delta?.tool_calls
+        if (toolCalls && toolCalls.length > 0) {
+          for (const tc of toolCalls) {
+            const idx = typeof tc.index === 'number' ? tc.index : 0
+            const existing = pendingToolCalls.get(idx)
+            if (existing) {
+              // 累积 arguments(可能跨多个 chunk)
+              if (tc.function?.arguments) existing.arguments_buf += tc.function.arguments
+              // 后来的 chunk 也可能补 name(有些 provider 把 name 拆开发)
+              if (tc.function?.name && !existing.name) existing.name = tc.function.name
+              if (tc.id && !existing.id) existing.id = tc.id
+            } else {
+              pendingToolCalls.set(idx, {
+                id: tc.id ?? `call_${idx}`,
+                name: tc.function?.name ?? '',
+                arguments_buf: tc.function?.arguments ?? '',
+              })
+            }
+          }
+        }
       } catch {
         /* skip */
       }
     })
+
+    // v0.21 M7:stream 结束 — emit 累积好的 tool_calls
+    if (pendingToolCalls.size > 0) {
+      for (const tc of pendingToolCalls.values()) {
+        if (!tc.name) {
+          console.warn('[openai-compat] tool_call 无 name,跳过', tc)
+          continue
+        }
+        let parsed: Record<string, unknown> = {}
+        if (tc.arguments_buf) {
+          try {
+            parsed = JSON.parse(tc.arguments_buf) as Record<string, unknown>
+          } catch (e) {
+            console.warn('[openai-compat] tool arguments JSON parse 失败', e, tc.arguments_buf)
+          }
+        }
+        onEvent({ tool_use: { id: tc.id, name: tc.name, input: parsed } })
+      }
+      // OpenAI 协议下 finish_reason='tool_calls' 表示对话因 tool 暂停,需要回轮
+      if (lastFinishReason === 'tool_calls') {
+        onEvent({ needs_tools: true })
+      }
+    }
 
     if (sawTemplateError && !sawDelta) return false
     // v0.8.1: thinking 模型 max_tokens 被思考吃光 → 用户必须知道
