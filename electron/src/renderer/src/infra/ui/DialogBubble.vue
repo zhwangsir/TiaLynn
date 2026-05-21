@@ -5,6 +5,11 @@ import { parseInlineMarkdown } from '../../brain/inline-markdown'
 import { useThemeMode } from './useThemeMode'
 import { bus } from '../eventbus'
 
+/** R73 收尾: 抽具名常量, 风格与 InputBar TOKEN_WARN 一致 */
+const LONG_REPLY_THRESHOLD = 500
+const HIDE_MIN_MS = 5_000
+const HIDE_MAX_MS = 18_000
+const HIDE_PER_CHAR_MS = 250
 /**
  * R65: 按文字长度动态隐藏:
  *   - 保底 5 秒
@@ -14,8 +19,8 @@ import { bus } from '../eventbus'
  */
 function hideMsFor(text: string | undefined): number {
   const len = text?.length ?? 0
-  if (len > 500) return 0
-  return Math.min(18_000, Math.max(5_000, 5_000 + len * 250))
+  if (len > LONG_REPLY_THRESHOLD) return 0
+  return Math.min(HIDE_MAX_MS, Math.max(HIDE_MIN_MS, HIDE_MIN_MS + len * HIDE_PER_CHAR_MS))
 }
 
 const dialog = useDialogStore()

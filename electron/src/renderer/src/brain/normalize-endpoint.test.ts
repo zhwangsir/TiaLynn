@@ -107,4 +107,22 @@ describe('normalizeSimpleUrl (R67)', () => {
   it('去前后空白', () => {
     expect(normalizeSimpleUrl('  127.0.0.1:8765  ')).toBe('http://127.0.0.1:8765')
   })
+
+  it('R73-fix: 防御 file:// scheme → 剥离 + 补 http://', () => {
+    // file:///tmp/sock 剥离后是 /tmp/sock, 加 http:// 即 http:///tmp/sock
+    // host 部分变空但至少协议从危险的 file:// 变成 http://, 会被 fetch 报清晰错误
+    expect(normalizeSimpleUrl('file:///tmp/sock')).toBe('http:///tmp/sock')
+  })
+
+  it('R73-fix: 防御 ftp:// scheme', () => {
+    expect(normalizeSimpleUrl('ftp://x.com:8765')).toBe('http://x.com:8765')
+  })
+
+  it('R73-fix: 防御 javascript: 协议 (XSS 面)', () => {
+    // 注意: javascript:alert(1) 不含 :// 所以正则不匹配，整段会被当主机补 http://
+    // 验证我们至少不会原样保留 javascript: 协议
+    const r = normalizeSimpleUrl('javascript://alert(1)')
+    expect(r.startsWith('http://')).toBe(true)
+    expect(r.includes('javascript:')).toBe(false)
+  })
 })

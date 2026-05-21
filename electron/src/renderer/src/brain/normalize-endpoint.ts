@@ -32,12 +32,16 @@ export function normalizeLlmEndpoint(input: string): string {
 
 /**
  * R67: 简化版 — 仅补 scheme + 去末尾 /, 不动 path (适用 TTS sidecar 等任意 endpoint)
+ *
+ * R73-fix: 防御非 http(s) scheme (file:// / ftp:// 等) — 剥离后补 http://,
+ * 避免 TTS 拿到 file:// 协议直接发请求时报不直观错误
  */
 export function normalizeSimpleUrl(input: string): string {
   let url = input.trim()
   if (!url) return ''
   if (!/^https?:\/\//i.test(url)) {
-    url = 'http://' + url
+    // 剥离其他 scheme (file:// / ftp:// / 等) 后补 http://
+    url = 'http://' + url.replace(/^[a-z][a-z\d+\-.]*:\/\//i, '')
   }
   url = url.replace(/\/+$/, '')
   return url
