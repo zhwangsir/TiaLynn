@@ -247,7 +247,8 @@ const results = computed<ResultItem[]>(() => {
         icon: t.role === 'user' ? '🧑' : '💬',
         group: '历史',
         title: t.text.slice(0, 80),
-        subtitle: new Date(t.ts).toLocaleString('zh-CN'),
+        // R116: subtitle 含 "我说 / 回复" 角色前缀, 比单 icon 更明确
+        subtitle: `${t.role === 'user' ? '我说' : '回复'} · ${new Date(t.ts).toLocaleString('zh-CN')}`,
         score: s - 0.1, // 历史略后
         action: () => {
           emit('close')
