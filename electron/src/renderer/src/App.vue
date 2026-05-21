@@ -245,6 +245,27 @@ async function onDrop(e: DragEvent): Promise<void> {
     })
     return
   }
+  // R34: 按扩展名分流 — yaml/png 给针对性引导，其他走默认 Live2D 安装
+  const ymls = paths.filter((p) => /\.(ya?ml)$/i.test(p))
+  const imgs = paths.filter((p) => /\.(png|jpe?g|webp|gif)$/i.test(p))
+  if (ymls.length > 0 && ymls.length === paths.length) {
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message: `检测到 ${ymls.length} 个 yaml 文件 — 灵魂编辑用「右键 → ✏️ 编辑灵魂」直接粘贴内容会更安全`,
+      ttl_ms: 8000,
+    })
+    soulEditorOpen.value = true
+    return
+  }
+  if (imgs.length > 0 && imgs.length === paths.length) {
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message: `检测到 ${imgs.length} 张图片 — 头像 / 场景背景请在「角色管理」或「场景」设置里上传`,
+      ttl_ms: 7000,
+    })
+    return
+  }
+  // 走默认 Live2D 模型 zip / 目录安装
   const results = await window.api.market.installPaths(paths)
   const ok = results.filter((r) => r.ok)
   const fail = results.filter((r) => !r.ok)
