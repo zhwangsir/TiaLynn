@@ -11,6 +11,7 @@ import { bus } from '../eventbus'
 import type { RuntimeConfig } from '@shared/types'
 import LlmAutoDetectPanel from './LlmAutoDetectPanel.vue'
 import { useFocusTrap } from './useFocusTrap'
+import { normalizeLlmEndpoint } from '../../brain/normalize-endpoint'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const cfg = useConfigStore()
@@ -199,6 +200,7 @@ function skip(): void {
               v-model="llmEndpoint"
               placeholder="http://127.0.0.1:11434/v1"
               @input="checkResult = null"
+              @blur="llmEndpoint = normalizeLlmEndpoint(llmEndpoint)"
             />
           </label>
           <label class="field">
