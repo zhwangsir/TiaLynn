@@ -2,6 +2,7 @@
 
 > 写给「想理解 TiaLynn 当前架构 + 愿景」的新人。各文档时效不一，按本表找。
 > 最近 audit：**v2.0 硅基生命容器重定向（2026-05-22）**
+> 最近 autonomous round：**M8 灵魂社会 partial-ship（Round M+N+O,617 单测）**
 
 ## 🟢 现行（v2.0 当前）
 
@@ -68,6 +69,23 @@
 - LLM endpoint config 是 placeholder `"x"` `"b"` — 需要主人填真实 endpoint
 - `electron/models-library/` 没有 Live2D 模型（.gitignored 不入仓）— `totalModels=0`
 - macOS 屏幕录制权限未授 — screen-sensor capture failed
+
+## v0.21+ Autonomous Round 进展（M8 灵魂社会 partial-ship）
+
+| Round | Commit | 主线 |
+|---|---|---|
+| E-L | `f27e928b`...`aa6040a3` | docs(ARCHITECTURE / DECISIONS / USER_GUIDE / SIDECAR_SETUP) + planner factory + character-store mountedCharacterIds + IPC mount-set/list + import 自动 mount |
+| K | `74dc2c61` | attention onTrigger 用 active character 作 planner target |
+| M | `1bf71cda` | CharacterPicker mount toggle UI(📌 卡片按钮 + header 并行计数 chip) |
+| N | `ddaabcce` | M8 灵魂↔灵魂 passive listening:active 说话 → 其他 mounted character `memory.db` 写 `kind='event'` |
+| O | `fa786e5c` | docs(USER_GUIDE §3.5 灵魂社会 + SILICON_LIFE_VISION partial-ship + RELEASE_v0.21 追加 Round E-N 表) |
+
+测试数:575 → 606 → 617(Round N 加 11 个 attention/index.test.ts)。
+
+**M8 仍要做的**(优先级降序):
+- Round P(等 embedding sidecar):active planner 通过 RAG 主动 surface 跨灵魂 event memory 到 prompt — 让 active character 真"想起"听过的话
+- Round Q(deferred):Live2DStage 多实例同框立绘(469 行 + WebGL/alpha 风险大,需 architect 设计)
+- Round R(可选):Settings 面板 cross-character memory 检视 panel — 让用户能看到 Round N 实际写入的 event 列表
 
 ---
 
