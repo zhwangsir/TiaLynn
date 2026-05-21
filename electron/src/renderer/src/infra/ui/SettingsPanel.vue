@@ -599,6 +599,59 @@ function cancel(): void {
   emit('close')
 }
 
+/** R127: 从剪贴板读 JSON 并 merge 到 form (跳过 *** 脱敏字段) */
+async function importConfig(): Promise<void> {
+  let text = ''
+  try {
+    text = await navigator.clipboard.readText()
+  } catch (e) {
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: `读剪贴板失败：${String(e).slice(0, 60)}`,
+      ttl_ms: 4000,
+    })
+    return
+  }
+  if (!text.trim()) {
+    bus.emit('ui:toast', { kind: 'warn', message: '剪贴板为空', ttl_ms: 2500 })
+    return
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (e) {
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: `JSON 解析失败：${String(e).slice(0, 60)}`,
+      ttl_ms: 4000,
+    })
+    return
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    bus.emit('ui:toast', { kind: 'error', message: '不是合法的配置对象', ttl_ms: 3000 })
+    return
+  }
+  const ok = window.confirm('用剪贴板 JSON 覆盖当前 form？(保留已有 API key, 需点保存才生效)')
+  if (!ok) return
+  let applied = 0
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!(k in form)) continue
+    // 跳过 mask 占位
+    if (v === '***') continue
+    // 类型检查: 当前值与新值同类型
+    const curr = (form as unknown as Record<string, unknown>)[k]
+    if (typeof curr !== typeof v && curr !== null && curr !== undefined) continue
+    ;(form as unknown as Record<string, unknown>)[k] = v
+    applied++
+  }
+  markDirty()
+  bus.emit('ui:toast', {
+    kind: 'success',
+    message: `✓ 导入 ${applied} 项配置 (未保存)`,
+    ttl_ms: 3000,
+  })
+}
+
 /** R125: 导出当前 form (含未保存改动) 为 JSON 到剪贴板. 敏感字段已 mask. */
 async function exportConfig(): Promise<void> {
   const safe = { ...form } as RuntimeConfig & Record<string, unknown>
@@ -718,6 +771,11 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
     @close="cancel"
   >
     <template #header-extra>
+      <button
+        class="header-action-btn"
+        title="从剪贴板导入 JSON 配置 (覆盖当前 form, API key 不会被覆盖)"
+        @click="importConfig"
+      >📥 导入</button>
       <button
         class="header-action-btn"
         title="导出当前配置为 JSON 到剪贴板"
