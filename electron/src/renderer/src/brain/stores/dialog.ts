@@ -13,6 +13,7 @@ import type { ChatMessage, EmotionId, IpcStreamChunk } from '@shared/types'
 import type { ToolDefinition } from '@shared/tools'
 import { useConfigStore } from '../../infra/stores/config'
 import { bus } from '../../infra/eventbus'
+import { toFriendlyError } from '../../infra/friendly-error'
 import { parsePartialText, parseReply } from '../parser'
 import type { DialogTurn } from '../types'
 
@@ -392,7 +393,13 @@ export const useDialogStore = defineStore('dialog', () => {
       assistant.error = chunk.error
       assistant.streaming = false
       bus.emit('brain:reply-error', { stream_id: chunk.streamId, error: chunk.error })
-      bus.emit('ui:toast', { kind: 'error', message: chunk.error, ttl_ms: 8000 })
+      // UX R22: 友好化 LLM 错误 — 标题 + 操作建议
+      const fe = toFriendlyError(chunk.error)
+      bus.emit('ui:toast', {
+        kind: 'error',
+        message: `${fe.title}：${fe.detail}`,
+        ttl_ms: 9000,
+      })
     }
     if (chunk.done) {
       pendingResolve?.()
