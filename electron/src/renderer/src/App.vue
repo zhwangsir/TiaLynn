@@ -13,6 +13,7 @@ import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import CreatorStudioPanel from './infra/ui/CreatorStudioPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
+import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -37,6 +38,7 @@ const character = useCharacterStore()
 
 const ready = ref(false)
 const settingsOpen = ref(false)
+const keyboardHelpOpen = ref(false)
 const creatorStudioOpen = ref(false)
 const libraryOpen = ref(false)
 const inputOpen = ref(false)
@@ -85,6 +87,7 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'sep-zoom', label: '', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
+  { id: 'keyboard-help', label: '⌨️ 快捷键帮助 (?)', icon: iconGear },
   { id: 'sep-sys', label: '', separator: true },
   // 窗口
   { id: 'pin', label: pinned.value ? '📌 取消置顶' : '📍 置顶', icon: iconPin },
@@ -109,6 +112,9 @@ async function onMenuSelect(id: string): Promise<void> {
       break
     case 'settings':
       settingsOpen.value = true
+      break
+    case 'keyboard-help':
+      keyboardHelpOpen.value = true
       break
     case 'creator-studio':
       creatorStudioOpen.value = true
@@ -320,6 +326,22 @@ function applyUIScale(s: number): void {
 }
 
 function onScaleKey(e: KeyboardEvent): void {
+  // UX R23: ? 唤起快捷键卡（不需要修饰键 — 但要避免在 input/textarea 内触发）
+  if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const t = e.target as HTMLElement | null
+    const tag = t?.tagName
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !t?.isContentEditable) {
+      e.preventDefault()
+      keyboardHelpOpen.value = !keyboardHelpOpen.value
+      return
+    }
+  }
+  // R23: Esc 关闭帮助卡
+  if (e.key === 'Escape' && keyboardHelpOpen.value) {
+    e.preventDefault()
+    keyboardHelpOpen.value = false
+    return
+  }
   if (!e.metaKey && !e.ctrlKey) return
   const cur = uiScale.value
   if (e.key === '=' || e.key === '+') {
@@ -381,6 +403,7 @@ onBeforeUnmount(() => {
       </ErrorBoundary>
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
       <ServiceStatusPill v-if="ready" @open-settings="settingsOpen = true" />
+      <KeyboardHelpCard :open="keyboardHelpOpen" @close="keyboardHelpOpen = false" />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
           v-if="characterPickerOpen"
