@@ -206,10 +206,31 @@ const tooltip = computed<string>(() => {
 function openSettings(): void {
   emit('open-settings')
 }
+
+/** R47: 有任一 down 时让 pill click 先重 probe (不打扰健康态 → 跳设置) */
+const anyDown = computed(() =>
+  [llmState.value, ttsState.value, visionState.value].some((s) => s.status === 'down'),
+)
+
+async function onPillClick(): Promise<void> {
+  if (!anyDown.value) {
+    openSettings()
+    return
+  }
+  // 触发主动重 probe — 给用户一种"刚刚是临时挂掉了"的快速恢复机会
+  bus.emit('ui:toast', { kind: 'info', message: '正在重新检查服务…', ttl_ms: 1500 })
+  await initialProbe()
+  if (anyDown.value) {
+    // 仍然 down → 跳设置
+    openSettings()
+  } else {
+    bus.emit('ui:toast', { kind: 'success', message: '✓ 服务已恢复', ttl_ms: 2000 })
+  }
+}
 </script>
 
 <template>
-  <button class="pill" :title="tooltip" :aria-label="tooltip" @click="openSettings">
+  <button class="pill" :title="tooltip" :aria-label="tooltip" @click="onPillClick">
     <span
       class="dot"
       :style="{ background: colorOf(llmState.status) }"
