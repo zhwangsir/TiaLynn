@@ -41,8 +41,14 @@ export type BusEventMap = {
   /* 配置 */
   'infra:config-changed': void
   'infra:soul-reloaded': void
-  /* 通知 */
-  'ui:toast': { kind: 'info' | 'warn' | 'error' | 'success'; message: string; ttl_ms?: number }
+  /* 通知 — R98: 可选 action 让用户从 toast 直接触发修复 */
+  'ui:toast': {
+    kind: 'info' | 'warn' | 'error' | 'success'
+    message: string
+    ttl_ms?: number
+    /** 可选行动按钮 (如"重试" / "去配置"), click 时执行 do() 然后自动 dismiss */
+    action?: { label: string; do: () => void }
+  }
   /* 动作播放 (v0.7.4) */
   'avatar:play-draft': { draft: MotionDraft; on_end?: () => void }
   'avatar:stop-motion': void

@@ -2,11 +2,16 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { bus } from '../eventbus'
 
+interface ToastAction {
+  label: string
+  do: () => void
+}
 interface Toast {
   id: number
   kind: 'info' | 'warn' | 'error' | 'success'
   message: string
   ttl: number
+  action?: ToastAction
 }
 
 const toasts = ref<Toast[]>([])
@@ -15,9 +20,10 @@ const MAX_VISIBLE = 4
 
 let offHandler: (() => void) | null = null
 
-function push(kind: Toast['kind'], message: string, ttl: number): void {
+function push(kind: Toast['kind'], message: string, ttl: number, action?: ToastAction): void {
   const id = nextId++
-  toasts.value = [...toasts.value, { id, kind, message, ttl }]
+  const newToast: Toast = { id, kind, message, ttl, ...(action && { action }) }
+  toasts.value = [...toasts.value, newToast]
   if (toasts.value.length > MAX_VISIBLE) {
     toasts.value = toasts.value.slice(-MAX_VISIBLE)
   }
@@ -29,6 +35,16 @@ function push(kind: Toast['kind'], message: string, ttl: number): void {
   }
 }
 
+/** R98: action click → 执行 + 立即 dismiss toast */
+function onAction(t: Toast): void {
+  try {
+    t.action?.do()
+  } catch (e) {
+    console.warn('[toast] action threw:', e)
+  }
+  dismiss(t.id)
+}
+
 function dismiss(id: number): void {
   toasts.value = toasts.value.filter((t) => t.id !== id)
 }
@@ -38,12 +54,14 @@ onMounted(() => {
     kind,
     message,
     ttl_ms,
+    action,
   }: {
     kind: Toast['kind']
     message: string
     ttl_ms?: number
+    action?: ToastAction
   }): void => {
-    push(kind, message, ttl_ms ?? 4000)
+    push(kind, message, ttl_ms ?? 4000, action)
   }
   bus.on('ui:toast', handler)
   offHandler = () => bus.off('ui:toast', handler)
@@ -73,6 +91,12 @@ const iconFor: Record<Toast['kind'], string> = {
       >
         <span class="icon" :class="t.kind" aria-hidden="true">{{ iconFor[t.kind] }}</span>
         <span class="msg">{{ t.message }}</span>
+        <button
+          v-if="t.action"
+          class="action-btn"
+          :aria-label="t.action.label"
+          @click.stop="onAction(t)"
+        >{{ t.action.label }}</button>
         <button
           class="dismiss"
           :aria-label="`关闭通知: ${t.message.slice(0, 40)}`"
@@ -163,6 +187,28 @@ const iconFor: Record<Toast['kind'], string> = {
   max-height: 10em;
   overflow-y: auto;
 }
+/* R98: action 按钮 — toast 内联可点击 */
+.action-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast), transform var(--duration-fast);
+}
+.action-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .dismiss {
   flex-shrink: 0;
   width: 22px;
