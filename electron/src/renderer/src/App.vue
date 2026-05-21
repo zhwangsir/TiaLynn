@@ -295,6 +295,9 @@ onMounted(async () => {
   dialog.injectGreeting()
   ready.value = true
 
+  // R37: 首启 35s 后浮一次性发现提示 — localStorage 标记已显示
+  scheduleDiscoveryHint()
+
   // v0.14: 切角色时清空对话历史 + 重新 inject greeting
   const charSwitchedHandler = async (): Promise<void> => {
     await dialog.bootstrap()  // reload per-character history
@@ -362,6 +365,28 @@ function applyUIScale(s: number): void {
   uiScale.value = s
   document.documentElement.style.setProperty('--ui-scale', String(s))
   localStorage.setItem('ui-scale', String(s))
+}
+
+/** R37: 首启 35s 后浮一次性引导 toast，已显示过的不再弹 */
+const DISCOVERY_STORAGE_KEY = 'tialynn-discovery-shown'
+let discoveryTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleDiscoveryHint(): void {
+  if (localStorage.getItem(DISCOVERY_STORAGE_KEY) === '1') return
+  discoveryTimer = setTimeout(() => {
+    // 用户 35s 内已经用过 spotlight / help / settings → 不打扰
+    if (spotlightOpen.value || keyboardHelpOpen.value || settingsOpen.value) return
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message:
+        '💡 试试 Cmd/Ctrl + K 全局搜索 · 按 ? 看所有快捷键 · 右键人物找设置（本提示只出现一次）',
+      ttl_ms: 12000,
+    })
+    try {
+      localStorage.setItem(DISCOVERY_STORAGE_KEY, '1')
+    } catch {
+      // localStorage 满 / 隐私模式 — 静默
+    }
+  }, 35_000)
 }
 
 function onScaleKey(e: KeyboardEvent): void {
@@ -434,6 +459,10 @@ onBeforeUnmount(() => {
   offTrayFn?.()
   offCharSwitchedFn?.()
   window.removeEventListener('keydown', onScaleKey)
+  if (discoveryTimer) {
+    clearTimeout(discoveryTimer)
+    discoveryTimer = null
+  }
 })
 </script>
 
