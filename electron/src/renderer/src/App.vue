@@ -14,6 +14,7 @@ import CreatorStudioPanel from './infra/ui/CreatorStudioPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
 import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
+import SpotlightSearch from './infra/ui/SpotlightSearch.vue'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -39,6 +40,7 @@ const character = useCharacterStore()
 const ready = ref(false)
 const settingsOpen = ref(false)
 const keyboardHelpOpen = ref(false)
+const spotlightOpen = ref(false)
 const creatorStudioOpen = ref(false)
 const libraryOpen = ref(false)
 const inputOpen = ref(false)
@@ -343,6 +345,12 @@ function onScaleKey(e: KeyboardEvent): void {
     return
   }
   if (!e.metaKey && !e.ctrlKey) return
+  // UX R24: Cmd/Ctrl + K 唤起全局 Spotlight 搜索
+  if (e.key === 'k' || e.key === 'K') {
+    e.preventDefault()
+    spotlightOpen.value = !spotlightOpen.value
+    return
+  }
   const cur = uiScale.value
   if (e.key === '=' || e.key === '+') {
     e.preventDefault()
@@ -404,6 +412,16 @@ onBeforeUnmount(() => {
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
       <ServiceStatusPill v-if="ready" @open-settings="settingsOpen = true" />
       <KeyboardHelpCard :open="keyboardHelpOpen" @close="keyboardHelpOpen = false" />
+      <SpotlightSearch
+        :open="spotlightOpen"
+        @close="spotlightOpen = false"
+        @open-settings="settingsOpen = true"
+        @open-character-picker="characterPickerOpen = true"
+        @open-soul-editor="soulEditorOpen = true"
+        @open-input="inputOpen = true"
+        @reload-model="bus.emit('avatar:reload-model')"
+        @clear-dialog="dialog.clear()"
+      />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
           v-if="characterPickerOpen"
