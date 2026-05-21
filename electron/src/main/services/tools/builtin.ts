@@ -20,6 +20,7 @@ import { ensureDir, getPaths } from '../paths'
 import { getSharedComfyClient } from '../comfyui/client'
 import { buildStickerWorkflow, type StickerParams } from '../comfyui/workflows'
 import { addMemoryForActive } from '../memory-store'
+import { fallbackEmbedding } from '../memory-extractor'
 
 function allowedRoots(): string[] {
   const home = homedir()
@@ -166,22 +167,22 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
       const extraDesc = extraPrompt ? `(${extraPrompt})` : ''
 
       // v0.21 Round D:M7 闭环 — 写 per-character memory.db,让 LLM 在下次
-      // 对话能回忆"我画过什么"。
+      // 对话能回忆"我画过什么"("那张星空我重新画一遍" / "上次画的贴纸主人喜欢吗")。
       //
-      // ⚠️ v0.21 当前限制(reviewer MEDIUM-2):embedding 用空数组占位,
-      // memory-store.searchMemories 计算 cosine 时 length 不等返 0,
-      // 该条 event 记忆**对 RAG 不可检索**,只供 listMemories UI 展示。
-      // M7 "LLM 回忆画过什么"的目标实质上在 v0.22 加 embedding endpoint 调用后
-      // 才会真正成立。当前不破坏,日后修补即可。
+      // v0.21 Round D 收尾:embedding 用 fallbackEmbedding(32 维 hash),跟其他
+      // memory 写入路径一致 — 这样 cosine similarity 计算长度匹配,RAG 能召回。
+      // hash 不是真语义,但起码"上次画过 happy"会被同 emotion 的 query 匹到。
+      // v0.22 接 embedding endpoint 时只换 fallbackEmbedding 实现,signature 不变。
       //
       // importance 0.6 中高:创作行为相对稀疏(30 分钟最多 1-2 次),每次值得记。
       // (TODO v0.22:抽 MEMORY_IMPORTANCE_CREATIVE 常量;reviewer LOW-1)
-      // (TODO v0.22:同 emotion 重复画去重;当前无 RAG 影响,留 reviewer LOW-2)
+      // (TODO v0.22:同 emotion 重复画去重;reviewer LOW-2)
       try {
+        const memText = `我画了一张「${emotion}」${extraDesc}贴纸送给主人,已浮在桌面上`
         const memResult = addMemoryForActive({
           kind: 'event',
-          text: `我画了一张「${emotion}」${extraDesc}贴纸送给主人,已浮在桌面上`,
-          embedding: [],
+          text: memText,
+          embedding: fallbackEmbedding(memText),
           importance: 0.6,
           source: 'creative_generate_sticker',
         })
