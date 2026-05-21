@@ -143,7 +143,13 @@ async function copyText(): Promise<void> {
       @mouseleave="onMouseLeave"
     >
       <span v-if="latest.text" class="text">{{ latest.text }}</span>
-      <span v-else-if="latest.error" class="text error-text">没收到回复 — 试试重试或检查 LLM 设置</span>
+      <span v-else-if="latest.error" class="text error-text">
+        <span class="error-line">没收到回复 — 试试重试或检查 LLM 设置</span>
+        <details v-if="latest.error" class="error-detail">
+          <summary>查看错误详情</summary>
+          <code class="error-raw">{{ latest.error.slice(0, 500) }}</code>
+        </details>
+      </span>
       <span v-if="latest.streaming" class="typing-indicator" aria-label="正在输入">
         <span class="dot"></span>
         <span class="dot"></span>
@@ -338,6 +344,42 @@ async function copyText(): Promise<void> {
 .error-text {
   color: var(--color-danger);
   font-style: italic;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.error-detail {
+  font-style: normal;
+}
+.error-detail summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--color-muted);
+  user-select: none;
+}
+.error-detail summary:hover {
+  color: var(--color-bubble-text);
+}
+.error-raw {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: oklch(0% 0 0 / 0.08);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--color-bubble-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 8em;
+  overflow-y: auto;
+  user-select: text;
+}
+@media (prefers-color-scheme: dark) {
+  .error-raw {
+    background: oklch(100% 0 0 / 0.05);
+  }
 }
 
 .bubble-enter-active,
