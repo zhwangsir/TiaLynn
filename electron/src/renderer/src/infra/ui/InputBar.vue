@@ -4,6 +4,7 @@ import { useDialogStore } from '../../brain/stores/dialog'
 import { estimateTokens } from '../../brain/token-estimate'
 import { SttSession } from '../../presence/stt/web-speech'
 import { useCharacterStore } from '../stores/character'
+import { CMD_KEY } from './useCmdKey'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -220,7 +221,7 @@ onBeforeUnmount(() => {
           <path d="M12 19V5" />
         </svg>
       </button>
-      <button v-else class="abort" title="中止当前回复" @click="dialog.abort">
+      <button v-else class="abort" :title="`中止当前回复 (${CMD_KEY}+.)`" aria-label="中止当前回复" @click="dialog.abort">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="2" />
         </svg>
