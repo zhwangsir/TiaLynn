@@ -791,6 +791,14 @@ export interface TialynnApi {
     ): () => void
   }
 
+  /** P5: soul yaml 改动历史 — SoulEditor 每次保存自动 diff + audit log */
+  soulChangeLog: {
+    list(payload?: {
+      character_id?: string
+    }): Promise<import('./channels/soul-change-log').SoulChangeLogEntryShape[]>
+    clear(payload?: { character_id?: string }): Promise<{ ok: boolean }>
+  }
+
   /** P5: character pack export/import — 打包 character soul+emotional+thumb 成 zip 分享 */
   characterPack: {
     export(payload?: {

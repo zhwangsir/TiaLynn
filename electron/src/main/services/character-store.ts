@@ -162,8 +162,26 @@ export function writeCharacterSoulFile(id: string, filename: string, content: st
   if (content.length > 100_000) return { ok: false, reason: '内容超过 100KB 上限' }
   const dir = characterSoulDir(id)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  const filePath = join(dir, filename)
+  // P5: 读旧内容用于 diff (best-effort，错误不影响主流程)
+  let oldContent = ''
+  if (existsSync(filePath)) {
+    try {
+      oldContent = readFileSync(filePath, 'utf-8')
+    } catch {
+      /* 读旧失败也继续写新 */
+    }
+  }
   try {
-    writeFileSync(join(dir, filename), content, 'utf-8')
+    writeFileSync(filePath, content, 'utf-8')
+    // P5: fire-and-forget 写 diff 到 soul-changes.log；动态 import 避免循环依赖
+    if (oldContent !== content) {
+      void import('./soul-change-log')
+        .then(({ recordSoulChange }) => recordSoulChange(id, filename, oldContent, content))
+        .catch(() => {
+          /* swallow */
+        })
+    }
     return { ok: true }
   } catch (e) {
     return { ok: false, reason: String(e).slice(0, 200) }

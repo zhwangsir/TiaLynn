@@ -231,6 +231,10 @@ import {
   characterPackExport,
   characterPackImport,
 } from '@shared/channels/character-pack'
+import {
+  soulChangeLogClear,
+  soulChangeLogList,
+} from '@shared/channels/soul-change-log'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -661,6 +665,10 @@ const api: TialynnApi = {
   characterPack: {
     export: (payload) => invokeChannel(characterPackExport, payload),
     import: (payload) => invokeChannel(characterPackImport, payload),
+  },
+  soulChangeLog: {
+    list: (payload) => invokeChannel(soulChangeLogList, payload),
+    clear: (payload) => invokeChannel(soulChangeLogClear, payload),
   },
   agent: {
     halt: (on) => invokeChannel(agentHalt, on),
