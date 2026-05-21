@@ -546,5 +546,8 @@ function walk(
  */
 export function toFileUrl(absolute: string): string {
   const normalized = absolute.split(sep).map(encodeURIComponent).join('/')
-  return `tialynn-asset:///${normalized.replace(/^\//, '')}`
+  // 用 `localhost` 占位 host:standard:true scheme 下 Chromium 会把三斜杠 URL 的
+  // 第一个 path segment 当成 host(`tialynn-asset:///Users/...` → host=Users 被
+  // canonicalize 丢失)。固定一个假 host 让 pathname 保留全 absolute 路径 + 大小写。
+  return `tialynn-asset://localhost/${normalized.replace(/^\//, '')}`
 }

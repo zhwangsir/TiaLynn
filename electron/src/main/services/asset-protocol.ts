@@ -59,9 +59,12 @@ export function registerAssetProtocol(): void {
   protocol.handle(SCHEME, async (request) => {
     let absPath: string
     try {
+      // URL 格式:`tialynn-asset://localhost/Users/wangzhenyu/...`
+      // (用假 host `localhost`,因为 standard:true scheme 下 Chromium 会把
+      //  三斜杠 URL 的第一个 path segment 当 host 并 canonicalize 丢失)
       const url = new URL(request.url)
-      // URL.pathname 含前导 / — Windows 下需要去掉 leading slash (`/C:/...` → `C:/...`)
       let p = decodeURIComponent(url.pathname)
+      // Windows: `/C:/...` → `C:/...`
       if (process.platform === 'win32' && /^\/[A-Za-z]:/.test(p)) p = p.slice(1)
       absPath = resolve(p)
     } catch (e) {
@@ -77,8 +80,12 @@ export function registerAssetProtocol(): void {
   })
 }
 
-/** 生成 tialynn-asset:// URL — 替代 toFileUrl */
+/** 生成 tialynn-asset:// URL — 替代 toFileUrl。
+ * 用 `localhost` 占位 host:standard:true scheme 下 Chromium 会把三斜杠 URL 的
+ * 第一个 path segment 当成 host 并 canonicalize(`tialynn-asset:///Users/...` →
+ * host=Users 被当 hostname 丢失)。固定假 host 让 pathname 保留完整 absolute 路径。
+ */
 export function toAssetUrl(absolute: string): string {
   const normalized = absolute.split(sep).map(encodeURIComponent).join('/')
-  return `${SCHEME}:///${normalized.replace(/^\//, '')}`
+  return `${SCHEME}://localhost/${normalized.replace(/^\//, '')}`
 }
