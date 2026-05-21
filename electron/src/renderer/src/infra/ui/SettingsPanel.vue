@@ -1021,8 +1021,17 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </span>
         <span v-else-if="dirty" class="save-status dirty">有未保存的改动</span>
         <span class="spacer" />
-        <button class="ghost" @click="cancel">取消</button>
-        <button class="primary" @click="save" :disabled="cfg.saving || !dirty">
+        <button
+          class="ghost"
+          :title="dirty ? '丢弃未保存的改动并关闭' : '关闭设置面板'"
+          @click="cancel"
+        >取消</button>
+        <button
+          class="primary"
+          :title="!dirty ? '没有需要保存的改动' : cfg.saving ? '正在保存…' : '保存并应用'"
+          @click="save"
+          :disabled="cfg.saving || !dirty"
+        >
           {{ cfg.saving ? '保存中…' : dirty ? '保存' : '已是最新' }}
         </button>
       </footer>
