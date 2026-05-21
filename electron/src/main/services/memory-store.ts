@@ -95,6 +95,48 @@ export function listMemories(characterId: string, opts: { kind?: Memory['kind'];
   return rows.map((r) => ({ ...r, embedding: JSON.parse(r.embedding) as number[] }))
 }
 
+/**
+ * v0.21 Round S(收 Round P LOW-1):按 source 前缀 SQL 直接 filter,
+ * 避免 listMemories 拿 N 条再 JS filter 的 over-fetch 漏数据问题。
+ *
+ * 用例:`cross_character:` 前缀过滤跨灵魂 event,M8 灵魂回响 prompt context。
+ *
+ * `sourcePrefix` 通过 `LIKE ${prefix}%` 拼接 — 参数化绑定避免 SQL 注入,
+ * `%` 通配符走 SQL 引擎不走 JS。`escapeLikeWildcard` 处理 `%/_` 在 prefix 里出现的
+ * 极端情况(实战 source 是 `cross_character:<uuid>` 没这俩字符,加这层防御)。
+ */
+function escapeLikeWildcard(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
+export function listMemoriesBySource(
+  characterId: string,
+  sourcePrefix: string,
+  opts: { kind?: Memory['kind']; limit?: number } = {},
+): Memory[] {
+  const limit = opts.limit ?? 50
+  const likePattern = `${escapeLikeWildcard(sourcePrefix)}%`
+  const rows = opts.kind
+    ? ensureDb(characterId)
+        .prepare(
+          `SELECT * FROM memories WHERE kind = ? AND source LIKE ? ESCAPE '\\' ORDER BY ts DESC LIMIT ?`,
+        )
+        .all(opts.kind, likePattern, limit) as Array<
+        Omit<Memory, 'embedding'> & { embedding: string }
+      >
+    : ensureDb(characterId)
+        .prepare(
+          `SELECT * FROM memories WHERE source LIKE ? ESCAPE '\\' ORDER BY ts DESC LIMIT ?`,
+        )
+        .all(likePattern, limit) as Array<
+        Omit<Memory, 'embedding'> & { embedding: string }
+      >
+  return rows.map((r) => ({
+    ...r,
+    embedding: JSON.parse(r.embedding) as number[],
+  }))
+}
+
 function cosine(a: number[], b: number[]): number {
   if (a.length === 0 || a.length !== b.length) return 0
   let dot = 0, na = 0, nb = 0

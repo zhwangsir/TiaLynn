@@ -1,25 +1,25 @@
 /**
- * planner.collectCrossCharacterContext — Round P 单测
+ * planner.collectCrossCharacterContext — Round P + Round S 单测
  *
  * 验证 planner 从自己 memory.db 取 cross-character event 拼 prompt 片段:
  *   - default planner(characterId=null)→ 永远 null,不读 db
  *   - characterId set + 无 event → null
  *   - characterId set + 有 event(source 以 cross_character: 开头)→ section string
- *   - 非 cross_character source 的 event 不混进来
- *   - 最多 3 条(top by ts desc)
+ *   - Round S:用 listMemoriesBySource('cross_character:', limit:3) SQL 直接 filter
+ *     (不再 listMemories 然后 JS filter,避免 over-fetch 漏数据)
  *   - text 截 120 字
- *   - listMemories 抛 → console.warn + 返 null,不阻塞 planner
+ *   - listMemoriesBySource 抛 → console.warn + 返 null,不阻塞 planner
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 
 vi.mock('../memory-store', () => ({
-  listMemories: vi.fn(),
+  listMemoriesBySource: vi.fn(),
 }))
 
 import { BehaviorPlanner } from './index'
-import { listMemories } from '../memory-store'
+import { listMemoriesBySource } from '../memory-store'
 
-const mockListMemories = vi.mocked(listMemories)
+const mockListBySource = vi.mocked(listMemoriesBySource)
 
 function mem(args: {
   id: string
@@ -55,22 +55,23 @@ describe('Round P: planner.collectCrossCharacterContext', () => {
     const p = new BehaviorPlanner(null)
     const r = p.collectCrossCharacterContext()
     expect(r).toBeNull()
-    expect(mockListMemories).not.toHaveBeenCalled()
+    expect(mockListBySource).not.toHaveBeenCalled()
   })
 
   it('characterId set + 没 event → 返 null', () => {
-    mockListMemories.mockReturnValue([])
+    mockListBySource.mockReturnValue([])
     const p = new BehaviorPlanner('hina')
     const r = p.collectCrossCharacterContext()
     expect(r).toBeNull()
-    expect(mockListMemories).toHaveBeenCalledWith('hina', {
+    // Round S:用 listMemoriesBySource SQL 直接 filter,prefix 'cross_character:'
+    expect(mockListBySource).toHaveBeenCalledWith('hina', 'cross_character:', {
       kind: 'event',
-      limit: 20,
+      limit: 3,
     })
   })
 
   it('characterId set + 1 个 cross-character event → section string 含该 text', () => {
-    mockListMemories.mockReturnValue([
+    mockListBySource.mockReturnValue([
       mem({
         id: '1',
         text: 'Suzy 对 master 说: 晚安',
@@ -85,11 +86,12 @@ describe('Round P: planner.collectCrossCharacterContext', () => {
     expect(r).toContain('# 你最近作为旁观者听到的')
   })
 
-  it('过滤非 cross_character source 的 event', () => {
-    mockListMemories.mockReturnValue([
-      mem({ id: '1', text: '主人吃了饭', source: 'turn_abc' }), // 普通 event
+  it('Round S:SQL 端已 filter,planner 直接信任 mock 返值', () => {
+    // Round S 重塑:filter 在 SQL,不在 planner JS。给 mock 只放 cross-character event。
+    // 之前的"过滤非 cross_character source"测试改为验证 SQL 调用参数即可。
+    mockListBySource.mockReturnValue([
       mem({
-        id: '2',
+        id: '1',
         text: 'Suzy 对 master 说: hi',
         source: 'cross_character:suzy',
       }),
@@ -97,12 +99,19 @@ describe('Round P: planner.collectCrossCharacterContext', () => {
     const p = new BehaviorPlanner('hina')
     const r = p.collectCrossCharacterContext()
     expect(r).toContain('Suzy 对 master 说: hi')
-    expect(r).not.toContain('主人吃了饭') // 普通 event 不进
+    // 验证 SQL 端拿了 prefix(planner 不再 JS filter)
+    expect(mockListBySource).toHaveBeenCalledWith(
+      'hina',
+      'cross_character:',
+      expect.objectContaining({ kind: 'event', limit: 3 }),
+    )
   })
 
-  it('超过 3 条 → 只取前 3 条(listMemories 已按 ts desc)', () => {
-    mockListMemories.mockReturnValue(
-      Array.from({ length: 6 }, (_, i) =>
+  it('SQL 已限 limit:3,所以 mock 返 3 条全显示', () => {
+    // Round S:limit 推到 SQL,planner 不再 slice(0, 3)。test 也跟着改:
+    // mock 给 3 条都该显示。
+    mockListBySource.mockReturnValue(
+      Array.from({ length: 3 }, (_, i) =>
         mem({
           id: `${i}`,
           text: `event ${i}`,
@@ -115,12 +124,11 @@ describe('Round P: planner.collectCrossCharacterContext', () => {
     expect(r).toContain('event 0')
     expect(r).toContain('event 1')
     expect(r).toContain('event 2')
-    expect(r).not.toContain('event 3') // 第 4 个被切
   })
 
   it('text 超 120 字 → 截断', () => {
     const longText = 'x'.repeat(300)
-    mockListMemories.mockReturnValue([
+    mockListBySource.mockReturnValue([
       mem({ id: '1', text: longText, source: 'cross_character:other' }),
     ])
     const p = new BehaviorPlanner('hina')
@@ -132,8 +140,8 @@ describe('Round P: planner.collectCrossCharacterContext', () => {
     expect(body.length).toBe(120)
   })
 
-  it('listMemories 抛 → console.warn + 返 null,不阻塞 planner', () => {
-    mockListMemories.mockImplementation(() => {
+  it('listMemoriesBySource 抛 → console.warn + 返 null,不阻塞 planner', () => {
+    mockListBySource.mockImplementation(() => {
       throw new Error('db locked')
     })
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})

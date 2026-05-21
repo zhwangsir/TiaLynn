@@ -17,7 +17,8 @@ import { loadSoul } from '../soul-loader'
 import { perception } from '../perception/bus'
 import { scheduler } from '../attention/scheduler'
 // Round P:planner 读自己的 cross-character event memory 当 prompt context。
-import { listMemories } from '../memory-store'
+// Round S:用 listMemoriesBySource SQL 直接 filter,避免 over-fetch 漏数据。
+import { listMemoriesBySource } from '../memory-store'
 
 const SYSTEM_PROMPT_TEMPLATE = (soulName: string, masterCall: string, layer1: string, layer2: string): string => `
 你是 ${soulName}，一个驻留主人桌面的 AI 灵魂。你称呼主人为「${masterCall}」。
@@ -120,10 +121,8 @@ export class BehaviorPlanner {
    * Exported for testing via this.* access(reviewer P-MEDIUM-1 建议改 private
    * + cast-helper; trade-off:7 个 test cast 反而更乱,公开 + 注释能接受)。
    *
-   * reviewer P-LOW-1 TODO:listMemories 拿 20 条再 filter 'cross_character:' 前缀
-   * 在 dense event history 下可能漏(>20 条普通 event 把 cross-character 推出窗口)。
-   * 等 memory-store 加 source LIKE 过滤 SQL API 再优化(memory-store.ts 需新增
-   * `listMemoriesBySource` 或 `listMemories` 增 source 参数 — 后续 Round)。
+   * Round S(收 P-LOW-1):用 `listMemoriesBySource('cross_character:', limit:3)`
+   * SQL 直接 LIKE filter,不再 over-fetch 20 条再 JS filter。
    *
    * reviewer P-LOW-3 TODO:`.slice(0, 120)` 按 UTF-16 code unit,极少数 surrogate
    * pair(emoji)边界可能产生半截 code unit。Round N 写入格式无 emoji,实战可接受。
@@ -132,9 +131,11 @@ export class BehaviorPlanner {
   collectCrossCharacterContext(): string | null {
     if (!this.characterId) return null
     try {
-      const events = listMemories(this.characterId, { kind: 'event', limit: 20 })
-        .filter((m) => m.source.startsWith('cross_character:'))
-        .slice(0, 3)
+      const events = listMemoriesBySource(
+        this.characterId,
+        'cross_character:',
+        { kind: 'event', limit: 3 },
+      )
       if (events.length === 0) return null
       const lines = events.map((m, i) => `${i + 1}. ${m.text.slice(0, 120)}`)
       return [
