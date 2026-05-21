@@ -106,9 +106,16 @@ const TOKEN_DANGER = 8000
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault()
-    // R105: 分阶段 Esc — 优先停 STT > 中止 LLM > 关闭面板
+    // R105+R118: 分阶段 Esc
+    //   停 STT > 退出历史浏览态 > 中止 LLM > 关闭面板
     if (sttListening.value) {
       sttSession?.stop()
+      return
+    }
+    if (historyIdx.value >= 0) {
+      historyIdx.value = -1
+      text.value = draftBeforeBrowse.value ?? ''
+      draftBeforeBrowse.value = null
       return
     }
     if (dialog.replying) {
