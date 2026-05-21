@@ -40,6 +40,15 @@ const visible = computed(() => {
   return list
 })
 
+/** R70: 搜索框 Enter 直接选首个匹配项 (search 非空时) */
+function onSearchEnter(): void {
+  if (!searchQuery.value.trim()) return
+  const first = visible.value[0]
+  if (first && first.id !== character.active?.id) {
+    void pick(first.id)
+  }
+}
+
 async function pick(id: string): Promise<void> {
   if (id === character.active?.id) {
     emit('close')
@@ -148,6 +157,8 @@ function initials(name: string): string {
             spellcheck="false"
             autocomplete="off"
             aria-label="搜索角色"
+            @keydown.enter="onSearchEnter"
+            @keydown.esc.stop="searchQuery ? (searchQuery = '') : emit('close')"
           />
           <button
             v-if="searchQuery"
