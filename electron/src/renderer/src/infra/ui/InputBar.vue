@@ -3,10 +3,16 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
 import { estimateTokens } from '../../brain/token-estimate'
 import { SttSession } from '../../presence/stt/web-speech'
+import { useCharacterStore } from '../stores/character'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const dialog = useDialogStore()
+const character = useCharacterStore()
+const placeholderTip = computed<string>(() => {
+  const name = character.active?.name?.trim()
+  return name ? `想对 ${name} 说什么？  Enter 发送 · Esc 关闭` : '想说点什么？  Enter 发送 · Esc 关闭'
+})
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -172,7 +178,7 @@ onBeforeUnmount(() => {
           sttListening ? '正在听 ……'
           : dialog.replying ? '主人正在等回应……'
           : sttError ? sttError
-          : '想说点什么？  Enter 发送 · Esc 关闭'
+          : placeholderTip
         "
         :disabled="dialog.replying"
         rows="1"
