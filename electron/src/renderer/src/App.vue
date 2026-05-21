@@ -16,6 +16,7 @@ import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
 import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
 import SpotlightSearch from './infra/ui/SpotlightSearch.vue'
 import BootSplash from './infra/ui/BootSplash.vue'
+import { useThemeMode } from './infra/ui/useThemeMode'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -34,6 +35,8 @@ import { bus } from './infra/eventbus'
 
 const cfg = useConfigStore()
 const dialog = useDialogStore()
+// R33: 主题模式初始化 (auto/light/dark) — composable 自管 DOM 写入
+const theme = useThemeMode()
 const speech = useSpeechStore()
 const approval = useApprovalStore()
 const character = useCharacterStore()
@@ -90,6 +93,10 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'sep-zoom', label: '', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
+  {
+    id: 'theme-cycle',
+    label: `🎨 主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色' : '深色'}`,
+  },
   { id: 'keyboard-help', label: '⌨️ 快捷键帮助 (?)', icon: iconGear },
   { id: 'sep-sys', label: '', separator: true },
   // 窗口
@@ -118,6 +125,14 @@ async function onMenuSelect(id: string): Promise<void> {
       break
     case 'keyboard-help':
       keyboardHelpOpen.value = true
+      break
+    case 'theme-cycle':
+      theme.cycle()
+      bus.emit('ui:toast', {
+        kind: 'info',
+        message: `主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色模式' : '深色模式'}`,
+        ttl_ms: 2500,
+      })
       break
     case 'creator-studio':
       creatorStudioOpen.value = true
@@ -350,6 +365,17 @@ function onScaleKey(e: KeyboardEvent): void {
   if (e.key === 'k' || e.key === 'K') {
     e.preventDefault()
     spotlightOpen.value = !spotlightOpen.value
+    return
+  }
+  // R33: Cmd/Ctrl + Shift + T 循环切主题 (auto → light → dark)
+  if (e.shiftKey && (e.key === 't' || e.key === 'T')) {
+    e.preventDefault()
+    theme.cycle()
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message: `主题：${theme.mode.value === 'auto' ? '跟随系统' : theme.mode.value === 'light' ? '浅色模式' : '深色模式'}`,
+      ttl_ms: 2000,
+    })
     return
   }
   const cur = uiScale.value

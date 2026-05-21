@@ -56,9 +56,12 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 暗色主题 — 跟随系统 */
+/* 暗色主题 token 单一定义 — 共享给以下两种触发方式:
+   1. @media (prefers-color-scheme: dark) — auto 模式跟随系统
+   2. :root[data-theme="dark"] — 用户手动 override
+*/
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-bubble: oklch(22% 0.012 25 / 0.92);
     --color-bubble-text: oklch(94% 0.012 25);
     --color-bubble-border: oklch(38% 0.015 25 / 0.6);
@@ -79,6 +82,28 @@
     --shadow-md: 0 2px 4px oklch(0% 0 0 / 0.3), 0 8px 24px oklch(0% 0 0 / 0.35);
     --shadow-lg: 0 4px 8px oklch(0% 0 0 / 0.35), 0 16px 48px oklch(0% 0 0 / 0.45);
   }
+}
+/* 用户手动强制 dark — 不论系统设置 */
+:root[data-theme="dark"] {
+  --color-bubble: oklch(22% 0.012 25 / 0.92);
+  --color-bubble-text: oklch(94% 0.012 25);
+  --color-bubble-border: oklch(38% 0.015 25 / 0.6);
+  --color-bubble-surface: oklch(28% 0.012 25 / 0.7);
+  --color-bubble-surface-hover: oklch(34% 0.015 25 / 0.85);
+  --color-accent: oklch(76% 0.16 18);
+  --color-accent-hover: oklch(82% 0.18 18);
+  --color-accent-soft: oklch(40% 0.12 25 / 0.55);
+  --color-accent-text: oklch(15% 0.01 25);
+  --color-danger: oklch(72% 0.2 25);
+  --color-danger-soft: oklch(35% 0.1 25 / 0.5);
+  --color-success: oklch(72% 0.18 145);
+  --color-warn: oklch(76% 0.16 80);
+  --color-muted: oklch(65% 0.015 25);
+  --color-divider: oklch(38% 0.012 25 / 0.4);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3), 0 2px 6px oklch(0% 0 0 / 0.25);
+  --shadow-md: 0 2px 4px oklch(0% 0 0 / 0.3), 0 8px 24px oklch(0% 0 0 / 0.35);
+  --shadow-lg: 0 4px 8px oklch(0% 0 0 / 0.35), 0 16px 48px oklch(0% 0 0 / 0.45);
 }
 
 * {

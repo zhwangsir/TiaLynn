@@ -18,6 +18,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { bus } from '../eventbus'
 import { useCharacterStore } from '../stores/character'
+import { useThemeMode } from './useThemeMode'
 import type { Character } from '@shared/character'
 
 interface ResultItem {
@@ -49,6 +50,7 @@ const selected = ref(0)
 const inputEl = ref<HTMLInputElement>()
 
 const characterStore = useCharacterStore()
+const theme = useThemeMode()
 const characters = ref<Character[]>([])
 const historyTurns = ref<Array<{ id: string; text: string; role: string; ts: number }>>(
   [],
@@ -97,6 +99,9 @@ const commands: Command[] = [
   { title: '打开对话输入', hint: '💬', do: () => emit('open-input') },
   { title: '重载模型 / 灵魂', hint: '🔄', do: () => emit('reload-model') },
   { title: '清空对话历史', hint: '🧹', do: () => emit('clear-dialog') },
+  { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },
+  { title: '主题：浅色模式', hint: '☀️', do: () => theme.setMode('light') },
+  { title: '主题：深色模式', hint: '🌙', do: () => theme.setMode('dark') },
 ]
 
 // ——— 设置索引（静态关键词 → 跳设置）———

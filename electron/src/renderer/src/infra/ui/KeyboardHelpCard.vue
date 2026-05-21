@@ -51,6 +51,7 @@ const sections = computed<Section[]>(() => [
       { keys: [cmdKey.value, '-'], label: '缩小 UI' },
       { keys: [cmdKey.value, '0'], label: '恢复默认 UI 缩放' },
       { keys: [cmdKey.value, 'K'], label: '全局搜索（命令 / 角色 / 历史）' },
+      { keys: [cmdKey.value, 'Shift', 'T'], label: '循环切换主题（自动/浅/深）' },
       { keys: ['?'], label: '打开本帮助卡' },
     ],
   },
