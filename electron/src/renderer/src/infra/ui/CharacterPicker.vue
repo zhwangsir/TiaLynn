@@ -6,7 +6,7 @@
  * 底部「+ 创建新的她」入口 → CharacterCreator (T4)
  * 卡片右下角「删除」按钮（builtin 不可删 + 不能删 active）
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import { bus } from '../eventbus'
 import { highlightMatch } from './highlight-match'
@@ -17,6 +17,29 @@ const emit = defineEmits<{
 }>()
 
 const character = useCharacterStore()
+
+// Round R:picker 每次打开都刷一次 mounted event counts(用户上次开 picker
+// 后,其他 mounted character 可能在后台听到了新事件,徽标需要更新)。
+// 不阻塞渲染,fire-and-forget。
+//
+// reviewer R-MEDIUM-3:picker 打开期间订阅 attention:plan,active 说话产生
+// 新 event 时实时刷计数。off-picker 时不订阅(避免后台 IPC chatter)。
+let offAttentionPlan: (() => void) | null = null
+onMounted(() => {
+  void character.refreshMountedEventCounts()
+  offAttentionPlan = window.api.attention.onPlan(() => {
+    // 不每帧刷,只在有 speak action 时(passive listening 只对 speak 触发)
+    // — 简化:plan 含 speak 与否,backend 写入也是无条件的,renderer 不知道
+    // 具体是否写了,统一刷一下。N ≤ 5 个 IPC 几毫秒,可接受。
+    void character.refreshMountedEventCounts()
+  })
+})
+onBeforeUnmount(() => {
+  if (offAttentionPlan) {
+    offAttentionPlan()
+    offAttentionPlan = null
+  }
+})
 
 const filter = ref<'all' | 'recent'>('all')
 const switchingId = ref<string | null>(null)
@@ -248,6 +271,17 @@ function initials(name: string): string {
                 ♡ {{ Math.round(c.intimacy_level) }}
               </span>
               <span class="meta-time">{{ relativeTime(c.last_chat_at) }}</span>
+              <!-- Round R:听到事件计数 — 只在 mounted 且 > 0 时显示
+                   reviewer R-MEDIUM-2:extract heardCount 局部 const 避免 3 次同函数调用 -->
+              <template v-if="character.isMounted(c.id)">
+                <span
+                  v-for="heardCount in [character.getEventCount(c.id)]"
+                  :key="`heard-${c.id}`"
+                  v-show="heardCount > 0"
+                  class="meta-heard"
+                  :title="`作为 mounted 时听到 master 跟其他灵魂的 ${heardCount} 句话 — 切到这个灵魂时她的 LLM 会带上 context`"
+                >👂 {{ heardCount > 99 ? '99+' : heardCount }}</span>
+              </template>
             </div>
             <div class="card-actions">
               <button
@@ -581,6 +615,16 @@ h2 {
 }
 .meta-time {
   color: var(--color-muted);
+}
+/* Round R:M8 听到事件计数(👂 X) — 用 accent-soft 跟 mount-count chip 视觉对齐 */
+.meta-heard {
+  color: var(--color-accent);
+  font-weight: 600;
+  font-feature-settings: 'tnum';
+  background: var(--color-accent-soft);
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
 }
 
 .card-actions {

@@ -26,6 +26,14 @@ export const useCharacterStore = defineStore('character', () => {
    */
   const toggleMounting = ref<string | null>(null)
 
+  /**
+   * Round R(M8 闭环可视化最小版):每个 mounted character 听到过的
+   * cross-character event 计数。Round N 写入,Round U IPC 拉。
+   * 用 Record 避免 Map 在 Vue reactive 里需 markRaw 之类的麻烦。
+   * 数据 stale 一点点没关系(下次 picker open + bootstrap 都会刷)。
+   */
+  const mountedEventCounts = ref<Record<string, number>>({})
+
   async function bootstrap(): Promise<void> {
     try {
       const [a, list, mountedList] = await Promise.all([
@@ -36,6 +44,8 @@ export const useCharacterStore = defineStore('character', () => {
       active.value = a
       all.value = list
       mounted.value = mountedList
+      // Round R:第一次 mounted 拿到后即刷 event counts(picker 一打开就有徽标)
+      void refreshMountedEventCounts()
     } catch (e) {
       console.error('[character] bootstrap failed', e)
     }
@@ -64,9 +74,49 @@ export const useCharacterStore = defineStore('character', () => {
   async function refreshMounted(): Promise<void> {
     try {
       mounted.value = await window.api.characters.listMounted()
+      // Round R:mounted 变了之后,刷计数(新 mount 的可能没听过,unmount 的应该不再显示)
+      void refreshMountedEventCounts()
     } catch (e) {
       console.warn('[character] refreshMounted failed', e)
     }
+  }
+
+  /**
+   * Round R(M8 闭环可视化):为每个 mounted character 拉它 memory.db 里
+   * 的 cross-character event 数。失败静默 fall through 到 0,UI 也只显示
+   * count > 0 的徽标,所以失败 → 不显示而非显示错的数字。
+   *
+   * 并发 Promise.all 不串行(N 个 IPC,N 通常 ≤ 5,毫秒级)。
+   */
+  async function refreshMountedEventCounts(): Promise<void> {
+    const ids = mounted.value.map((c) => c.id)
+    if (ids.length === 0) {
+      mountedEventCounts.value = {}
+      return
+    }
+    try {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const events = await window.api.memory.listCrossCharacter({
+              characterId: id,
+              limit: 100, // 数到 100 够用,实际显示 capped 在 99+
+            })
+            return [id, events.length] as const
+          } catch {
+            return [id, 0] as const
+          }
+        }),
+      )
+      mountedEventCounts.value = Object.fromEntries(entries)
+    } catch (e) {
+      console.warn('[character] refreshMountedEventCounts failed', e)
+    }
+  }
+
+  /** Round R helper:取某 character 的 event count(没记录则 0) */
+  function getEventCount(characterId: string): number {
+    return mountedEventCounts.value[characterId] ?? 0
   }
 
   async function refresh(): Promise<void> {
@@ -145,6 +195,9 @@ export const useCharacterStore = defineStore('character', () => {
       const r = await window.api.characters.setMounted(next)
       if (r.ok) {
         mounted.value = r.mounted
+        // Round R:新 mount 进来的 character 可能已经有 cross-char history
+        //(之前 mounted 时听过的话还在 db),刷计数让徽标立刻可见。
+        void refreshMountedEventCounts()
         return { ok: true }
       }
       return { ok: false, reason: r.reason }
@@ -167,14 +220,17 @@ export const useCharacterStore = defineStore('character', () => {
     mounted,
     mountedIds,
     toggleMounting,
+    mountedEventCounts,
     bootstrap,
     refresh,
     refreshMounted,
+    refreshMountedEventCounts,
     switchTo,
     create,
     remove,
     clone,
     toggleMount,
     isMounted,
+    getEventCount,
   }
 })
