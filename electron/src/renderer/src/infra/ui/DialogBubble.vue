@@ -35,6 +35,9 @@ const latest = computed(() => {
 
 const visible = ref(true)
 const bubbleEl = ref<HTMLDivElement | null>(null)
+/** R106: 长 text > 800 chars 时支持手动展开 (取消 max-height 限制) */
+const expanded = ref(false)
+const isLong = computed<boolean>(() => (latest.value?.text?.length ?? 0) > 800)
 /** R54: 用户主动关闭后的 turn id, 同 id 不重显, 下一条 turn 时清空 */
 const dismissedTurnId = ref<string | null>(null)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
@@ -79,8 +82,11 @@ watch(
     const id: string | null = typeof newId === 'string' ? newId : null
     // R54: 用户已主动关掉当前 turn → 不重显
     if (dismissedTurnId.value !== null && dismissedTurnId.value === id) return
-    // 新 turn → 清掉旧 dismiss
-    if (id !== dismissedTurnId.value) dismissedTurnId.value = null
+    // 新 turn → 清掉旧 dismiss + 重置 R106 expanded
+    if (id !== dismissedTurnId.value) {
+      dismissedTurnId.value = null
+      expanded.value = false
+    }
     visible.value = true
     // R52: streaming 中 / 文本变化时 auto-scroll 到底部
     if (latest.value.streaming || latest.value.text) scrollToBottom()
@@ -222,7 +228,7 @@ async function copyText(): Promise<void> {
     <div
       v-if="latest && (latest.text || latest.streaming || latest.error) && visible"
       ref="bubbleEl"
-      class="bubble"
+      :class="['bubble', { expanded }]"
       :style="{ background: bubbleBg(latest.emotion) }"
       @mouseenter="onMouseEnter"
       @mouseleave="onMouseLeave"
@@ -262,6 +268,14 @@ async function copyText(): Promise<void> {
         <span class="emo-text">{{ emotionLabel[latest.emotion]!.label }}</span>
       </span>
       <div v-if="!latest.streaming" class="bubble-actions">
+        <button
+          v-if="isLong"
+          class="action-btn"
+          :title="expanded ? '收起 (限高)' : '展开全文'"
+          :aria-label="expanded ? '收起气泡' : '展开气泡全文'"
+          :aria-pressed="expanded ? 'true' : 'false'"
+          @click.stop="expanded = !expanded"
+        >{{ expanded ? '⇡' : '⇣' }}</button>
         <button
           v-if="latest.text"
           class="action-btn"
@@ -317,6 +331,11 @@ async function copyText(): Promise<void> {
   gap: 8px;
   pointer-events: auto;
   max-height: min(28vh, 220px);
+  transition: max-height var(--duration-normal) var(--ease-out-expo);
+}
+/* R106: expanded 时取消高度限制 */
+.bubble.expanded {
+  max-height: min(70vh, 600px);
   overflow-y: auto;
   z-index: 1500;
   transition: background var(--duration-normal) var(--ease-in-out);
