@@ -50,6 +50,8 @@ const PROBE_TARGETS: ProbeTarget[] = [
 ]
 
 const PROBE_TIMEOUT_MS = 2000
+/** SEC: 防御 rogue 本机服务返超大 JSON 拖死 main 进程 */
+const MAX_RESPONSE_BYTES = 512 * 1024
 
 /** 探测单个 endpoint — 拉 /models 拿可选模型 */
 async function probeOne(target: ProbeTarget): Promise<DetectedEndpoint | { error: string }> {
@@ -66,7 +68,14 @@ async function probeOne(target: ProbeTarget): Promise<DetectedEndpoint | { error
     if (!resp.ok) {
       return { error: `HTTP ${resp.status}` }
     }
-    const data = (await resp.json()) as { data?: Array<{ id?: string }> }
+    // SEC R20-fix: 限响应体大小 — 流式服务可能 hang 着回大 JSON，2s timeout 只挡 first-byte
+    const buf = await resp.arrayBuffer()
+    if (buf.byteLength > MAX_RESPONSE_BYTES) {
+      return { error: `response too large (${buf.byteLength} bytes)` }
+    }
+    const data = JSON.parse(new TextDecoder().decode(buf)) as {
+      data?: Array<{ id?: string }>
+    }
     const models = Array.isArray(data.data)
       ? data.data.map((m) => m.id ?? '').filter((s) => s.length > 0)
       : []
@@ -103,7 +112,7 @@ export async function autoDetectLlm(customEndpoint?: string): Promise<AutoDetect
       found.push(res)
     }
   }
-  // 按 latency 升序（最快的 endpoint 优先推荐）
-  found.sort((a, b) => a.latencyMs - b.latencyMs)
-  return { found, failed, totalMs: Date.now() - t0 }
+  // 按 latency 升序（最快的 endpoint 优先推荐）— 不可变
+  const sortedFound = [...found].sort((a, b) => a.latencyMs - b.latencyMs)
+  return { found: sortedFound, failed, totalMs: Date.now() - t0 }
 }

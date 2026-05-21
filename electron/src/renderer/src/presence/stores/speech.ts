@@ -162,13 +162,25 @@ export const useSpeechStore = defineStore('speech', () => {
       result = await synthPromise
     } catch (e) {
       lastError.value = String(e)
+      // UX R21 fix: 真实 emit service:status, 替代 ServiceStatusPill toast 文本推断
+      bus.emit('service:status', {
+        service: 'tts',
+        status: 'down',
+        reason: String(e).slice(0, 100),
+      })
       return
     }
     if (myToken !== speakToken) return
     if (!result.ok || !result.audio_b64) {
       lastError.value = result.reason ?? 'tts-failed'
+      bus.emit('service:status', {
+        service: 'tts',
+        status: 'down',
+        reason: (result.reason ?? 'tts-failed').slice(0, 100),
+      })
       return
     }
+    bus.emit('service:status', { service: 'tts', status: 'ok' })
     try {
       // 防御 race：旧 audio 在 await 期间被 new speak 启的（理论不应有，串行 chain）
       const c = current as LipsyncSession | null

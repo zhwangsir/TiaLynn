@@ -320,6 +320,8 @@ export const useDialogStore = defineStore('dialog', () => {
       emotion: parsed.emotion,
       intensity: parsed.intensity,
     })
+    // UX R21: 显式 service:status — 成功回完即 LLM ok
+    bus.emit('service:status', { service: 'llm', status: 'ok' })
     bus.emit('brain:emotion-changed', { emotion: parsed.emotion, intensity: parsed.intensity })
     // v0.17 D-3：fire-and-forget 抽取长期记忆（不阻塞对话流）
     void (async (): Promise<void> => {
@@ -393,8 +395,14 @@ export const useDialogStore = defineStore('dialog', () => {
       assistant.error = chunk.error
       assistant.streaming = false
       bus.emit('brain:reply-error', { stream_id: chunk.streamId, error: chunk.error })
-      // UX R22: 友好化 LLM 错误 — 标题 + 操作建议
-      const fe = toFriendlyError(chunk.error)
+      // UX R21: 显式 emit service:status，让 ServiceStatusPill 摆脱 toast 文本推断
+      bus.emit('service:status', {
+        service: 'llm',
+        status: 'down',
+        reason: chunk.error.slice(0, 100),
+      })
+      // UX R22: 友好化 LLM 错误 — domain='llm' 让规则按域过滤
+      const fe = toFriendlyError(chunk.error, 'llm')
       bus.emit('ui:toast', {
         kind: 'error',
         message: `${fe.title}：${fe.detail}`,

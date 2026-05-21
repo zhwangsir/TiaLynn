@@ -83,7 +83,8 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
             }
             if (evt.error) {
               console.error(`[llm] error streamId=${payload.streamId}: ${evt.error}`)
-              send({ streamId: payload.streamId, error: evt.error })
+              // SEC R20-fix: 截断 IPC 错误体，避免 rogue server 返巨大 error body 灌爆 renderer
+              send({ streamId: payload.streamId, error: String(evt.error).slice(0, 500) })
             }
             if (evt.done) {
               console.log(

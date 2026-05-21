@@ -9,8 +9,8 @@
  *   - 红 = 最近一次调用失败（hover tooltip 显示原因）
  *   - 黄 = 配置了但还没尝试过
  *
- * 不主动 polling — 监听 bus 事件（brain:reply-end / brain:reply-error /
- * presence:tts-start / ui:toast）reactive 更新。
+ * 不主动 polling — 监听 bus 'service:status' reactive 更新。
+ * dialog/TTS handler 在成功/失败时显式 emit service:status，避免从 toast 文本反推。
  *
  * click 任一 dot → 打开设置面板。
  */
@@ -68,53 +68,32 @@ onMounted(() => {
   bus.on('infra:config-changed', onConfigChange)
   cleanupHandlers.push(() => bus.off('infra:config-changed', onConfigChange))
 
-  // LLM 成功：reply-end
-  const onReplyEnd = (): void => {
-    if (llmState.value.status !== 'unconfigured') {
-      llmState.value = { status: 'ok', ts: Date.now() }
-    }
-  }
-  bus.on('brain:reply-end', onReplyEnd)
-  cleanupHandlers.push(() => bus.off('brain:reply-end', onReplyEnd))
-
-  // LLM 失败：reply-error
-  const onReplyError = (payload: { error: string }): void => {
-    llmState.value = {
-      status: 'down',
-      reason: payload.error.slice(0, 100),
+  // R21 fix (HIGH): 改听 service:status 显式事件，不再靠 toast 文本反推
+  const onServiceStatus = (payload: {
+    service: 'llm' | 'tts' | 'vision'
+    status: 'ok' | 'down' | 'unconfigured'
+    reason?: string
+  }): void => {
+    const target =
+      payload.service === 'llm'
+        ? llmState
+        : payload.service === 'tts'
+          ? ttsState
+          : visionState
+    // 已 unconfigured 时 ok 信号不覆盖（避免下次 enable 前误显示绿）
+    if (target.value.status === 'unconfigured' && payload.status === 'ok') return
+    target.value = {
+      status: payload.status === 'unconfigured' ? 'unconfigured' : payload.status,
+      ...(payload.reason !== undefined && { reason: payload.reason.slice(0, 100) }),
       ts: Date.now(),
     }
   }
-  bus.on('brain:reply-error', onReplyError)
-  cleanupHandlers.push(() => bus.off('brain:reply-error', onReplyError))
-
-  // TTS 成功：能开播说明 ok
-  const onTtsStart = (): void => {
-    if (ttsState.value.status !== 'unconfigured') {
-      ttsState.value = { status: 'ok', ts: Date.now() }
-    }
-  }
-  bus.on('presence:tts-start', onTtsStart)
-  cleanupHandlers.push(() => bus.off('presence:tts-start', onTtsStart))
-
-  // Toast error 推断：包含 'TTS' / 'sidecar' / 'tts' → tts down
-  const onToast = (payload: { kind: string; message: string }): void => {
-    if (payload.kind !== 'error' && payload.kind !== 'warn') return
-    const msg = payload.message
-    if (/tts|sidecar|语音/i.test(msg) && ttsState.value.status !== 'unconfigured') {
-      ttsState.value = { status: 'down', reason: msg.slice(0, 100), ts: Date.now() }
-    }
-    if (/vision|视觉|看到|看不到/i.test(msg) && visionState.value.status !== 'unconfigured') {
-      visionState.value = { status: 'down', reason: msg.slice(0, 100), ts: Date.now() }
-    }
-  }
-  bus.on('ui:toast', onToast)
-  cleanupHandlers.push(() => bus.off('ui:toast', onToast))
+  bus.on('service:status', onServiceStatus)
+  cleanupHandlers.push(() => bus.off('service:status', onServiceStatus))
 })
 
 onBeforeUnmount(() => {
   cleanupHandlers.forEach((fn) => fn())
-  cleanupHandlers.length = 0
 })
 
 function colorOf(s: DotStatus): string {

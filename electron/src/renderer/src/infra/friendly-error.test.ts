@@ -63,10 +63,20 @@ describe('toFriendlyError', () => {
     expect(r.goto).toBe('vision')
   })
 
-  it('TTS 关键字 → TTS 提示', () => {
+  it('TTS 关键字 + domain unknown → TTS 提示（兼容旧行为）', () => {
     const r = toFriendlyError('TTS sidecar request failed')
     expect(r.title).toContain('TTS')
     expect(r.goto).toBe('tts')
+  })
+
+  it('TTS 关键字 + domain=llm → 跳过 TTS 规则，避免误判', () => {
+    const r = toFriendlyError('LLM mentioned tts in its response', 'llm')
+    expect(r.title).not.toContain('TTS')
+  })
+
+  it('TTS 关键字 + domain=tts → 命中', () => {
+    const r = toFriendlyError('Failed to connect to sidecar', 'tts')
+    expect(r.title).toContain('TTS')
   })
 
   it('database is locked → SQLite 提示', () => {

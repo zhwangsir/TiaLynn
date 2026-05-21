@@ -18,10 +18,15 @@ export interface FriendlyError {
   goto?: 'llm' | 'tts' | 'vision' | 'memory'
 }
 
+/** R22 fix: domain — 调用方明确告诉错误属于哪个服务，避免文本误判（如 LLM 提到 "tts" 字样被 TTS 规则截获） */
+export type ErrorDomain = 'llm' | 'tts' | 'vision' | 'memory' | 'network' | 'unknown'
+
 interface ErrorRule {
   match: RegExp
-  /** 推断的服务类型 — 用于挑 friendly 模板 */
-  service?: 'llm' | 'tts' | 'vision' | 'memory' | 'network'
+  /** 推断的服务类型 — 用于挑 friendly 模板；同时和 onlyDomain 配合使用 */
+  service?: ErrorDomain
+  /** 若设置，此规则只在传入 domain 匹配时生效，避免跨域误判 */
+  onlyDomain?: ErrorDomain[]
   title: string
   detail: string
   goto?: FriendlyError['goto']
@@ -129,10 +134,11 @@ const RULES: ErrorRule[] = [
       'llama.cpp 类引擎要求图像至少 2×2 像素。截图可能太小，或模型 mmproj 不完整。换个模型或重启。',
     goto: 'vision',
   },
-  // —— TTS / sidecar ——
+  // —— TTS / sidecar — 仅 tts domain 时启用（避免 LLM 错误里的 "tts" 字样误中） ——
   {
     match: /tts|sidecar/i,
     service: 'tts',
+    onlyDomain: ['tts', 'unknown'],
     title: 'TTS 服务异常',
     detail:
       'Python sidecar 可能没启动。终端跑 `bash sidecar/install.sh` 装好，然后 uvicorn 启动。',
@@ -157,11 +163,20 @@ const RULES: ErrorRule[] = [
 
 /**
  * 把 raw error 翻译成 friendly 三件套。无匹配 → 原样回退。
+ *
+ * @param raw - 任意错误对象 / 字符串
+ * @param domain - 调用方明确的服务域，让 onlyDomain 规则按域过滤
+ *                 默认 'unknown' 保留旧行为
  */
-export function toFriendlyError(raw: unknown): FriendlyError {
+export function toFriendlyError(
+  raw: unknown,
+  domain: ErrorDomain = 'unknown',
+): FriendlyError {
   const text = stringify(raw).slice(0, 800)
   const trunc = text.slice(0, 200)
   for (const rule of RULES) {
+    // R22 fix: 若规则限定 onlyDomain，必须命中
+    if (rule.onlyDomain && !rule.onlyDomain.includes(domain)) continue
     if (rule.match.test(text)) {
       return {
         title: rule.title,

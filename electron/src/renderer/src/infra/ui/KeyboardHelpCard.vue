@@ -10,7 +10,14 @@ import { computed } from 'vue'
 defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const isMac = computed(() => /Mac|iPhone|iPod|iPad/i.test(navigator.platform))
+/** R23-fix: navigator.platform 已弃用，优先 userAgentData; fallback userAgent (Electron 上没 userAgentData 但 userAgent 总有) */
+const isMac = computed(() => {
+  const uad = (navigator as unknown as {
+    userAgentData?: { platform?: string }
+  }).userAgentData
+  if (uad?.platform) return uad.platform === 'macOS'
+  return /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
+})
 const cmdKey = computed(() => (isMac.value ? '⌘' : 'Ctrl'))
 
 interface Shortcut {
@@ -78,9 +85,9 @@ function onBackdrop(e: MouseEvent): void {
           <section v-for="sec in sections" :key="sec.title" class="sec">
             <h3>{{ sec.title }}</h3>
             <ul>
-              <li v-for="(it, i) in sec.items" :key="i">
+              <li v-for="it in sec.items" :key="it.label">
                 <span class="keys">
-                  <kbd v-for="(k, ki) in it.keys" :key="ki" class="kbd">{{ k }}</kbd>
+                  <kbd v-for="k in it.keys" :key="k" class="kbd">{{ k }}</kbd>
                 </span>
                 <span class="label">{{ it.label }}</span>
               </li>
