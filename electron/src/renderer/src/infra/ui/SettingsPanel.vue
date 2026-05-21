@@ -63,6 +63,20 @@ const diskUsageOpen = ref(false)
 /** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
 type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
 const activeTab = ref<SettingsTab>('llm')
+
+/** R107: tabs ←→ 键盘导航 (WAI-ARIA tablist 标准) */
+function onTabsKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return
+  e.preventDefault()
+  const idx = tabs.findIndex((t) => t.id === activeTab.value)
+  if (idx < 0) return
+  let nextIdx = idx
+  if (e.key === 'ArrowRight') nextIdx = (idx + 1) % tabs.length
+  else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + tabs.length) % tabs.length
+  else if (e.key === 'Home') nextIdx = 0
+  else if (e.key === 'End') nextIdx = tabs.length - 1
+  activeTab.value = tabs[nextIdx]!.id
+}
 const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'llm', label: '大脑', icon: '🧠' },
   { id: 'avatar', label: '立绘', icon: '🎭' },
@@ -682,11 +696,13 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
       <DiskUsageDialog v-if="diskUsageOpen" @close="diskUsageOpen = false" />
 
       <div class="settings-layout">
-      <nav class="tabs" role="tablist">
+      <nav class="tabs" role="tablist" @keydown="onTabsKeydown">
         <button
           v-for="t in tabs"
           :key="t.id"
           role="tab"
+          :tabindex="activeTab === t.id ? 0 : -1"
+          :aria-selected="activeTab === t.id ? 'true' : 'false'"
           :class="['tab', { active: activeTab === t.id }]"
           @click="activeTab = t.id"
         >
