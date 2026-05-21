@@ -570,7 +570,11 @@ const plannerInstances = new Map<string, BehaviorPlanner>()
 const DEFAULT_PLANNER_KEY = '__default__'
 
 export function getPlanner(characterId?: string): BehaviorPlanner {
-  const key = characterId ?? DEFAULT_PLANNER_KEY
+  // reviewer H-MEDIUM-1:`??` 只触发 null/undefined,空字符串 '' 会被当真实 key,
+  //   创建第三个 planner 实例(不是 default 也不是任何真实 character)。
+  //   用 `||` 让 '' 也走 default(更宽容),或考虑显式 throw 严格拒绝。
+  //   选择 `||`:scheduler 误设 '' 时静默走 default 比制造异常路径更安全。
+  const key = (characterId && characterId.length > 0) ? characterId : DEFAULT_PLANNER_KEY
   let instance = plannerInstances.get(key)
   if (!instance) {
     instance = new BehaviorPlanner()

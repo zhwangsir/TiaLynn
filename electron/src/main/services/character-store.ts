@@ -281,7 +281,10 @@ export function getActiveCharacterId(): string | null {
 export function setActiveCharacterId(id: string): { ok: boolean; character?: Character; reason?: string } {
   const c = getCharacter(id)
   if (!c) return { ok: false, reason: 'not_found' }
-  writeFileSync(activeIdPath(), JSON.stringify({ id, switched_at: Date.now() }, null, 2), 'utf-8')
+  // reviewer H-HIGH-1:之前直接 writeFileSync 新对象,会覆盖 mounted_ids 等其他字段
+  // 改用 readActiveFile + spread 保留所有非 id/switched_at 字段
+  const file = readActiveFile()
+  writeActiveFile({ ...file, id, switched_at: Date.now() })
   return { ok: true, character: c }
 }
 
@@ -307,6 +310,10 @@ export function getActiveCharacter(): Character | null {
  *
  * 存储跟 active-character.json 同一文件(向后兼容:旧文件没 mounted_ids
  * 字段时,返回 [active_id])。
+ *
+ * IPC TODO(M8):暴露 `characters:list-mounted` / `characters:set-mounted` channel
+ *   (在 `shared/channels/characters.ts`),目前仅 main process 内部可用。
+ *   待 GUI 真做 multi-character 时一起加,避免 IPC schema 设计错。
  */
 interface ActiveCharacterFile {
   id?: string
@@ -320,7 +327,10 @@ function readActiveFile(): ActiveCharacterFile {
   if (!existsSync(p)) return {}
   try {
     return JSON.parse(readFileSync(p, 'utf-8')) as ActiveCharacterFile
-  } catch {
+  } catch (e) {
+    // reviewer H-HIGH-2:JSON 损坏时之前静默返 {},三条 getter 链路走向不同结果
+    // 让用户感知"角色状态丢失"。最低补 console.error 让调试路径存在
+    console.error('[character-store] active-character.json parse failed,fallback {} — 用户角色状态可能丢失:', e)
     return {}
   }
 }
@@ -336,10 +346,15 @@ function writeActiveFile(file: ActiveCharacterFile): void {
 export function getMountedCharacterIds(): string[] {
   const file = readActiveFile()
   if (file.mounted_ids && file.mounted_ids.length > 0) {
-    // 防御:如果 active 没在 mounted_ids 里,补进去
+    // 防御:如果 active 没在 mounted_ids 里,补进去并持久化
+    // reviewer H-MEDIUM-3:之前只在内存修正不写盘,下次调用还会重复修补;
+    //   且 caller 看到"已修正"但 setMountedCharacterIds 写的是旧不含 active 数据。
+    //   现在 get 时也持久化修补结果,下次再读时就一致了。
     const activeId = file.id
     if (activeId && !file.mounted_ids.includes(activeId)) {
-      return [activeId, ...file.mounted_ids]
+      const fixed = [activeId, ...file.mounted_ids]
+      writeActiveFile({ ...file, mounted_ids: fixed })
+      return fixed
     }
     return [...file.mounted_ids]
   }
@@ -377,8 +392,16 @@ export function setMountedCharacterIds(ids: string[]): {
   }
   const file = readActiveFile()
   // active 必须在 mounted 内 — 若不在自动补
+  // reviewer H-MEDIUM-2:补 active 时也要 getCharacter 校验,防止 active 指向
+  //   已删除的 character(edge case:另一个进程 delete 后 active 文件 stale)
   if (file.id && !deduped.includes(file.id)) {
-    deduped.unshift(file.id)
+    if (getCharacter(file.id)) {
+      deduped.unshift(file.id)
+    } else {
+      console.warn(
+        `[character-store] active_id=${file.id} 指向已不存在的 character,跳过补入 mounted`,
+      )
+    }
   }
   const next: ActiveCharacterFile = { ...file, mounted_ids: deduped }
   writeActiveFile(next)
