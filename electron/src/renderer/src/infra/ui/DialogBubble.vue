@@ -31,11 +31,14 @@ function scheduleHide(): void {
 }
 
 watch(
-  () => [latest.value?.id, latest.value?.text],
+  // R43 fix (MED): 追踪 error 字段, 否则 LLM 失败 (id 已存在 + text 空) watch 不触发,
+  // error bubble 满足 v-if 却被 visible=false 隐藏, 用户看不到重试按钮
+  () => [latest.value?.id, latest.value?.text, latest.value?.error],
   () => {
     if (!latest.value) return
     visible.value = true
-    if (!latest.value.streaming) scheduleHide()
+    // error 状态常驻不自动隐藏, 用户需主动关或重试
+    if (!latest.value.streaming && !latest.value.error) scheduleHide()
   },
   { immediate: true },
 )
@@ -113,12 +116,6 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
   sleepy: { icon: '😴', label: '困' },
 }
 
-// R41: 重试 — 仅在最后 assistant turn 有 error 时可见
-const canRetry = computed<boolean>(() => !!latest.value?.error && !dialog.replying)
-async function retryLast(): Promise<void> {
-  await dialog.retryLast()
-}
-
 // R38: 复制 LLM reply — hover 时显示按钮
 async function copyText(): Promise<void> {
   const t = latest.value?.text
@@ -168,11 +165,11 @@ async function copyText(): Promise<void> {
         @click.stop="copyText"
       >📋</button>
       <button
-        v-if="canRetry"
+        v-if="latest.error && !dialog.replying"
         class="retry-btn"
         title="重试这条 (上次失败 — 移除并重新生成)"
         aria-label="重试上次对话"
-        @click.stop="retryLast"
+        @click.stop="dialog.retryLast"
       >🔄 重试</button>
     </div>
   </transition>

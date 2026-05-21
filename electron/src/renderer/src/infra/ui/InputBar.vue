@@ -146,6 +146,11 @@ onBeforeUnmount(() => {
 <template>
   <transition name="bar">
     <div class="input-bar">
+      <span
+        v-if="historyIdx >= 0"
+        class="history-badge"
+        :aria-label="`正在浏览历史第 ${historyIdx + 1} 条`"
+      >↑ 历史 {{ historyIdx + 1 }}/{{ userHistory.length }}</span>
       <textarea
         ref="inputRef"
         v-model="text"
@@ -224,6 +229,32 @@ onBeforeUnmount(() => {
 .input-bar:focus-within {
   border-color: var(--color-accent);
   box-shadow: var(--shadow-md), var(--shadow-focus);
+}
+/* R42: 历史浏览角标 — 浮在 InputBar 左上方 */
+.history-badge {
+  position: absolute;
+  top: -22px;
+  left: 8px;
+  padding: 2px 8px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  pointer-events: none;
+  animation: badge-in 0.2s var(--ease-out-back);
+}
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .input {
   flex: 1;

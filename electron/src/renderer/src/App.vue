@@ -428,7 +428,8 @@ function onScaleKey(e: KeyboardEvent): void {
   }
   if (!e.metaKey && !e.ctrlKey) return
   // R40: Cmd/Ctrl + . 中止正在生成的 LLM 回复 (macOS 标准 "cancel")
-  if (e.key === '.' && dialog.replying) {
+  // R43 fix (MED): isTyping 时不劫持, 避免 IME 组合键误中止
+  if (e.key === '.' && dialog.replying && !isTyping) {
     e.preventDefault()
     dialog.abort()
     bus.emit('ui:toast', {
