@@ -61,6 +61,13 @@ const sections = computed<Section[]>(() => [
     ],
   },
   {
+    title: '设置面板内',
+    items: [
+      { keys: ['←', '→'], label: '切换设置 tab' },
+      { keys: ['Home', 'End'], label: '跳到首 / 末 tab' },
+    ],
+  },
+  {
     title: '调试',
     items: [
       { keys: [cmdKey.value, 'Alt', 'I'], label: '打开 DevTools（需 TIALYNN_DEBUG=1）' },
