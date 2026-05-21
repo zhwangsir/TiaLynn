@@ -337,13 +337,13 @@ function onBackdrop(e: MouseEvent): void {
           >
             <span class="item-icon">{{ r.icon }}</span>
             <div class="item-main">
-              <div class="item-title">
+              <div class="item-title" :title="r.title">
                 <template v-for="(seg, si) in highlightMatch(r.title, query)" :key="si">
                   <mark v-if="seg.matched" class="match-hl">{{ seg.text }}</mark>
                   <template v-else>{{ seg.text }}</template>
                 </template>
               </div>
-              <div v-if="r.subtitle" class="item-sub">{{ r.subtitle }}</div>
+              <div v-if="r.subtitle" class="item-sub" :title="r.subtitle">{{ r.subtitle }}</div>
             </div>
             <span v-if="r.shortcut" class="item-shortcut">{{ r.shortcut }}</span>
             <span class="item-group">{{ r.group }}</span>
