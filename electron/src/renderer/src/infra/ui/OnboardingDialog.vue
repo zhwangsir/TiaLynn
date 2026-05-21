@@ -5,7 +5,7 @@
  * 出现条件：config.json 不存在 OR llm_endpoint 为空。
  * 3 步：欢迎 → LLM 配置 → TTS 提示（可跳）。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import type { RuntimeConfig } from '@shared/types'
@@ -23,6 +23,19 @@ const alwaysOpen = computed(() => true)
 useFocusTrap(cardRef, alwaysOpen)
 
 const step = ref<1 | 2 | 3>(1)
+
+/** R124: 步切换后自动 focus 该步主要输入框 */
+watch(step, async (s) => {
+  await nextTick()
+  if (s === 2) {
+    // step 2: focus endpoint input
+    const el = cardRef.value?.querySelector<HTMLInputElement>('input[placeholder*="11434"], input[placeholder*="127.0.0.1"]')
+    el?.focus()
+  } else if (s === 3) {
+    const el = cardRef.value?.querySelector<HTMLInputElement>('input[placeholder*="8765"]')
+    el?.focus()
+  }
+})
 const llmEndpoint = ref('')
 const llmModel = ref('')
 const llmApiKey = ref('')
