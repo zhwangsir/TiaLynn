@@ -439,6 +439,12 @@ async function copyText(): Promise<void> {
   0%, 100% { opacity: 0.65; }
   50% { opacity: 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .stream-caret {
+    animation: none;
+    opacity: 0.4;
+  }
+}
 /* R51: inline markdown 渲染 */
 .md-bold {
   font-weight: 700;

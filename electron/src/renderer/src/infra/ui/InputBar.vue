@@ -311,6 +311,15 @@ onBeforeUnmount(() => {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .token-badge.danger {
+    animation: none;
+  }
+  .history-badge,
+  .token-badge {
+    animation: none;
+  }
+}
 @keyframes badge-in {
   from {
     opacity: 0;

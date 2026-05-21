@@ -350,6 +350,12 @@ async function onPillClick(): Promise<void> {
     transform: scale(1.15);
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .dot.pulsing {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--pulse-color);
+  }
+}
 /* 仅屏读器可见的 a11y live region */
 .sr-only {
   position: absolute;
