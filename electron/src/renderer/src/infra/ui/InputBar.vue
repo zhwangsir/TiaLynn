@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
+import { estimateTokens } from '../../brain/token-estimate'
 import { SttSession } from '../../presence/stt/web-speech'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -72,6 +73,13 @@ const userHistory = computed<string[]>(() => {
 })
 const historyIdx = ref(-1) // -1 = 没浏览, 0 = 最新, 1 = 上一条...
 const draftBeforeBrowse = ref<string | null>(null) // 保存浏览前用户已打的草稿
+
+/** R50: 仅在 > 50 字时计算并显示, 短输入无需提示 */
+const estimatedTokens = computed<number>(() => {
+  const t = text.value
+  if (!t || t.length < 50) return 0
+  return estimateTokens(t)
+})
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
@@ -151,6 +159,12 @@ onBeforeUnmount(() => {
         class="history-badge"
         :aria-label="`正在浏览历史第 ${historyIdx + 1} 条`"
       >↑ 历史 {{ historyIdx + 1 }}/{{ userHistory.length }}</span>
+      <span
+        v-if="estimatedTokens > 0 && historyIdx < 0"
+        class="token-badge"
+        :aria-label="`估算 ${estimatedTokens} tokens`"
+        title="估算 LLM token 数 (中文 ≈ 1/字, 英文 ≈ 1/4 字)"
+      >~{{ estimatedTokens }} tok</span>
       <textarea
         ref="inputRef"
         v-model="text"
@@ -244,6 +258,23 @@ onBeforeUnmount(() => {
   font-weight: 600;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   pointer-events: none;
+  animation: badge-in 0.2s var(--ease-out-back);
+}
+/* R50: token 估算角标 — 浮在 InputBar 右上方 */
+.token-badge {
+  position: absolute;
+  top: -22px;
+  right: 8px;
+  padding: 2px 8px;
+  background: var(--color-bubble-surface);
+  color: var(--color-muted);
+  border: 1px solid var(--color-bubble-border);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 500;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  pointer-events: auto;
+  cursor: help;
   animation: badge-in 0.2s var(--ease-out-back);
 }
 @keyframes badge-in {
