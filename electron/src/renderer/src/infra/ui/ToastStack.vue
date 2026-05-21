@@ -12,6 +12,8 @@ interface Toast {
   message: string
   ttl: number
   action?: ToastAction
+  /** R112: 出现次数, 重复 toast 显示 (×N) 而非堆叠 */
+  count: number
 }
 
 const toasts = ref<Toast[]>([])
@@ -21,8 +23,16 @@ const MAX_VISIBLE = 4
 let offHandler: (() => void) | null = null
 
 function push(kind: Toast['kind'], message: string, ttl: number, action?: ToastAction): void {
+  // R112: 同 kind + message 已在显示 → 仅 +count (不堆叠重复)
+  const existing = toasts.value.find((t) => t.kind === kind && t.message === message)
+  if (existing) {
+    toasts.value = toasts.value.map((t) =>
+      t.id === existing.id ? { ...t, count: t.count + 1 } : t,
+    )
+    return
+  }
   const id = nextId++
-  const newToast: Toast = { id, kind, message, ttl, ...(action && { action }) }
+  const newToast: Toast = { id, kind, message, ttl, count: 1, ...(action && { action }) }
   toasts.value = [...toasts.value, newToast]
   if (toasts.value.length > MAX_VISIBLE) {
     toasts.value = toasts.value.slice(-MAX_VISIBLE)
@@ -91,6 +101,7 @@ const iconFor: Record<Toast['kind'], string> = {
       >
         <span class="icon" :class="t.kind" aria-hidden="true">{{ iconFor[t.kind] }}</span>
         <span class="msg">{{ t.message }}</span>
+        <span v-if="t.count > 1" class="count-badge" :aria-label="`重复 ${t.count} 次`">×{{ t.count }}</span>
         <button
           v-if="t.action"
           class="action-btn"
@@ -187,6 +198,18 @@ const iconFor: Record<Toast['kind'], string> = {
   max-height: 10em;
   overflow-y: auto;
 }
+/* R112: 重复计数角标 */
+.count-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bubble-surface);
+  color: var(--color-muted);
+  font-size: 10px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-weight: 600;
+}
+
 /* R98: action 按钮 — toast 内联可点击 */
 .action-btn {
   flex-shrink: 0;
