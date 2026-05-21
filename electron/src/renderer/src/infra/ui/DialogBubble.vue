@@ -184,6 +184,19 @@ const segments = computed(() =>
   latest.value?.text ? parseInlineMarkdown(latest.value.text) : [],
 )
 
+// R117: bubble timestamp tooltip
+const bubbleTimestamp = computed<string>(() => {
+  const ts = latest.value?.ts
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleString('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+})
+
 // R76: emotion tooltip 含 intensity 百分比
 const emotionTooltip = computed<string>(() => {
   const e = latest.value?.emotion
@@ -228,6 +241,7 @@ async function copyText(): Promise<void> {
     <div
       v-if="latest && (latest.text || latest.streaming || latest.error) && visible"
       ref="bubbleEl"
+      :title="bubbleTimestamp"
       :class="['bubble', { expanded }]"
       :style="{ background: bubbleBg(latest.emotion) }"
       @mouseenter="onMouseEnter"
