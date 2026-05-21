@@ -177,6 +177,18 @@ const segments = computed(() =>
   latest.value?.text ? parseInlineMarkdown(latest.value.text) : [],
 )
 
+// R76: emotion tooltip 含 intensity 百分比
+const emotionTooltip = computed<string>(() => {
+  const e = latest.value?.emotion
+  if (!e) return ''
+  const i = latest.value?.intensity
+  const label = emotionLabel[e]?.label ?? e
+  if (typeof i === 'number' && Number.isFinite(i)) {
+    return `${label} · 强度 ${Math.round(Math.max(0, Math.min(1, i)) * 100)}%`
+  }
+  return label
+})
+
 // R38: 复制 LLM reply — hover 时显示按钮
 async function copyText(): Promise<void> {
   const t = latest.value?.text
@@ -232,7 +244,8 @@ async function copyText(): Promise<void> {
       <span
         v-if="latest.emotion && latest.emotion !== 'neutral' && emotionLabel[latest.emotion]"
         class="emo-tag"
-        :title="latest.emotion"
+        :title="emotionTooltip"
+        :aria-label="emotionTooltip"
       >
         <span class="emo-icon">{{ emotionLabel[latest.emotion]!.icon }}</span>
         <span class="emo-text">{{ emotionLabel[latest.emotion]!.label }}</span>
