@@ -90,7 +90,57 @@ onMounted(() => {
   }
   bus.on('service:status', onServiceStatus)
   cleanupHandlers.push(() => bus.off('service:status', onServiceStatus))
+
+  // R30: 启动后主动一次 health probe，让 dot 立即显示真实状态（不用等用户发消息）
+  void initialProbe()
 })
+
+/** R30: 启动时的一次性轻量 ping — 不重启每次重载，只 mount 触发一次 */
+async function initialProbe(): Promise<void> {
+  const c = cfg.config
+  if (!c) return
+  // LLM probe — 复用已有 healthCheck（test_vision: false 略过最重测试）
+  if (c.llm_endpoint && c.llm_model) {
+    try {
+      const r = await window.api.llm.healthCheck({ test_vision: false })
+      bus.emit('service:status', {
+        service: 'llm',
+        status: r.overall_ok ? 'ok' : 'down',
+        ...(!r.overall_ok && {
+          reason: r.results.find((x) => !x.ok)?.detail ?? 'health-check failed',
+        }),
+      })
+    } catch (e) {
+      bus.emit('service:status', {
+        service: 'llm',
+        status: 'down',
+        reason: String(e).slice(0, 100),
+      })
+    }
+  }
+  // TTS probe — 本机 sidecar 直 fetch，2s 超时
+  const ttsUrl = Array.isArray(c.tts_sidecar_url)
+    ? c.tts_sidecar_url.find((u) => u && u.trim())
+    : c.tts_sidecar_url
+  if (ttsUrl) {
+    try {
+      const r = await fetch(`${ttsUrl.replace(/\/+$/, '')}/`, {
+        signal: AbortSignal.timeout(2000),
+      })
+      bus.emit('service:status', {
+        service: 'tts',
+        status: r.ok ? 'ok' : 'down',
+        ...(!r.ok && { reason: `HTTP ${r.status}` }),
+      })
+    } catch (e) {
+      bus.emit('service:status', {
+        service: 'tts',
+        status: 'down',
+        reason: String(e).slice(0, 100),
+      })
+    }
+  }
+}
 
 onBeforeUnmount(() => {
   cleanupHandlers.forEach((fn) => fn())
