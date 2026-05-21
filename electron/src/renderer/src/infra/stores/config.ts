@@ -96,13 +96,25 @@ export const useConfigStore = defineStore('config', () => {
       // R61: 失败 message 走 friendly-error 翻译, 让用户能看懂操作建议
       if (r.ok) {
         testResult.value = r
+        // R91: 显式 emit service:status, 让 ServiceStatusPill 即时反映 manual test 成功
+        bus.emit('service:status', { service: 'llm', status: 'ok' })
       } else {
         const fe = toFriendlyError(r.message, 'llm')
         testResult.value = { ok: false, message: `${fe.title}：${fe.detail}` }
+        bus.emit('service:status', {
+          service: 'llm',
+          status: 'down',
+          reason: fe.title,
+        })
       }
     } catch (e) {
       const fe = toFriendlyError(e, 'llm')
       testResult.value = { ok: false, message: `${fe.title}：${fe.detail}` }
+      bus.emit('service:status', {
+        service: 'llm',
+        status: 'down',
+        reason: fe.title,
+      })
     } finally {
       testing.value = false
     }
