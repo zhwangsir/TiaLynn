@@ -661,6 +661,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
     <div class="panel-body" role="dialog" aria-modal="true">
       <DiskUsageDialog v-if="diskUsageOpen" @close="diskUsageOpen = false" />
 
+      <div class="settings-layout">
       <nav class="tabs" role="tablist">
         <button
           v-for="t in tabs"
@@ -674,6 +675,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </button>
       </nav>
 
+      <div class="settings-content">
       <div v-show="activeTab === 'llm'">
       <section>
         <h3>大脑 (LLM)</h3>
@@ -988,6 +990,8 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           </div>
         </section>
       </div>
+      </div>
+      </div>
 
       <footer>
         <span v-if="saveStatus" :class="['save-status', saveStatus.ok ? 'ok' : 'bad']">
@@ -1076,31 +1080,48 @@ header h2 {
   background: oklch(93% 0.015 25 / 0.85);
   color: var(--color-bubble-text);
 }
+/* UX R25: 左侧 nav 布局 */
+.settings-layout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 0;
+}
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
   background: var(--color-bubble-surface);
   border-radius: var(--radius-md);
   position: sticky;
   top: -16px;
   z-index: 2;
-  margin: -4px 0 4px;
+  width: 132px;
+  flex-shrink: 0;
 }
 .tab {
-  flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 3px;
-  padding: 7px 4px;
+  gap: 10px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-muted);
   background: transparent;
   transition: color var(--duration-fast), background var(--duration-fast);
   position: relative;
+  justify-content: flex-start;
+  text-align: left;
 }
 .tab:hover {
   background: var(--color-bubble-surface-hover);
@@ -1115,12 +1136,33 @@ header h2 {
   box-shadow: var(--shadow-sm);
 }
 .tab-icon {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   transition: transform var(--duration-fast) var(--ease-out-back);
+  flex-shrink: 0;
 }
 .tab-label {
-  font-size: 10px;
+  font-size: var(--text-sm);
+}
+/* 窄面板降级 — 给 layout 自动堆叠 */
+@media (max-width: 520px) {
+  .settings-layout {
+    flex-direction: column;
+  }
+  .tabs {
+    flex-direction: row;
+    width: 100%;
+    overflow-x: auto;
+  }
+  .tab {
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+  }
+  .tab-label {
+    font-size: 10px;
+  }
 }
 section {
   display: flex;
