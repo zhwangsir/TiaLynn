@@ -231,10 +231,14 @@ function currentConfigHint(svc: 'llm' | 'tts' | 'vision'): string {
     return `模型: ${c.llm_model}`
   }
   if (svc === 'tts') {
-    const u = Array.isArray(c.tts_sidecar_url)
-      ? c.tts_sidecar_url.find((s) => s && s.trim())
+    const list = Array.isArray(c.tts_sidecar_url)
+      ? c.tts_sidecar_url.filter((s) => s && s.trim())
       : c.tts_sidecar_url
-    return u ? `sidecar: ${u}` : ''
+        ? [c.tts_sidecar_url]
+        : []
+    if (list.length === 0) return ''
+    const more = list.length > 1 ? ` (+${list.length - 1} fallback)` : ''
+    return `sidecar: ${list[0]}${more}`
   }
   // vision
   if (c.vision_model) return `模型: ${c.vision_model}`

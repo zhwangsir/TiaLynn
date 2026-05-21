@@ -189,6 +189,8 @@ const results = computed<ResultItem[]>(() => {
   const out: ResultItem[] = []
   // R49-fix: 一次性读 usage map, 循环内 O(1) lookup
   const usageMap = loadUsage()
+  // R97-fix: hoist active char id, 循环内 O(1) 比较, 避免每条角色 reactive read
+  const activeId = characterStore.active?.id
 
   // 命令 — R46 加 usageBoost 让常用项排前
   for (const c of commands) {
@@ -219,8 +221,8 @@ const results = computed<ResultItem[]>(() => {
     const intimacy = Math.round(c.intimacy_level)
     if (intimacy > 0) parts.push(`♡ ${intimacy}`)
     if (c.total_chats > 0) parts.push(`${c.total_chats} 次对话`)
-    // R96: 当前角色加视觉标记
-    const isActive = c.id === characterStore.active?.id
+    // R96+R97-fix: 当前角色加视觉标记, activeId 已 hoist
+    const isActive = c.id === activeId
     out.push({
       key: `char-${c.id}`,
       icon: isActive ? '✓' : '🎭',

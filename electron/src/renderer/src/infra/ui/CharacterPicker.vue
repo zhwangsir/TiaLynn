@@ -161,6 +161,7 @@ function initials(name: string): string {
             @keydown.enter="onSearchEnter"
             @keydown.esc.stop="searchQuery ? (searchQuery = '') : emit('close')"
           />
+          <span class="search-hint">↵ 选首项 · Esc 关</span>
           <button
             v-if="searchQuery"
             type="button"
@@ -344,6 +345,12 @@ h2 {
 .search-input:focus {
   border-color: var(--color-accent);
   box-shadow: var(--shadow-focus);
+}
+.search-hint {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  white-space: nowrap;
 }
 .search-clear {
   width: 28px;
