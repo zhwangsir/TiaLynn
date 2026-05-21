@@ -59,6 +59,7 @@ export class AttentionScheduler {
   start(): void {
     if (this.timer) return
     this.attachSensors()
+    this.paused = false
     // 初始化 lastProactiveAt = now，避免启动后第一个 tick 立即触发（应当等满 proactive_interval）
     this.lastProactiveAt = Date.now()
     this.timer = setInterval(() => this.tick(), this.config.tick_ms)
@@ -69,6 +70,30 @@ export class AttentionScheduler {
     this.timer = null
     for (const u of this.unsubscribers) u()
     this.unsubscribers.length = 0
+  }
+
+  /**
+   * v0.21 Round C:agent_task 跑期间临时暂停 trigger 生成,避免 nut-js
+   * 跑步操作时 attention 仍然每 45s 触发 "glance_at_screen" plan 撕裂 UX。
+   * paused 状态保留 sensors + timer,只在 tick / reactive 入口 short-circuit。
+   * 调用方 try/finally 保证 resume(防 agent loop 异常退出忘记 resume)。
+   */
+  private paused = false
+
+  pause(reason: string): void {
+    if (this.paused) return
+    this.paused = true
+    console.log(`[scheduler] paused: ${reason}`)
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    console.log(`[scheduler] resumed`)
+  }
+
+  isPaused(): boolean {
+    return this.paused
   }
 
   updateConfig(patch: Partial<AttentionConfig>): AttentionConfig {
@@ -189,7 +214,7 @@ export class AttentionScheduler {
    * Planner 收到 reason 后会按 system prompt 输出协同的 speak + play_group。
    */
   private tryReactiveTrigger(reason: string): void {
-    if (!this.config.enabled || !this.onTriggerCb) return
+    if (!this.config.enabled || !this.onTriggerCb || this.paused) return
     const now = Date.now()
     if (now - this.lastReactiveAt < this.REACTIVE_COOLDOWN_MS) return
     if (now - this.state.last_action_at < this.config.min_action_interval_ms) return
@@ -205,7 +230,7 @@ export class AttentionScheduler {
   // ============ Tick 决策 ============
 
   private tick(): void {
-    if (!this.config.enabled || !this.onTriggerCb) return
+    if (!this.config.enabled || !this.onTriggerCb || this.paused) return
     // 自然衰减
     this.decay('focus_on_screen', 0.05)
     this.decay('focus_on_master', 0.02)

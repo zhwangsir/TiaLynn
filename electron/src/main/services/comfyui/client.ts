@@ -61,12 +61,34 @@ export class ComfyClient {
   readonly clientId: string
   readonly endpoint: string
   private readonly timeoutMs: number
+  /**
+   * v0.21 Round C:instance-level AbortController,abortAll() 调时 cancel
+   * 当前 client 所有 in-flight 请求(生图最长 30s 期间用户改 endpoint 切到新 client,
+   * 旧 client 的请求应立即停)。
+   */
+  private readonly aborter = new AbortController()
 
   constructor(opts: ComfyClientOpts) {
     if (!opts.endpoint) throw new ComfyError('endpoint 为空')
     this.endpoint = opts.endpoint.replace(/\/+$/, '')
     this.clientId = opts.clientId ?? randomUUID()
     this.timeoutMs = opts.requestTimeoutMs ?? 30_000
+  }
+
+  /**
+   * v0.21 Round C:取消当前 client 所有 in-flight requests。
+   * sharedClient 切换 endpoint 时调旧 client.abortAll(),避免旧请求
+   * 完成后把结果写入新 endpoint 语境的文件目录。
+   */
+  abortAll(reason: string): void {
+    if (this.aborter.signal.aborted) return
+    console.log(`[comfy-client] abortAll: endpoint=${this.endpoint} reason="${reason}"`)
+    this.aborter.abort(reason)
+  }
+
+  /** 当前 client 是否已被 abort(切换后不应再使用) */
+  isAborted(): boolean {
+    return this.aborter.signal.aborted
   }
 
   /** 探活 — GET /system_stats */
@@ -213,12 +235,19 @@ export class ComfyClient {
   }
 
   private async fetch(path: string, init: RequestInit): Promise<Response> {
-    const ctl = new AbortController()
-    const timer = setTimeout(() => ctl.abort(), this.timeoutMs)
+    const timeoutCtl = new AbortController()
+    const timer = setTimeout(() => timeoutCtl.abort(), this.timeoutMs)
+    // v0.21 Round C:链 instance aborter,任一 abort 都触发
+    // AbortSignal.any 是 Node 20.3+/Chromium 116+,Electron 33 支持
+    const combined = AbortSignal.any([timeoutCtl.signal, this.aborter.signal])
     try {
-      return await fetch(`${this.endpoint}${path}`, { ...init, signal: ctl.signal })
+      return await fetch(`${this.endpoint}${path}`, { ...init, signal: combined })
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
+        // 区分 instance abort vs 单次超时
+        if (this.aborter.signal.aborted) {
+          throw new ComfyError(`请求被中断 (client 废弃): ${path}`, e)
+        }
         throw new ComfyError(`请求超时 ${this.timeoutMs}ms: ${path}`, e)
       }
       throw new ComfyError(`fetch 失败: ${path} — ${(e as Error).message}`, e)
@@ -274,6 +303,11 @@ export function getSharedComfyClient(): ComfyClient {
     throw new ComfyError('ComfyUI endpoint 未配置（Settings → ComfyUI endpoint）')
   }
   if (!sharedClient || sharedClient.endpoint !== endpoint) {
+    // v0.21 Round C:endpoint 切换时,旧 client 所有 in-flight 请求立即取消
+    // 避免旧请求完成后把结果写入跟新 endpoint 不对齐的文件目录/state
+    if (sharedClient) {
+      sharedClient.abortAll(`endpoint changed: ${sharedClient.endpoint} → ${endpoint}`)
+    }
     sharedClient = new ComfyClient({ endpoint })
   }
   return sharedClient

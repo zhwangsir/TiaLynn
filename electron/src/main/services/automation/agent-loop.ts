@@ -9,6 +9,7 @@
 import { loadConfig } from '../config-store'
 import * as auto from './index'
 import { findAndClick, findOnScreen } from './vision-grounding'
+import { scheduler } from '../attention/scheduler'
 
 export interface AgentStep {
   step: number
@@ -245,6 +246,25 @@ export async function runAgentTask(
   const steps: AgentStep[] = []
   console.log(`[agent-loop] start goal="${goal}" maxSteps=${maxSteps}`)
 
+  // v0.21 Round C:agent 跑期间暂停 attention scheduler,避免 attention
+  // 在 nut-js 操作期间每 45s 触发 plan ("glance_at_screen" 之类)撕裂 UX。
+  // try/finally 保证异常路径也 resume。agent-loop / scheduler 之间无循环依赖,
+  // 用顶部 static import(避 vite "dynamically imported but also statically imported" 警告)。
+  scheduler.pause(`agent_task: ${goal.slice(0, 40)}`)
+
+  try {
+    return await runAgentTaskInner(goal, maxSteps, steps, opts)
+  } finally {
+    scheduler.resume()
+  }
+}
+
+async function runAgentTaskInner(
+  goal: string,
+  maxSteps: number,
+  steps: AgentStep[],
+  opts: { onStep?: (step: AgentStep) => void },
+): Promise<AgentRunResult> {
   for (let i = 1; i <= maxSteps; i++) {
     if (auto.isHalted()) {
       return { ok: false, goal, steps, reason: 'halted by user' }
