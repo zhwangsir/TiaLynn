@@ -73,4 +73,28 @@ describe('planner factory(M8 灵魂社会前置)', () => {
       expect(again).toBe(planners[i]!)
     }
   })
+
+  // ============ Round P:planner 知道自己服务哪个 character ============
+
+  it('Round P:getPlanner(id) 给实例设 characterId', () => {
+    const p = getPlanner('suzy')
+    expect(p.characterId).toBe('suzy')
+  })
+
+  it('Round P:default planner.characterId === null(legacy 兼容)', () => {
+    const p = getPlanner()
+    expect(p.characterId).toBeNull()
+  })
+
+  it('Round P:空字符串 → 走 default,characterId 也是 null', () => {
+    const p = getPlanner('')
+    expect(p.characterId).toBeNull()
+  })
+
+  it('Round P:多 character 各自 characterId 不串', () => {
+    const a = getPlanner('alpha')
+    const b = getPlanner('beta')
+    expect(a.characterId).toBe('alpha')
+    expect(b.characterId).toBe('beta')
+  })
 })

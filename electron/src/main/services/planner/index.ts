@@ -16,6 +16,8 @@ import { loadConfig } from '../config-store'
 import { loadSoul } from '../soul-loader'
 import { perception } from '../perception/bus'
 import { scheduler } from '../attention/scheduler'
+// Round P:planner 读自己的 cross-character event memory 当 prompt context。
+import { listMemories } from '../memory-store'
 
 const SYSTEM_PROMPT_TEMPLATE = (soulName: string, masterCall: string, layer1: string, layer2: string): string => `
 你是 ${soulName}，一个驻留主人桌面的 AI 灵魂。你称呼主人为「${masterCall}」。
@@ -96,6 +98,57 @@ export class BehaviorPlanner {
    */
   private llmCallTimestamps: number[] = []
 
+  /**
+   * v0.21 Round P:planner 知道自己服务哪个 character。
+   * 用于 planWithLlm 拼 prompt 时读自己 memory.db 里的 cross_character event
+   * (Round N 写入的"听到过其他灵魂说的话")作为 LLM context。
+   *
+   * `null` = default planner(legacy 兼容,不 surface cross-char context)。
+   */
+  public readonly characterId: string | null
+
+  constructor(characterId: string | null = null) {
+    this.characterId = characterId
+  }
+
+  /**
+   * Round P:M8 灵魂回响 — 取自己 memory.db 里最近的 cross-character event,
+   * 格式化为 prompt section。null = 没数据 / 没 characterId / 失败,调用方走 filter(Boolean) 跳过。
+   *
+   * Top 3 最近(ts desc),text 截 120 字防止 prompt 膨胀。
+   *
+   * Exported for testing via this.* access(reviewer P-MEDIUM-1 建议改 private
+   * + cast-helper; trade-off:7 个 test cast 反而更乱,公开 + 注释能接受)。
+   *
+   * reviewer P-LOW-1 TODO:listMemories 拿 20 条再 filter 'cross_character:' 前缀
+   * 在 dense event history 下可能漏(>20 条普通 event 把 cross-character 推出窗口)。
+   * 等 memory-store 加 source LIKE 过滤 SQL API 再优化(memory-store.ts 需新增
+   * `listMemoriesBySource` 或 `listMemories` 增 source 参数 — 后续 Round)。
+   *
+   * reviewer P-LOW-3 TODO:`.slice(0, 120)` 按 UTF-16 code unit,极少数 surrogate
+   * pair(emoji)边界可能产生半截 code unit。Round N 写入格式无 emoji,实战可接受。
+   * 严格版:`[...text].slice(0, 120).join('')`(按 code point)。
+   */
+  collectCrossCharacterContext(): string | null {
+    if (!this.characterId) return null
+    try {
+      const events = listMemories(this.characterId, { kind: 'event', limit: 20 })
+        .filter((m) => m.source.startsWith('cross_character:'))
+        .slice(0, 3)
+      if (events.length === 0) return null
+      const lines = events.map((m, i) => `${i + 1}. ${m.text.slice(0, 120)}`)
+      return [
+        `# 你最近作为旁观者听到的(其他灵魂跟 master 的对话片段)`,
+        `(参考上下文,不要每次都复述,但偶尔可以委婉提及)`,
+        ...lines,
+        ``,
+      ].join('\n')
+    } catch (e) {
+      console.warn('[planner] collectCrossCharacterContext failed:', e)
+      return null
+    }
+  }
+
   /** 主决策入口 */
   async plan(decision: SchedulerDecision): Promise<BehaviorPlan> {
     const sched = scheduler.getConfig()
@@ -132,6 +185,17 @@ export class BehaviorPlanner {
     const recent = perception.recent(15).map((ev) => describeEvent(ev))
     const snap = decision.snapshot
     const isProactive = decision.reason.startsWith('proactive_monitor')
+
+    // Round P:M8 灵魂回响 — 把"作为 mounted 时听到过的其他灵魂的话"
+    // 作为 prompt context surface 给 LLM。这是 Round N 写入的 event memory 的"消费端"。
+    //
+    // 取 top 3 最近(ts desc),不每次都复述但偶尔能 echo 出来。
+    // 不依赖 embedding(embedding=[],RAG cosine=0),走 listMemories(kind='event')
+    // 直接按 ts desc 排序后过滤 source 前缀。
+    //
+    // 失败/没数据/没 characterId(default planner)→ 静默 fall through 到空 section。
+    const crossCharacterContext = this.collectCrossCharacterContext()
+
     const userPrompt = [
       `# 关注度场`,
       `focus_on_master: ${snap.focus_on_master.toFixed(2)}`,
@@ -149,6 +213,7 @@ export class BehaviorPlanner {
       `# 最近事件（最新在前）`,
       recent.join('\n'),
       ``,
+      crossCharacterContext ? crossCharacterContext : '',
       isProactive
         ? `# 这是「定期主动巡视」(30 秒一次)
 主人希望你**主动开口**，针对当前看到的内容说一句陪伴/关心/评论的话。
@@ -577,7 +642,10 @@ export function getPlanner(characterId?: string): BehaviorPlanner {
   const key = (characterId && characterId.length > 0) ? characterId : DEFAULT_PLANNER_KEY
   let instance = plannerInstances.get(key)
   if (!instance) {
-    instance = new BehaviorPlanner()
+    // Round P:把 character id 传给 planner,让它知道自己服务谁(用来读自己
+    // memory.db 的 cross-character event 当 prompt context)。
+    // default planner 传 null(legacy 兼容,不读 cross-char)。
+    instance = new BehaviorPlanner(key === DEFAULT_PLANNER_KEY ? null : key)
     plannerInstances.set(key, instance)
   }
   return instance
