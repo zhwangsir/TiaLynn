@@ -215,9 +215,31 @@ const tooltip = computed<string>(() => {
         ? ttsState.value
         : visionState.value
   const base = labelOf(hovered.value, st.status)
-  if (st.reason && (st.status === 'down')) return `${base}\n${st.reason}`
-  return base
+  // R93: hover 时附加当前配置详情 (model 名 / sidecar URL / vision endpoint)
+  const detail = currentConfigHint(hovered.value)
+  let out = detail ? `${base}\n${detail}` : base
+  if (st.reason && st.status === 'down') out += `\n${st.reason}`
+  return out
 })
+
+/** R93: 根据 hover 的服务返回配置详情 (model 名 / sidecar URL 等) */
+function currentConfigHint(svc: 'llm' | 'tts' | 'vision'): string {
+  const c = cfg.config
+  if (!c) return ''
+  if (svc === 'llm') {
+    if (!c.llm_model) return ''
+    return `模型: ${c.llm_model}`
+  }
+  if (svc === 'tts') {
+    const u = Array.isArray(c.tts_sidecar_url)
+      ? c.tts_sidecar_url.find((s) => s && s.trim())
+      : c.tts_sidecar_url
+    return u ? `sidecar: ${u}` : ''
+  }
+  // vision
+  if (c.vision_model) return `模型: ${c.vision_model}`
+  return ''
+}
 
 function openSettings(): void {
   emit('open-settings')
