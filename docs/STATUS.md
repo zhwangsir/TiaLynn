@@ -10,6 +10,7 @@
 | [SILICON_LIFE_VISION.md](SILICON_LIFE_VISION.md) ⭐ **顶层产品宪章** | 「硅基生命容器」四大支柱 + 差异化 + 非目标 | v2.0 当前 |
 | [PRD.md](PRD.md) | 产品需求文档（v2.0 重写） | v2.0 当前 |
 | [ROADMAP.md](ROADMAP.md) | 完整 M0-M10 路线图（v2.0 重写，加 M7-M10） | v2.0 当前 |
+| [RELEASE_v0.21.md](RELEASE_v0.21.md) | v0.21 硅基生命容器重定向 + M7 100% + 0 → 1 用户路径 | v0.21 当前 |
 | [RELEASE_v0.20.md](RELEASE_v0.20.md) | v0.20 灵魂自演化 + 多 mood 并存 release notes | v0.20 当前 |
 | [RELEASE_v0.19.md](RELEASE_v0.19.md) | v0.19 多角色生态闭环 | v0.19 当前 |
 | [RELEASE_v0.18.md](RELEASE_v0.18.md) | v0.18 三层人格 + 情感系统 | v0.18 当前 |
