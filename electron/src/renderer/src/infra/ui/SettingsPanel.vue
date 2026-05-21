@@ -9,6 +9,7 @@ import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import EvalRunner from './EvalRunner.vue'
 import EmotionalDebugPanel from './EmotionalDebugPanel.vue'
 import SoulChangeLogPanel from './SoulChangeLogPanel.vue'
+import { normalizeLlmEndpoint } from '../../brain/normalize-endpoint'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -689,7 +690,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </label>
         <label>
           <span>Endpoint</span>
-          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" />
+          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" @blur="form.llm_endpoint = normalizeLlmEndpoint(form.llm_endpoint)" />
         </label>
         <label>
           <span>Model</span>
