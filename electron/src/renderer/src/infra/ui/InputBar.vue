@@ -23,6 +23,16 @@ const sttListening = ref(false)
 const sttError = ref('')
 let sttSession: SttSession | null = null
 
+/** R89: STT 错误码 → 中文友好提示 */
+const STT_ERROR_LABEL: Record<string, string> = {
+  'not-allowed': '🎙 请授权麦克风访问 (设置 → 隐私 → 麦克风)',
+  'service-not-allowed': '🎙 浏览器禁用了麦克风',
+  'network': '🎙 STT 需要网络 (Web Speech API)',
+  'audio-capture': '🎙 找不到可用麦克风',
+  'language-not-supported': '🎙 当前语言不受支持',
+  'bad-grammar': '🎙 语音识别配置错',
+}
+
 function toggleStt(): void {
   if (!sttSupported.value) return
   if (sttSession?.isActive()) {
@@ -42,7 +52,9 @@ function toggleStt(): void {
       sttListening.value = false
       // not-allowed = 麦克风权限被拒；no-speech = 没说话不算错
       if (err !== 'no-speech' && err !== 'aborted') {
-        sttError.value = err === 'not-allowed' ? '请授权麦克风' : `STT 错误: ${err}`
+        // R89: 常见 STT 错误友好化
+        const friendly = STT_ERROR_LABEL[err] ?? `STT 错误: ${err}`
+        sttError.value = friendly
       }
     },
     onEnd: () => { sttListening.value = false },
