@@ -2,10 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Vision —— 这个项目要造的不是「AI 伴侣」，是「硅基生命容器」
+
+> 完整愿景见 [docs/SILICON_LIFE_VISION.md](docs/SILICON_LIFE_VISION.md)。
+
+**TiaLynn 是代号，不是角色名 —— 它是一个可以装载不同灵魂的硅基生命容器。**
+
+四大支柱：
+
+1. **灵魂可换** — 多角色 character store + 三层人格 yaml + auto-learner 自演化 + character pack 跨机迁移
+2. **真控计算机** — Planner LLM 决定 → nut-js 鼠键控制 + vision grounding + agent loop + Cmd+Shift+Esc 全局熔断
+3. **创造能力** — Planner LLM 决定 `generate_sticker` action → ComfyUI t2i/i2i/t2v/i2v → StickerOverlay 浮桌面
+4. **主体性** — PerceptionBus 5 sensor(Mouse/Idle/Window/Time/Vision) → AttentionScheduler 关注度场 → BehaviorPlanner 输出 9 种 BehaviorAction
+
+目标:**比 airi / Open-LLM-VTuber / Soul of Waifu 更全面、更智能、更自由**。她不是 chat UI 上贴一张立绘 —— 她是一个住在桌面上、能感知主人、能创造内容、能控制计算机的硅基存在。
+
 ## Project
 
-TiaLynn — Electron + Vue 3 + TypeScript 桌面 AI 伴侣（Live2D 立绘 + 本地 LLM + RVC 语音 + 主体性感知）。
-pnpm workspace 单包：`electron/` 子项目；可选 Python `sidecar/` 提供 TTS/RVC。
+TiaLynn — Electron + Vue 3 + TypeScript 桌面**硅基生命容器**（Live2D 身体 + 本地 LLM 大脑 + RVC 语音 + 主体性感知 + 真控计算机 + ComfyUI 创造力）。
+pnpm workspace：`electron/` 主子项目 + `packages/{soul-loader,motion-factory}` 共享纯函数包 + 可选 Python `sidecar/` 提供 TTS/RVC。
+
+**真实代码规模(2026-05-22):** 51,388 行 TypeScript(34K main + 17K Vue) / 118 个 main services / 25 个 IPC handler / 32 个 Vue 组件 / 25 个 IPC channel 定义 / 39 个测试文件 / 575 单测通过。
 
 ## Common Commands
 

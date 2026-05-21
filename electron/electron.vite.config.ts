@@ -40,6 +40,8 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     build: {
       outDir: 'out/renderer',
+      // Electron 33 内置 Chromium 130 — 允许 top-level await（wlipsync@1.3.0 用到）
+      target: 'chrome130',
       // Pixi + pixi-live2d-display 占 ~1MB，单 chunk 触发 500kb 警告
       chunkSizeWarningLimit: 1600,
       rollupOptions: {
@@ -70,6 +72,15 @@ export default defineConfig({
     server: {
       port: 5173
     },
-    plugins: [vue()]
+    plugins: [vue()],
+    // dev 模式下 vite 也需要支持 top-level await（renderer.build.target 只管 build）
+    optimizeDeps: {
+      esbuildOptions: {
+        target: 'chrome130'
+      }
+    },
+    esbuild: {
+      target: 'chrome130'
+    }
   }
 })
