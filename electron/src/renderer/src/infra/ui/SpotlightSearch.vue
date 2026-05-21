@@ -219,16 +219,18 @@ const results = computed<ResultItem[]>(() => {
     const intimacy = Math.round(c.intimacy_level)
     if (intimacy > 0) parts.push(`♡ ${intimacy}`)
     if (c.total_chats > 0) parts.push(`${c.total_chats} 次对话`)
+    // R96: 当前角色加视觉标记
+    const isActive = c.id === characterStore.active?.id
     out.push({
       key: `char-${c.id}`,
-      icon: '🎭',
+      icon: isActive ? '✓' : '🎭',
       group: '角色',
-      title: c.name,
+      title: isActive ? `${c.name} (当前)` : c.name,
       subtitle: parts.join(' · '),
       score: s,
       action: () => {
         emit('close')
-        void characterStore.switchTo(c.id)
+        if (!isActive) void characterStore.switchTo(c.id)
       },
     })
   }
