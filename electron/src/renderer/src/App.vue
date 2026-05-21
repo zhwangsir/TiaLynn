@@ -528,6 +528,7 @@ onBeforeUnmount(() => {
         @open-character-picker="characterPickerOpen = true"
         @open-soul-editor="soulEditorOpen = true"
         @open-input="inputOpen = true"
+        @open-onboarding="onboardingOpen = true"
         @reload-model="bus.emit('avatar:reload-model')"
         @clear-dialog="dialog.clear()"
       />

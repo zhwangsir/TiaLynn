@@ -41,6 +41,7 @@ const emit = defineEmits<{
   (e: 'open-character-picker'): void
   (e: 'open-soul-editor'): void
   (e: 'open-input'): void
+  (e: 'open-onboarding'): void
   (e: 'reload-model'): void
   (e: 'clear-dialog'): void
 }>()
@@ -99,6 +100,7 @@ const commands: Command[] = [
   { title: '打开对话输入', hint: '💬', do: () => emit('open-input') },
   { title: '重载模型 / 灵魂', hint: '🔄', do: () => emit('reload-model') },
   { title: '清空对话历史', hint: '🧹', do: () => emit('clear-dialog') },
+  { title: '重新打开引导 (Onboarding)', hint: '🪄', do: () => emit('open-onboarding') },
   { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },
   { title: '主题：浅色模式', hint: '☀️', do: () => theme.setMode('light') },
   { title: '主题：深色模式', hint: '🌙', do: () => theme.setMode('dark') },
