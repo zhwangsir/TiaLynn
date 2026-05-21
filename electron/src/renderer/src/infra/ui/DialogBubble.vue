@@ -22,7 +22,18 @@ const latest = computed(() => {
 })
 
 const visible = ref(true)
+const bubbleEl = ref<HTMLDivElement | null>(null)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+/** R52: 流式回复时自动滚到底部, 让用户看到最新 token */
+function scrollToBottom(): void {
+  const el = bubbleEl.value
+  if (!el) return
+  // 用 requestAnimationFrame 等下一帧, 此时 DOM 已更新到新 text
+  requestAnimationFrame(() => {
+    el.scrollTop = el.scrollHeight
+  })
+}
 
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
@@ -38,6 +49,8 @@ watch(
   () => {
     if (!latest.value) return
     visible.value = true
+    // R52: streaming 中 / 文本变化时 auto-scroll 到底部
+    if (latest.value.streaming || latest.value.text) scrollToBottom()
     // error 状态常驻不自动隐藏, 用户需主动关或重试
     if (!latest.value.streaming && !latest.value.error) scheduleHide()
   },
@@ -143,6 +156,7 @@ async function copyText(): Promise<void> {
   <transition name="bubble">
     <div
       v-if="latest && (latest.text || latest.streaming || latest.error) && visible"
+      ref="bubbleEl"
       class="bubble"
       :style="{ background: bubbleBg(latest.emotion) }"
       @mouseenter="onMouseEnter"
