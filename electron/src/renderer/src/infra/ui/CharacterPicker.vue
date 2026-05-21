@@ -103,6 +103,41 @@ async function remove(id: string, e: Event): Promise<void> {
   }
 }
 
+/**
+ * Round M:切换 mount(M8 灵魂社会)。
+ * mounted = 代码层并行存活的 character(独立 planner / memory),跟 active 区分。
+ * active 永远 mounted(自己 + 自动补),所以不显示 toggle。
+ */
+async function toggleMount(id: string, e: Event): Promise<void> {
+  e.stopPropagation()
+  const target = character.all.find((c) => c.id === id)
+  if (!target) return
+  const wasMounted = character.isMounted(id)
+  const r = await character.toggleMount(id)
+  if (!r.ok) {
+    const reasons: Record<string, string> = {
+      cannot_unmount_active: '当前正在用的角色不能取消并行',
+      too_many_ids: '并行运行的角色不能超过 16 个',
+      not_found: '角色不存在',
+      empty: '至少要保留一个角色',
+      busy: '正在切换中,稍等一下',
+    }
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: reasons[r.reason ?? ''] ?? r.reason ?? '操作失败',
+      ttl_ms: 4000,
+    })
+    return
+  }
+  bus.emit('ui:toast', {
+    kind: 'success',
+    message: wasMounted
+      ? `已取消 ${target.name} 的并行运行`
+      : `已让 ${target.name} 并行运行(独立 planner / 记忆)`,
+    ttl_ms: 3500,
+  })
+}
+
 function relativeTime(ts: number): string {
   if (!ts) return '从未对话'
   const dt = Date.now() - ts
@@ -137,6 +172,11 @@ function initials(name: string): string {
           <div class="header-left">
             <h2>选个她</h2>
             <span class="count">{{ visible.length }} 个</span>
+            <span
+              v-if="character.mountedIds.length > 1"
+              class="mount-count"
+              :title="`${character.mountedIds.length} 个角色并行运行(独立 planner / 记忆)。点单卡的 📌 切换。`"
+            >📌 {{ character.mountedIds.length }} 并行</span>
           </div>
           <div class="filter-tabs">
             <button :class="['filter-tab', { active: filter === 'all' }]" @click="filter = 'all'">
@@ -190,6 +230,11 @@ function initials(name: string): string {
                 <span v-else class="card-initials">{{ initials(c.name) }}</span>
               </span>
               <span v-if="c.id === character.active?.id" class="active-dot" title="当前角色"></span>
+              <span
+                v-else-if="character.isMounted(c.id)"
+                class="mount-badge"
+                title="并行运行(独立 planner / 记忆)"
+              >📌</span>
             </div>
             <div class="card-name">
               <template v-for="(seg, si) in highlightMatch(c.name, searchQuery)" :key="si">
@@ -205,6 +250,23 @@ function initials(name: string): string {
               <span class="meta-time">{{ relativeTime(c.last_chat_at) }}</span>
             </div>
             <div class="card-actions">
+              <button
+                v-if="c.id !== character.active?.id"
+                class="action-btn mount-btn"
+                :class="{
+                  mounted: character.isMounted(c.id),
+                  toggling: character.toggleMounting === c.id,
+                }"
+                :disabled="!!character.toggleMounting"
+                :title="
+                  character.isMounted(c.id)
+                    ? '取消并行运行 (停用独立 planner / 记忆)'
+                    : '让她并行运行 (独立 planner / 记忆,后续可同时被感知触发)'
+                "
+                @click="toggleMount(c.id, $event)"
+              >
+                📌
+              </button>
               <button
                 class="action-btn clone-btn"
                 title="克隆 (复制灵魂 + 偏好，重置亲密度)"
@@ -289,6 +351,17 @@ h2 {
   font-size: var(--text-xs);
   color: var(--color-muted);
   font-feature-settings: 'tnum';
+}
+/* Round M:并行运行数 chip(只在 > 1 时显示) */
+.mount-count {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-feature-settings: 'tnum';
+  font-weight: 600;
+  margin-left: 4px;
 }
 .filter-tabs {
   display: flex;
@@ -449,6 +522,22 @@ h2 {
   background: var(--color-success);
   border: 2px solid var(--color-bubble);
 }
+/* Round M:mounted(并行运行)徽标 — active 排他互斥(active 永远 mounted 不重复挂) */
+.mount-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-bubble);
+  border: 1.5px solid var(--color-accent);
+  font-size: 10px;
+  line-height: 1;
+}
 
 .card-name {
   font-weight: 600;
@@ -522,6 +611,29 @@ h2 {
 .remove-btn:hover {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+/* Round M:mount toggle 按钮 — mounted 时高亮表示状态可视 */
+.mount-btn {
+  font-size: 10px;
+  filter: grayscale(1);
+  opacity: 0.65;
+}
+.mount-btn:hover {
+  background: var(--color-accent-soft);
+  filter: none;
+  opacity: 1;
+}
+.mount-btn.mounted {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  filter: none;
+  opacity: 1;
+}
+.mount-btn.toggling {
+  animation: card-pulse 0.6s var(--ease-in-out) infinite;
+}
+.mount-btn:disabled {
+  cursor: wait;
 }
 
 .empty {
