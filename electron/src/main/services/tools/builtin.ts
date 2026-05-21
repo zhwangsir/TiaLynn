@@ -12,14 +12,13 @@
  *     StickerOverlay 自动浮在桌面上。
  */
 import { Notification, shell, type BrowserWindow } from 'electron'
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { register } from './registry'
-import { getPaths } from '../paths'
-import { ComfyClient, ComfyError } from '../comfyui/client'
+import { ensureDir, getPaths } from '../paths'
+import { getSharedComfyClient } from '../comfyui/client'
 import { buildStickerWorkflow, type StickerParams } from '../comfyui/workflows'
-import { loadConfig } from '../config-store'
 
 function allowedRoots(): string[] {
   const home = homedir()
@@ -48,24 +47,8 @@ function safeResolve(input: string): string {
   return normalized
 }
 
-/** ComfyUI client 单例（dialog tool 路径用，跟 ipc/comfyui.ts 各持一份生命周期独立） */
-let toolComfyClient: ComfyClient | null = null
-function getComfyClient(): ComfyClient {
-  const cfg = loadConfig()
-  const endpoint = cfg.comfyui_endpoint?.trim()
-  if (!endpoint) {
-    throw new ComfyError('ComfyUI endpoint 未配置（Settings → ComfyUI endpoint）')
-  }
-  if (!toolComfyClient || toolComfyClient.endpoint !== endpoint) {
-    toolComfyClient = new ComfyClient({ endpoint })
-  }
-  return toolComfyClient
-}
-
-function ensureDir(p: string): string {
-  if (!existsSync(p)) mkdirSync(p, { recursive: true })
-  return p
-}
+// v0.21:ComfyClient 单例 + ensureDir 全部来自 services/comfyui/client + paths
+// 不再本地各持一份(消重 + 解决 endpoint 切换时 stale 问题)
 
 /**
  * Reviewer HIGH-1: 派生自 StickerParams['emotion'] —— workflows.ts 加新 emotion 时
@@ -135,7 +118,7 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
       const extraPrompt =
         typeof extraRaw === 'string' && extraRaw.trim().length > 0 ? extraRaw.trim() : undefined
 
-      const client = getComfyClient()
+      const client = getSharedComfyClient()
       const wf = buildStickerWorkflow({
         emotion,
         ...(extraPrompt !== undefined ? { extraPrompt } : {}),

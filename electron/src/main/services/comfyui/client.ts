@@ -255,3 +255,31 @@ async function safeText(res: Response): Promise<string> {
     return '(无法读 body)'
   }
 }
+
+/**
+ * v0.21 共享 ComfyClient 单例 —— 之前 ipc/comfyui.ts 和 tools/builtin.ts 各持
+ * 一份 module-level client cache 让 endpoint 改动时各自 stale 失同步。
+ * 这里集中一处,configChanged 时所有调用方一起拿到新 endpoint 的 client。
+ *
+ * 注意:模块单例的 in-flight 请求(client.generate 最长 30s)在 endpoint 切换时
+ * 会继续完成(旧 client),返回结果会被丢弃。新调用方拿到的是新 client。
+ */
+import { loadConfig } from '../config-store'
+
+let sharedClient: ComfyClient | null = null
+export function getSharedComfyClient(): ComfyClient {
+  const cfg = loadConfig()
+  const endpoint = cfg.comfyui_endpoint?.trim()
+  if (!endpoint) {
+    throw new ComfyError('ComfyUI endpoint 未配置（Settings → ComfyUI endpoint）')
+  }
+  if (!sharedClient || sharedClient.endpoint !== endpoint) {
+    sharedClient = new ComfyClient({ endpoint })
+  }
+  return sharedClient
+}
+
+/** test 用:reset 单例 cache(方便单测隔离) */
+export function _resetSharedComfyClientForTest(): void {
+  sharedClient = null
+}

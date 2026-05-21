@@ -77,7 +77,11 @@ export function getPaths(): TialynnPaths {
   return cached!
 }
 
-function ensureDir(p: string): string {
+/**
+ * 确保目录存在(不存在则递归创建),返回绝对路径。
+ * v0.21:export 后供 ipc/comfyui.ts / tools/builtin.ts 共用,消重 3 处副本。
+ */
+export function ensureDir(p: string): string {
   if (!existsSync(p)) mkdirSync(p, { recursive: true })
   return p
 }

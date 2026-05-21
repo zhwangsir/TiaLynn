@@ -18,6 +18,7 @@ vi.mock('../config-store', () => ({
 }))
 
 // mock getPaths → 控制 stickers 落盘目录(到测试用 tmp)
+// 注意:builtin.ts 也 import ensureDir,要一起 mock(否则跑 ensureDir(...) 会 fsync 真目录)
 vi.mock('../paths', () => ({
   getPaths: vi.fn(() => ({
     userDataDir: '/tmp/tialynn-test-creative',
@@ -26,20 +27,25 @@ vi.mock('../paths', () => ({
     modelSearchPaths: [],
     historyDbPath: '/tmp/tialynn-test-creative/history.sqlite',
   })),
+  ensureDir: vi.fn((p: string) => p), // mock no-op,不真创建目录
 }))
 
-// mock ComfyClient — 让 generate 返预设 images,downloadImage no-op
+// mock ComfyClient + getSharedComfyClient
+// v0.21:builtin.ts 现在通过 getSharedComfyClient 拿单例,所以 mock 它
 const mockGenerate = vi.fn()
 const mockDownloadImage = vi.fn()
+const mockClientInstance = {
+  endpoint: 'http://127.0.0.1:8188',
+  generate: mockGenerate,
+  downloadImage: mockDownloadImage,
+}
 vi.mock('../comfyui/client', async () => {
   const actual = (await vi.importActual('../comfyui/client')) as object
   return {
     ...actual,
-    ComfyClient: vi.fn().mockImplementation(() => ({
-      endpoint: 'http://127.0.0.1:8188',
-      generate: mockGenerate,
-      downloadImage: mockDownloadImage,
-    })),
+    // builtin.ts 实际用的入口:默认返 mock client,endpoint 未配置 test 单独 mockImplementationOnce
+    getSharedComfyClient: vi.fn(() => mockClientInstance),
+    _resetSharedComfyClientForTest: vi.fn(),
   }
 })
 
@@ -128,5 +134,18 @@ describe('creative.generate_sticker tool', () => {
   it('ComfyUI 返 0 张图 → 抛错', async () => {
     mockGenerate.mockResolvedValueOnce({ promptId: 'p', images: [] })
     await expect(invokeCreative({ emotion: 'happy' })).rejects.toThrow(/没返回任何图片/)
+  })
+
+  /**
+   * Reviewer MEDIUM-6 补回:验证 endpoint 未配置时 getSharedComfyClient 抛 ComfyError,
+   * impl 不会 swallow 此错误,直接 reject 给 LLM。
+   * 用 mockImplementationOnce 局部模拟错误,不污染其他 test。
+   */
+  it('ComfyUI endpoint 未配置 → 抛 ComfyError', async () => {
+    const { getSharedComfyClient, ComfyError } = await import('../comfyui/client')
+    vi.mocked(getSharedComfyClient).mockImplementationOnce(() => {
+      throw new ComfyError('ComfyUI endpoint 未配置（Settings → ComfyUI endpoint）')
+    })
+    await expect(invokeCreative({ emotion: 'happy' })).rejects.toThrow(/endpoint 未配置/)
   })
 })

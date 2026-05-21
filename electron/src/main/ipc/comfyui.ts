@@ -8,7 +8,7 @@
  */
 import type { BrowserWindow } from 'electron'
 import { copyFile } from 'node:fs/promises'
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import {
   comfyuiCancel,
@@ -26,7 +26,12 @@ import {
   comfyuiStatus,
   comfyuiUploadImage,
 } from '@shared/channels/comfyui'
-import { ComfyClient, ComfyError, type ComfyOutputImage } from '../services/comfyui/client'
+import {
+  ComfyClient,
+  ComfyError,
+  getSharedComfyClient,
+  type ComfyOutputImage,
+} from '../services/comfyui/client'
 import {
   buildBackgroundWorkflow,
   buildI2IWorkflow,
@@ -35,28 +40,12 @@ import {
   buildVideoI2VWorkflow,
   buildVideoT2VWorkflow,
 } from '../services/comfyui/workflows'
-import { loadConfig } from '../services/config-store'
-import { getPaths } from '../services/paths'
+import { ensureDir, getPaths } from '../services/paths'
 import { handleInvoke } from './channel-helpers'
 
-let activeClient: ComfyClient | null = null
-
-function getClient(): ComfyClient {
-  const cfg = loadConfig()
-  const endpoint = cfg.comfyui_endpoint?.trim()
-  if (!endpoint) {
-    throw new ComfyError('ComfyUI endpoint 未配置（Settings → comfyui_endpoint）')
-  }
-  if (!activeClient || activeClient.endpoint !== endpoint) {
-    activeClient = new ComfyClient({ endpoint })
-  }
-  return activeClient
-}
-
-function ensureDir(p: string): string {
-  if (!existsSync(p)) mkdirSync(p, { recursive: true })
-  return p
-}
+// v0.21:用 services/comfyui/client.ts 的 getSharedComfyClient 替代本地 activeClient 缓存
+// 跟 tools/builtin.ts 共享同一份单例,endpoint 切换时同步失效
+const getClient = getSharedComfyClient
 const stickersDir = (): string => ensureDir(join(getPaths().userDataDir, 'stickers'))
 const backgroundsDir = (): string => ensureDir(join(getPaths().userDataDir, 'backgrounds'))
 const imagesDir = (): string => ensureDir(join(getPaths().userDataDir, 'images'))

@@ -232,6 +232,16 @@ export function deleteCharacter(id: string): { ok: boolean; reason?: string } {
   const active = getActiveCharacterId()
   if (active === id) return { ok: false, reason: 'cannot_delete_active' }
   try {
+    // v0.21:删 character dir 前先关掉对应 memory.db 句柄
+    // (M3 长期记忆 sqlite WAL,handle 不关时 macOS/Win rmSync 偶发失败)
+    try {
+      // dynamic import 避 character-store ↔ memory-store 循环依赖
+
+      const { closeMemoryDb } = require('./memory-store') as typeof import('./memory-store')
+      closeMemoryDb(id)
+    } catch {
+      /* memory-store 模块缺失时不阻塞删除 */
+    }
     rmSync(characterDir(id), { recursive: true, force: true })
     return { ok: true }
   } catch (e) {

@@ -88,9 +88,14 @@ ${layer2}
   情感完全通过 emotion 字段和语气体现 — 这些括号会被 TTS 直接念出来，破坏沉浸感
 `
 
-let llmCallTimestamps: number[] = []
-
 export class BehaviorPlanner {
+  /**
+   * v0.21:rate limit timestamps 从 module-level 挪进 instance 字段。
+   * 为 M8 多灵魂社会做准备 — 每个 BehaviorPlanner 实例独立 budget,
+   * 不再 A/B 两个灵魂共用 6/min 一秒打光。
+   */
+  private llmCallTimestamps: number[] = []
+
   /** 主决策入口 */
   async plan(decision: SchedulerDecision): Promise<BehaviorPlan> {
     const sched = scheduler.getConfig()
@@ -113,7 +118,7 @@ export class BehaviorPlanner {
     //   导致 4/min 很快耗尽，剩下全走 rule fallback 看起来"动作没逻辑"。
     const cfg = loadConfig()
     if (!cfg.llm_model || !cfg.llm_provider) throw new Error('LLM 未配置')
-    llmCallTimestamps.push(Date.now())
+    this.llmCallTimestamps.push(Date.now())
     const provider = buildProvider(cfg.llm_provider, cfg.llm_endpoint, cfg.llm_api_key)
     const soul = loadSoul()
     const system = SYSTEM_PROMPT_TEMPLATE(
@@ -303,8 +308,8 @@ export class BehaviorPlanner {
 
   private canCallLlm(maxPerMinute: number): boolean {
     const now = Date.now()
-    llmCallTimestamps = llmCallTimestamps.filter((t) => now - t < 60_000)
-    return llmCallTimestamps.length < maxPerMinute
+    this.llmCallTimestamps = this.llmCallTimestamps.filter((t) => now - t < 60_000)
+    return this.llmCallTimestamps.length < maxPerMinute
   }
 }
 

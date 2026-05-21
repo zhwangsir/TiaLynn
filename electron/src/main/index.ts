@@ -65,6 +65,7 @@ import { registerHaltShortcut, unregisterHaltShortcut } from './services/automat
 import { getPaths } from './services/paths'
 import { loadConfig } from './services/config-store'
 import { close as closeHistoryDb, pruneOlderThan } from './services/history-store'
+import { closeMemoryDb } from './services/memory-store'
 import { close as closeMotionEngineDb } from './services/motion-engine/storage'
 import { initializeLogger } from './services/logger'
 import { registerAssetSchemePrivileges, registerAssetProtocol } from './services/asset-protocol'
@@ -225,6 +226,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   closeHistoryDb()
   closeMotionEngineDb()
+  // v0.21:before-quit 关掉所有 per-character memory.db 句柄(M3 长期记忆)
+  closeMemoryDb() // 不传 id 关全部
   stopAttention()
   stopPerception()
   stopTray()
