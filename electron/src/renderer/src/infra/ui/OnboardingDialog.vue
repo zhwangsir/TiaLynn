@@ -27,6 +27,9 @@ const llmApiKey = ref('')
 const ttsSidecarUrl = ref('')
 const checking = ref(false)
 const checkResult = ref<{ ok: boolean; message: string } | null>(null)
+// R48: TTS 试听状态
+const ttsTrying = ref(false)
+const ttsResult = ref<{ ok: boolean; message: string } | null>(null)
 
 interface Preset {
   id: string
@@ -92,6 +95,29 @@ async function probeLlm(): Promise<void> {
 }
 
 const llmReady = computed(() => checkResult.value?.ok === true)
+
+/** R48: TTS 试听 — 本机直接 fetch sidecar / 端点，验证服务起来了 */
+async function tryTts(): Promise<void> {
+  const url = ttsSidecarUrl.value.trim()
+  if (!url) {
+    ttsResult.value = { ok: false, message: '请先填 sidecar URL' }
+    return
+  }
+  ttsTrying.value = true
+  ttsResult.value = null
+  try {
+    const resp = await fetch(`${url.replace(/\/+$/, '')}/`, {
+      signal: AbortSignal.timeout(3000),
+    })
+    ttsResult.value = resp.ok
+      ? { ok: true, message: `✓ 连上了（HTTP ${resp.status}）` }
+      : { ok: false, message: `✗ HTTP ${resp.status} — 检查 sidecar 是否启动` }
+  } catch (e) {
+    ttsResult.value = { ok: false, message: `✗ ${String(e).slice(0, 80)}` }
+  } finally {
+    ttsTrying.value = false
+  }
+}
 
 async function finish(): Promise<void> {
   const base = cfg.config ?? ({} as RuntimeConfig)
@@ -221,8 +247,18 @@ $ uvicorn main:app --host 127.0.0.1 --port 8765</pre>
             <input
               v-model="ttsSidecarUrl"
               placeholder="http://127.0.0.1:8765 — 留空则不启用 TTS"
+              @input="ttsResult = null"
             />
           </label>
+
+          <div v-if="ttsSidecarUrl.trim()" class="probe-row">
+            <button class="ghost" :disabled="ttsTrying" @click="tryTts">
+              {{ ttsTrying ? '检测中…' : '🔊 检测 sidecar 连通' }}
+            </button>
+            <span v-if="ttsResult" :class="['probe-status', ttsResult.ok ? 'ok' : 'fail']">
+              {{ ttsResult.message }}
+            </span>
+          </div>
 
           <footer>
             <button class="ghost" @click="step = 2">← 返回</button>
