@@ -19,11 +19,23 @@ const character = useCharacterStore()
 
 const filter = ref<'all' | 'recent'>('all')
 const switchingId = ref<string | null>(null)
+const searchQuery = ref('')
 
 const visible = computed(() => {
-  const list = [...character.all]
+  let list = [...character.all]
   if (filter.value === 'recent') {
-    return list.filter((c) => c.last_chat_at > 0).slice(0, 12)
+    list = list.filter((c) => c.last_chat_at > 0).slice(0, 12)
+  }
+  // R62: 名称 / template / id 模糊搜索
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter((c) => {
+      return (
+        c.name.toLowerCase().includes(q) ||
+        (c.template ?? '').toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q)
+      )
+    })
   }
   return list
 })
@@ -126,6 +138,25 @@ function initials(name: string): string {
           </div>
           <button class="x-btn" @click="emit('close')">✕</button>
         </header>
+
+        <div class="search-row">
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            type="text"
+            placeholder="🔍 搜角色名 / template / id..."
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="搜索角色"
+          />
+          <button
+            v-if="searchQuery"
+            class="search-clear"
+            title="清除"
+            aria-label="清除搜索"
+            @click="searchQuery = ''"
+          >✕</button>
+        </div>
 
         <div class="grid" v-if="visible.length > 0">
           <button
@@ -269,6 +300,44 @@ h2 {
   color: var(--color-muted);
 }
 .x-btn:hover {
+  background: var(--color-bubble-surface-hover);
+  color: var(--color-bubble-text);
+}
+
+/* R62: 角色搜索框 */
+.search-row {
+  display: flex;
+  gap: 6px;
+  padding: 12px 20px 0;
+  align-items: center;
+}
+.search-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-bubble-border);
+  border-radius: var(--radius-md);
+  color: var(--color-bubble-text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+.search-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+.search-clear {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-bubble-surface);
+  color: var(--color-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.search-clear:hover {
   background: var(--color-bubble-surface-hover);
   color: var(--color-bubble-text);
 }
