@@ -15,6 +15,7 @@ import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
 import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
 import KeyboardHelpCard from './infra/ui/KeyboardHelpCard.vue'
 import SpotlightSearch from './infra/ui/SpotlightSearch.vue'
+import BootSplash from './infra/ui/BootSplash.vue'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -449,11 +450,8 @@ onBeforeUnmount(() => {
       </ErrorBoundary>
       <ApprovalDialog />
       <ToastStack />
-      <div v-if="!ready" class="boot-hint">
-        <span class="boot-heart">♡</span>
-        <span class="boot-text">召唤 TiaLynn 中…</span>
-      </div>
-      <div v-else class="hint" key="ready-hint">右键人物可以打开菜单</div>
+      <BootSplash :ready="ready" />
+      <div v-if="ready" class="hint" key="ready-hint">右键人物可以打开菜单 · 按 ? 看快捷键</div>
       <transition name="drop">
         <div v-if="dragOver" class="drop-overlay">
           <div class="drop-card">
@@ -475,7 +473,6 @@ onBeforeUnmount(() => {
   background: transparent;
   pointer-events: auto;
 }
-.boot-hint,
 .hint {
   position: absolute;
   bottom: 24px;
@@ -492,28 +489,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   backdrop-filter: blur(12px) saturate(1.4);
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
-}
-.boot-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.boot-heart {
-  color: var(--color-accent);
-  font-size: 14px;
-  line-height: 1;
-  animation: heart-beat 1.4s var(--ease-in-out) infinite;
-}
-.boot-text {
-  font-weight: 500;
-}
-@keyframes heart-beat {
-  0%, 100% { transform: scale(1); opacity: 0.7; }
-  20% { transform: scale(1.25); opacity: 1; }
-  40% { transform: scale(1); opacity: 0.85; }
-  60% { transform: scale(1.15); opacity: 1; }
-}
-.hint {
   opacity: 0;
   animation: hint-show 6s var(--ease-out-expo) forwards;
 }
