@@ -23,6 +23,16 @@ const emit = defineEmits<{
 const detecting = ref(false)
 const detected = ref<DetectedItem[]>([])
 const detectError = ref<string>('')
+/** R64: 每个 endpoint 默认折叠 6 个 model, 用户点 "+N 展开" 看全部 */
+const expandedEndpoints = ref<Set<string>>(new Set())
+const COLLAPSED_MODEL_LIMIT = 6
+
+function toggleExpand(endpoint: string): void {
+  const next = new Set(expandedEndpoints.value)
+  if (next.has(endpoint)) next.delete(endpoint)
+  else next.add(endpoint)
+  expandedEndpoints.value = next
+}
 
 async function autoDetect(): Promise<void> {
   detecting.value = true
@@ -74,7 +84,7 @@ function applyDetected(item: DetectedItem, model?: string): void {
         </div>
         <div v-if="d.models.length > 0" class="detected-models">
           <button
-            v-for="m in d.models.slice(0, 6)"
+            v-for="m in (expandedEndpoints.has(d.endpoint) ? d.models : d.models.slice(0, COLLAPSED_MODEL_LIMIT))"
             :key="m"
             class="model-chip"
             :aria-label="`使用模型 ${m}`"
@@ -82,9 +92,16 @@ function applyDetected(item: DetectedItem, model?: string): void {
           >
             {{ m }}
           </button>
-          <span v-if="d.models.length > 6" class="model-more">
-            +{{ d.models.length - 6 }}
-          </span>
+          <button
+            v-if="d.models.length > COLLAPSED_MODEL_LIMIT"
+            class="model-more"
+            :aria-expanded="expandedEndpoints.has(d.endpoint)"
+            @click="toggleExpand(d.endpoint)"
+          >
+            {{ expandedEndpoints.has(d.endpoint)
+              ? `收起 (${d.models.length})`
+              : `+${d.models.length - COLLAPSED_MODEL_LIMIT}` }}
+          </button>
         </div>
         <div v-else class="detected-no-models">
           <span>未拉到模型列表 — </span>
@@ -179,8 +196,17 @@ function applyDetected(item: DetectedItem, model?: string): void {
   background: var(--color-bubble-surface-hover);
 }
 .model-more {
-  font-size: 10px;
-  color: var(--color-muted);
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 11px;
+  color: var(--color-accent);
+  border: 1px dashed var(--color-accent);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.model-more:hover {
+  background: var(--color-accent-soft);
 }
 .detected-no-models {
   font-size: 11px;
