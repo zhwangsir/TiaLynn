@@ -52,6 +52,16 @@ export type BusEventMap = {
   'attention:execute-plan': { plan: BehaviorPlan }
   /** Phase 1 J P3: dialog.ts 调 emotional:on-reply 后通知 UI 刷新 mood 角标 */
   'emotional:state-changed': void
+  /**
+   * UX R21: 服务健康状态变化（reactive，无主动 polling）
+   * - llm/tts/vision 三个独立服务
+   * - status: 'ok' 表示最近一次调用成功；'down' 最近失败；'unconfigured' cfg 未填
+   */
+  'service:status': {
+    service: 'llm' | 'tts' | 'vision'
+    status: 'ok' | 'down' | 'unconfigured'
+    reason?: string
+  }
 }
 
 export const bus: Emitter<BusEventMap> = mitt<BusEventMap>()

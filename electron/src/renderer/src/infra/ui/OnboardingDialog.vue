@@ -21,6 +21,17 @@ const ttsSidecarUrl = ref('')
 const checking = ref(false)
 const checkResult = ref<{ ok: boolean; message: string } | null>(null)
 
+// UX R20: 自动检测状态
+interface DetectedItem {
+  endpoint: string
+  label: string
+  models: string[]
+  latencyMs: number
+}
+const detecting = ref(false)
+const detected = ref<DetectedItem[]>([])
+const detectError = ref<string>('')
+
 interface Preset {
   id: string
   label: string
@@ -50,6 +61,31 @@ const presets: Preset[] = [
 
 function applyPreset(p: Preset): void {
   llmEndpoint.value = p.endpoint
+  checkResult.value = null
+}
+
+/** UX R20: 一键扫本机常见 endpoint */
+async function autoDetect(): Promise<void> {
+  detecting.value = true
+  detectError.value = ''
+  detected.value = []
+  try {
+    const r = await window.api.llm.autoDetect({})
+    detected.value = r.found
+    if (r.found.length === 0) {
+      detectError.value = '未发现本机 LLM 服务。请确认 Ollama / LM Studio / vLLM 已启动'
+    }
+  } catch (e) {
+    detectError.value = `自动检测失败：${String(e).slice(0, 80)}`
+  } finally {
+    detecting.value = false
+  }
+}
+
+/** 点已检测项 → 填进 endpoint + 默认选首个 model */
+function applyDetected(item: DetectedItem, model?: string): void {
+  llmEndpoint.value = item.endpoint
+  llmModel.value = model ?? item.models[0] ?? ''
   checkResult.value = null
 }
 
@@ -137,7 +173,43 @@ function skip(): void {
         <!-- Step 2: LLM 配置 -->
         <div v-if="step === 2" class="body">
           <h2>1/2 · 配 LLM endpoint</h2>
-          <p class="hint">选个 preset，或手动填 OpenAI-compatible endpoint：</p>
+
+          <!-- UX R20: 一键自动检测 -->
+          <div class="auto-detect-row">
+            <button class="detect-btn" :disabled="detecting" @click="autoDetect">
+              {{ detecting ? '扫描中…' : '🔍 自动检测本机 LLM' }}
+            </button>
+            <span class="detect-hint">扫常见端口（Ollama / LM Studio / vLLM / llama.cpp）</span>
+          </div>
+          <div v-if="detected.length > 0" class="detected-list">
+            <div v-for="d in detected" :key="d.endpoint" class="detected-item">
+              <div class="detected-head">
+                <span class="detected-label">✓ {{ d.label }}</span>
+                <span class="detected-endpoint">{{ d.endpoint }}</span>
+                <span class="detected-latency">{{ d.latencyMs }}ms</span>
+              </div>
+              <div v-if="d.models.length > 0" class="detected-models">
+                <button
+                  v-for="m in d.models.slice(0, 6)"
+                  :key="m"
+                  class="model-chip"
+                  @click="applyDetected(d, m)"
+                >
+                  {{ m }}
+                </button>
+                <span v-if="d.models.length > 6" class="model-more">
+                  +{{ d.models.length - 6 }}
+                </span>
+              </div>
+              <div v-else class="detected-no-models">
+                <span>未拉到模型列表 — </span>
+                <button class="link-btn" @click="applyDetected(d)">仅用 endpoint</button>
+              </div>
+            </div>
+          </div>
+          <div v-if="detectError" class="detect-error">{{ detectError }}</div>
+
+          <p class="hint or-hint">— 或者选个 preset / 手填 —</p>
           <div class="presets">
             <button
               v-for="p in presets"
@@ -306,6 +378,116 @@ h2 {
 .feature-list li {
   padding: 6px 0;
   font-size: var(--text-sm);
+}
+.auto-detect-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+.detect-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+}
+.detect-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.detect-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.detect-hint {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.detected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.detected-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-bubble-border);
+}
+.detected-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--text-sm);
+  margin-bottom: 6px;
+}
+.detected-label {
+  font-weight: 600;
+  color: var(--color-success);
+}
+.detected-endpoint {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--color-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detected-latency {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+.detected-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.model-chip {
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bubble);
+  font-size: 11px;
+  border: 1px solid var(--color-bubble-border);
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.model-chip:hover {
+  border-color: var(--color-accent);
+  background: var(--color-bubble-surface-hover);
+}
+.model-more {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+.detected-no-models {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.link-btn {
+  background: transparent;
+  color: var(--color-accent);
+  text-decoration: underline;
+  padding: 0;
+  font-size: 11px;
+}
+.detect-error {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: oklch(60% 0.15 30 / 0.12);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--color-danger);
+}
+.or-hint {
+  margin: 8px 0 8px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--color-muted);
 }
 .presets {
   display: grid;

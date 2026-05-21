@@ -7,8 +7,10 @@
 import type { BrowserWindow } from 'electron'
 import type { IpcStreamChunk } from '@shared/types'
 import { llmAbort, llmChatStream, llmHealthCheck, llmTest } from '@shared/channels/llm'
+import { llmAutoDetect } from '@shared/channels/llm-auto-detect'
 import { handleInvoke } from './channel-helpers'
 import { buildProvider } from '../services/llm'
+import { autoDetectLlm } from '../services/llm/auto-detect'
 import { loadConfig } from '../services/config-store'
 import { runHealthCheck } from '../services/llm/health-check'
 
@@ -147,5 +149,10 @@ export function registerLlmIpc(getWindow: () => BrowserWindow | null): void {
       },
       { test_vision: payload?.test_vision ?? false },
     )
+  })
+
+  // UX R20: 一键自动检测本机 LLM endpoint + 拉可用模型列表
+  handleInvoke(llmAutoDetect, async (payload) => {
+    return autoDetectLlm(payload?.customEndpoint)
   })
 }

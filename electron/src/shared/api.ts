@@ -354,6 +354,17 @@ export interface TialynnApi {
       }>
       recommendations: string[]
     }>
+    /** UX R20: 一键自动检测本机常见 LLM endpoint + 拉模型列表 */
+    autoDetect(payload?: { customEndpoint?: string }): Promise<{
+      found: Array<{
+        endpoint: string
+        label: string
+        models: string[]
+        latencyMs: number
+      }>
+      failed: Array<{ endpoint: string; reason: string }>
+      totalMs: number
+    }>
     onChunk(cb: (chunk: IpcStreamChunk) => void): () => void
   }
   motion: {

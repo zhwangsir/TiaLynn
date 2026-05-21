@@ -18,6 +18,7 @@ import type {
 import type { ApprovalRequest } from '@shared/tools'
 import type { TialynnApi } from '@shared/api'
 import { llmAbort, llmChatStream, llmHealthCheck, llmTest } from '@shared/channels/llm'
+import { llmAutoDetect } from '@shared/channels/llm-auto-detect'
 import {
   memoryAdd,
   memoryCount,
@@ -470,6 +471,7 @@ const api: TialynnApi = {
     test: (payload: { provider: LlmProvider; endpoint: string; api_key: string; model: string }) =>
       invokeChannel(llmTest, payload),
     healthCheck: (payload) => invokeChannel(llmHealthCheck, payload),
+    autoDetect: (payload) => invokeChannel(llmAutoDetect, payload),
     onChunk: (cb: ChunkListener): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, chunk: IpcStreamChunk): void => cb(chunk)
       ipcRenderer.on('llm:chunk', handler)

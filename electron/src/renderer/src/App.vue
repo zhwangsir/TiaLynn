@@ -12,6 +12,7 @@ import ToastStack from './infra/ui/ToastStack.vue'
 import ApprovalDialog from './infra/ui/ApprovalDialog.vue'
 import CreatorStudioPanel from './infra/ui/CreatorStudioPanel.vue'
 import OnboardingDialog from './infra/ui/OnboardingDialog.vue'
+import ServiceStatusPill from './infra/ui/ServiceStatusPill.vue'
 // v0.17: CharacterStatusBar 已移除 — 角色信息收到右键菜单 "切换角色" 项
 import CharacterPicker from './infra/ui/CharacterPicker.vue'
 import CharacterCreator from './infra/ui/CharacterCreator.vue'
@@ -379,6 +380,7 @@ onBeforeUnmount(() => {
         <ResourceStorePanel v-if="libraryOpen" @close="libraryOpen = false" />
       </ErrorBoundary>
       <OnboardingDialog v-if="onboardingOpen" @close="onboardingOpen = false" />
+      <ServiceStatusPill v-if="ready" @open-settings="settingsOpen = true" />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
           v-if="characterPickerOpen"
