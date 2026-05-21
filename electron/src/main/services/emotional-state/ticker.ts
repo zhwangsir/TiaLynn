@@ -10,10 +10,13 @@
  */
 import { getActiveCharacter } from '../character-store'
 import { onTick } from './store'
+import { SYNC_INTERVAL_MS, syncLearnedTraits } from '../soul-learner'
 
 const DEFAULT_TICK_INTERVAL_MS = 5 * 60 * 1000
 
 let timer: ReturnType<typeof setInterval> | null = null
+/** P5 soul-learner: 上次同步时刻 — 每 24h 触发一次 */
+let lastLearnerSyncAt = 0
 
 export function startEmotionalTicker(intervalMs: number = DEFAULT_TICK_INTERVAL_MS): void {
   if (timer) return
@@ -22,7 +25,6 @@ export function startEmotionalTicker(intervalMs: number = DEFAULT_TICK_INTERVAL_
       const active = getActiveCharacter()
       if (!active) return
       const next = onTick(active.id)
-      // 只在 mood 真切换时输出 — tick 静默运行避免日志洗版
       const lastChange = next.mood_history.at(-1)
       if (lastChange && lastChange.ts > Date.now() - intervalMs - 1000) {
         console.log(
@@ -30,6 +32,19 @@ export function startEmotionalTicker(intervalMs: number = DEFAULT_TICK_INTERVAL_
             `intensity=${next.mood_intensity.toFixed(2)} ` +
             `missing=${next.missing_intensity.toFixed(2)} (trigger: ${lastChange.trigger})`,
         )
+      }
+      // P5: soul-learner 每 24h 触发一次 - 把 topic_imprints 写回 learned_traits.yaml
+      const now = Date.now()
+      if (now - lastLearnerSyncAt >= SYNC_INTERVAL_MS) {
+        lastLearnerSyncAt = now
+        try {
+          const r = syncLearnedTraits(active.id)
+          if (r.applied && r.applied > 0) {
+            console.log(`[soul-learner] sync: ${r.applied} traits 写入 learned_traits.yaml`)
+          }
+        } catch (e) {
+          console.warn('[soul-learner] sync failed (non-fatal):', e)
+        }
       }
     } catch (e) {
       console.warn('[emotional] tick failed:', e)
