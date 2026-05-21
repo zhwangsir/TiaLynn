@@ -79,6 +79,32 @@ describe('toFriendlyError', () => {
     expect(r.title).toContain('TTS')
   })
 
+  it('R68: insufficient_quota → 配额提示', () => {
+    const r = toFriendlyError('Error: insufficient_quota; please add credits')
+    expect(r.title).toContain('配额')
+    expect(r.goto).toBe('llm')
+  })
+
+  it('R68: invalid_api_key → API Key 不正确', () => {
+    const r = toFriendlyError({ error: { code: 'invalid_api_key' } })
+    expect(r.title).toContain('API Key 不正确')
+  })
+
+  it('R68: model overloaded → 过载提示', () => {
+    const r = toFriendlyError('The model is overloaded with other requests')
+    expect(r.title).toContain('过载')
+  })
+
+  it('R68: stream closed → 中断提示', () => {
+    const r = toFriendlyError('stream closed unexpectedly')
+    expect(r.title).toContain('中断')
+  })
+
+  it('R68: content policy → 安全策略', () => {
+    const r = toFriendlyError('Your request was blocked by content policy')
+    expect(r.title).toContain('安全策略')
+  })
+
   it('database is locked → SQLite 提示', () => {
     const r = toFriendlyError('SQLITE_BUSY: database is locked')
     expect(r.title).toContain('记忆')

@@ -119,6 +119,37 @@ const RULES: ErrorRule[] = [
     detail: '历史太长。试试 /clear 清空对话，或换 context 更大的模型。',
     goto: 'llm',
   },
+  // R68: provider-specific 配额 / API key 错误细化
+  {
+    match: /insufficient_quota|quota.*exceeded|billing|out of credits/i,
+    title: 'API 配额用完了',
+    detail: '账户余额或本月用量已耗尽。去 provider 控制台充值或升级套餐。',
+    goto: 'llm',
+  },
+  {
+    match: /invalid_api_key|invalid.*key|incorrect.*api.?key/i,
+    title: 'API Key 不正确',
+    detail: 'key 拼写错或已撤销。重新从 provider 控制台复制一个粘进设置。',
+    goto: 'llm',
+  },
+  {
+    match: /model.*overloaded|server.*busy|capacity.*exceeded/i,
+    title: '模型暂时过载',
+    detail: '后端忙不过来。等 10-30 秒再试，或临时换个模型。',
+    goto: 'llm',
+  },
+  {
+    match: /stream.*closed|stream.*ended|unexpected end.*stream|incomplete.*response/i,
+    title: '流式响应被中断',
+    detail: '网络抖动或服务方关流。重试这条 (DialogBubble 🔄 按钮) 通常能恢复。',
+    goto: 'llm',
+  },
+  {
+    match: /content.*policy|safety.*filter|moderation|harmful|inappropriate/i,
+    title: '内容被安全策略拦截',
+    detail: 'provider (尤其商业 API) 的内容审核拒绝了请求。本地模型 (Ollama) 通常无此限制。',
+    goto: 'llm',
+  },
   {
     match: /tool.*not.*found|unknown tool|invalid tool/i,
     title: '工具调用失败',
