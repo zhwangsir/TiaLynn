@@ -108,6 +108,7 @@ function onMouseLeave(): void {
 onBeforeUnmount(() => {
   if (hideTimer) clearTimeout(hideTimer)
   if (scrollRaf !== null) cancelAnimationFrame(scrollRaf)
+  if (copiedFlashTimer) clearTimeout(copiedFlashTimer)
   mql?.removeEventListener('change', systemListener)
 })
 
@@ -191,11 +192,20 @@ const emotionTooltip = computed<string>(() => {
 })
 
 // R38: 复制 LLM reply — hover 时显示按钮
+// R85: 复制成功按钮变 ✓ 1.2s 即时视觉反馈
+const copiedFlash = ref(false)
+let copiedFlashTimer: ReturnType<typeof setTimeout> | null = null
+
 async function copyText(): Promise<void> {
   const t = latest.value?.text
   if (!t) return
   try {
     await navigator.clipboard.writeText(t)
+    copiedFlash.value = true
+    if (copiedFlashTimer) clearTimeout(copiedFlashTimer)
+    copiedFlashTimer = setTimeout(() => {
+      copiedFlash.value = false
+    }, 1200)
     bus.emit('ui:toast', { kind: 'success', message: '✓ 已复制', ttl_ms: 1500 })
   } catch (e) {
     bus.emit('ui:toast', {
@@ -255,10 +265,11 @@ async function copyText(): Promise<void> {
         <button
           v-if="latest.text"
           class="action-btn"
-          title="复制这条 (Cmd+C)"
+          :class="{ flash: copiedFlash }"
+          :title="copiedFlash ? '已复制' : '复制这条'"
           aria-label="复制对话"
           @click.stop="copyText"
-        >📋</button>
+        >{{ copiedFlash ? '✓' : '📋' }}</button>
         <button
           class="action-btn"
           title="关闭气泡"
@@ -413,6 +424,13 @@ async function copyText(): Promise<void> {
 }
 .action-btn:hover {
   background: oklch(100% 0 0 / 0.85);
+}
+/* R85: 复制成功瞬时绿色反馈 */
+.action-btn.flash {
+  background: oklch(70% 0.18 145 / 0.7);
+  color: oklch(25% 0.15 145);
+  font-weight: 700;
+  opacity: 1 !important;
 }
 @media (prefers-color-scheme: dark) {
   .action-btn {
