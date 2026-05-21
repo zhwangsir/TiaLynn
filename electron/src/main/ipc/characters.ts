@@ -9,8 +9,10 @@ import {
   charactersDelete,
   charactersGet,
   charactersList,
+  charactersListMounted,
   charactersReadSoulFile,
   charactersRecordChat,
+  charactersSetMounted,
   charactersSwitch,
   charactersUpdate,
   charactersWriteSoulFile,
@@ -21,15 +23,18 @@ import {
   deleteCharacter,
   getActiveCharacter,
   getCharacter,
+  getMountedCharacterIds,
   listCharacters,
   readCharacterSoulFile,
   recordChatInteraction,
   setActiveCharacterId,
+  setMountedCharacterIds,
   updateCharacter,
   writeCharacterSoulFile,
 } from '../services/character-store'
 import { reopenForActiveCharacter } from '../services/history-store'
 import { onChatTurn as emotionalOnChatTurn } from '../services/emotional-state/store'
+import type { Character } from '@shared/character'
 import { handleInvoke } from './channel-helpers'
 
 export function registerCharactersIpc(getWindow: () => BrowserWindow | null): void {
@@ -93,5 +98,44 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
       win.webContents.send('character:switched', r.character)
     }
     return r
+  })
+
+  /**
+   * v0.21 Round J:M8 灵魂社会 — list mounted characters。
+   * 返 Character[] 让 renderer 不用二次 charactersGet 拿元数据。
+   */
+  handleInvoke(charactersListMounted, () => {
+    const ids = getMountedCharacterIds()
+    // 过滤掉可能 stale 的 id(character 已被删但 mounted 还在)
+    const chars: Character[] = []
+    for (const id of ids) {
+      const c = getCharacter(id)
+      if (c) chars.push(c)
+    }
+    return chars
+  })
+
+  /**
+   * v0.21 Round J:M8 — 设置 mounted character 列表。
+   * 校验失败返 reason(empty / not_found / etc)。
+   * DoS 防护:超 16 个拒绝(实际 use case 不会 > 5)。
+   */
+  handleInvoke(charactersSetMounted, (ids) => {
+    if (!Array.isArray(ids)) {
+      return { ok: false as const, reason: 'not_an_array' }
+    }
+    if (ids.length > 16) {
+      // 防 DoS:renderer 恶意 / bug 发巨大数组
+      return { ok: false as const, reason: 'too_many_ids(max 16)' }
+    }
+    const r = setMountedCharacterIds(ids)
+    if (!r.ok) return { ok: false as const, reason: r.reason ?? 'failed' }
+    const mountedIds = r.mounted_ids ?? []
+    const mounted: Character[] = []
+    for (const id of mountedIds) {
+      const c = getCharacter(id)
+      if (c) mounted.push(c)
+    }
+    return { ok: true as const, mounted_ids: mountedIds, mounted }
   })
 }

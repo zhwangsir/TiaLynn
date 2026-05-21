@@ -242,6 +242,14 @@ export async function deleteCharacter(id: string): Promise<{ ok: boolean; reason
     } catch {
       /* memory-store 模块缺失时不阻塞删除 */
     }
+    // v0.21 Round J:dispose 对应 planner 实例(避免 Map cache 内存泄漏)
+    // (architect 守护抓出 M-1 — 跟 closeMemoryDb 同模式 dynamic import)
+    try {
+      const { disposePlannerFor } = await import('./planner')
+      disposePlannerFor(id)
+    } catch {
+      /* planner 模块缺失时不阻塞删除 */
+    }
     rmSync(characterDir(id), { recursive: true, force: true })
     return { ok: true }
   } catch (e) {

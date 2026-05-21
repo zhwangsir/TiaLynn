@@ -51,3 +51,21 @@ export const charactersSwitch = defineChannel<
   string,
   { ok: boolean; character?: Character; reason?: string }
 >('characters:switch')
+
+/**
+ * v0.21 Round J:M8 灵魂社会前置 IPC。
+ *
+ * "Mounted" = 代码层并行存活的 character id 列表(每个有独立 planner / memory.db)。
+ * 跟 active(GUI 焦点单选)区分。
+ *
+ * 设计选择(架构师建议):返回 Character[] 而非 string[],让 renderer
+ * 不用二次 charactersGet 拿元数据。性能可接受(mounted 通常 ≤ 5)。
+ */
+export const charactersListMounted = defineChannel<void, Character[]>(
+  'characters:list-mounted',
+)
+
+export const charactersSetMounted = defineChannel<
+  string[],
+  { ok: true; mounted_ids: string[]; mounted: Character[] } | { ok: false; reason: string }
+>('characters:set-mounted')

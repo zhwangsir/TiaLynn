@@ -303,6 +303,20 @@ export interface TialynnApi {
       reason?: string
     }>
     switch(id: string): Promise<{ ok: boolean; character?: Character; reason?: string }>
+    /**
+     * v0.21 Round J:M8 灵魂社会 — list 当前 mounted character(代码层并行存活的角色)。
+     * 总返非空数组(含 active);旧 schema 用户返 [active]。
+     */
+    listMounted(): Promise<Character[]>
+    /**
+     * v0.21 Round J:M8 — 设置 mounted character 列表。
+     * 校验:空数组 / 不存在 id / 超 16 个(DoS 防护)→ {ok:false, reason}
+     * 自动:去重 + 若 active 不在列表自动补首位 + 持久化
+     */
+    setMounted(ids: string[]): Promise<
+      | { ok: true; mounted_ids: string[]; mounted: Character[] }
+      | { ok: false; reason: string }
+    >
     /** v0.14 T5: 对话完成时调用，更新亲密度 */
     recordChat(): Promise<{ ok: boolean; character?: Character | null; reason?: string }>
     /** v0.14 T8: 读 character 灵魂目录的 yaml 文件（filename 限 [a-zA-Z0-9_-]+.yaml） */

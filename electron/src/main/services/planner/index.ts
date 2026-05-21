@@ -596,6 +596,17 @@ export function _resetAllPlannersForTest(): void {
 }
 
 /**
+ * v0.21 Round J:dispose 指定 character 的 planner 实例。
+ * 用在 `deleteCharacter` 后清掉 Map cache 项,避免 stale instance + 内存泄漏。
+ * (architect 守护提前抓出 M-1 — 避免 reviewer 第 11 轮再补)
+ *
+ * 不存在的 characterId 返 false(idempotent,删 character 时不报错)。
+ */
+export function disposePlannerFor(characterId: string): boolean {
+  return plannerInstances.delete(characterId)
+}
+
+/**
  * @deprecated v0.21 留向后兼容,attention/index.ts 已改用 getPlanner()。
  * v0.23 多灵魂全推完时移除此 const export(届时所有 callsite 都需 characterId)。
  */
