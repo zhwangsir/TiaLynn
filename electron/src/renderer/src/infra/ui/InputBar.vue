@@ -86,6 +86,9 @@ const estimatedTokens = computed<number>(() => {
   if (!t || t.length < 50) return 0
   return estimateTokens(t)
 })
+/** R66: warn 阈值 — 多数 LLM 8K 上下文, 留 buffer 给 system prompt + history */
+const TOKEN_WARN = 6000
+const TOKEN_DANGER = 8000
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
@@ -168,9 +171,14 @@ onBeforeUnmount(() => {
       <span
         v-if="estimatedTokens > 0 && historyIdx < 0"
         class="token-badge"
-        :aria-label="`估算 ${estimatedTokens} tokens`"
-        title="估算 LLM token 数 (中文 ≈ 1/字, 英文 ≈ 1/4 字)"
-      >~{{ estimatedTokens }} tok</span>
+        :class="{ warn: estimatedTokens > TOKEN_WARN, danger: estimatedTokens > TOKEN_DANGER }"
+        :aria-label="`估算 ${estimatedTokens} tokens${estimatedTokens > TOKEN_WARN ? ' (接近上下文上限)' : ''}`"
+        :title="estimatedTokens > TOKEN_DANGER
+          ? `~${estimatedTokens} tokens — 已超出多数模型 8K 上下文, 建议拆分`
+          : estimatedTokens > TOKEN_WARN
+            ? `~${estimatedTokens} tokens — 接近 8K 上下文上限`
+            : '估算 LLM token 数 (中文 ≈ 1/字, 英文 ≈ 1/4 字)'"
+      >{{ estimatedTokens > TOKEN_WARN ? '⚠ ' : '' }}~{{ estimatedTokens }} tok</span>
       <textarea
         ref="inputRef"
         v-model="text"
@@ -282,6 +290,26 @@ onBeforeUnmount(() => {
   pointer-events: auto;
   cursor: help;
   animation: badge-in 0.2s var(--ease-out-back);
+  transition: background var(--duration-fast), color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+/* R66: 接近上下文上限 → 黄, 超出 → 红 */
+.token-badge.warn {
+  background: oklch(94% 0.08 80 / 0.45);
+  color: oklch(45% 0.16 80);
+  border-color: oklch(75% 0.18 80);
+  font-weight: 600;
+}
+.token-badge.danger {
+  background: oklch(92% 0.1 25 / 0.45);
+  color: oklch(45% 0.22 25);
+  border-color: oklch(70% 0.22 25);
+  font-weight: 600;
+  animation: badge-in 0.2s var(--ease-out-back), pulse-danger 1.5s ease-in-out infinite;
+}
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 @keyframes badge-in {
   from {
