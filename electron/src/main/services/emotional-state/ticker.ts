@@ -58,6 +58,8 @@ export function stopEmotionalTicker(): void {
     clearInterval(timer)
     timer = null
   }
+  // ts-reviewer L1: 重置 sync 时间戳，避免热重载场景测试残留
+  lastLearnerSyncAt = 0
 }
 
 export function isEmotionalTickerRunning(): boolean {

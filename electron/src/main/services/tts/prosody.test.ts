@@ -1,7 +1,7 @@
 /**
  * Mood-aware TTS prosody 单元测试 (P5).
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { adjustProsody } from './prosody'
 
 const BASE = { rate: '+0%', pitch: '+0Hz' }
@@ -111,10 +111,20 @@ describe('adjustProsody', () => {
     expect(out.applied!.pitchDelta).toBeCloseTo(4, 1)
   })
 
-  it('损坏 base 字符串容错', () => {
+  it('损坏 base 字符串容错 + warn 日志', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const out = adjustProsody({ rate: 'invalid', pitch: 'oops' }, 'happy', 1)
-    // 解析失败当 0 处理
     expect(out.rate).toBe('+10%')
     expect(out.pitch).toBe('+5Hz')
+    expect(warnSpy).toHaveBeenCalled() // 含 [tts-prosody] 解析失败
+    warnSpy.mockRestore()
+  })
+
+  it('emotion 超长截断到 32 字符防 DoS', () => {
+    const huge = 'x'.repeat(10_000_000) + 'happy' // 10 MB 字符串
+    const out = adjustProsody(BASE, huge, 1)
+    // 前 32 字符都是 x → 未匹配 PROSODY_TARGET → 返回基线
+    expect(out).toEqual({ rate: '+0%', pitch: '+0Hz' })
+    // 没 crash 就行 (测 DoS 防护)
   })
 })

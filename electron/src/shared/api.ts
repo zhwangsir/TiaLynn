@@ -797,6 +797,13 @@ export interface TialynnApi {
     ): () => void
   }
 
+  /** P5: soul auto-learner — 把 topic_imprints 写回 learned_traits.yaml */
+  soulLearner: {
+    sync(payload?: {
+      character_id?: string
+    }): Promise<import('./channels/soul-learner').SoulLearnerSyncResult>
+  }
+
   /** P5: soul yaml 改动历史 — SoulEditor 每次保存自动 diff + audit log */
   soulChangeLog: {
     list(payload?: {

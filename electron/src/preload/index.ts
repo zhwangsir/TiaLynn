@@ -235,6 +235,7 @@ import {
   soulChangeLogClear,
   soulChangeLogList,
 } from '@shared/channels/soul-change-log'
+import { soulLearnerSync } from '@shared/channels/soul-learner'
 
 interface ChunkListener {
   (chunk: IpcStreamChunk): void
@@ -669,6 +670,9 @@ const api: TialynnApi = {
   soulChangeLog: {
     list: (payload) => invokeChannel(soulChangeLogList, payload),
     clear: (payload) => invokeChannel(soulChangeLogClear, payload),
+  },
+  soulLearner: {
+    sync: (payload) => invokeChannel(soulLearnerSync, payload),
   },
   agent: {
     halt: (on) => invokeChannel(agentHalt, on),

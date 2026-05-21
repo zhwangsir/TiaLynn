@@ -10,7 +10,7 @@
  *   - 失败不影响主 save 流程 (try/catch swallow)
  *   - 调用方传入 before/after yaml 内容字符串 → 这里做 yaml parse + diff
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { diffSoulConfigs, type FieldChange, type SoulConfig } from '@tialynn/soul-loader'
@@ -95,28 +95,37 @@ function parseYamlSafe(text: string): Record<string, unknown> {
   }
 }
 
+/**
+ * code-reviewer M1 修: 改用 appendFileSync 纯追加消除 read-write race lost-update。
+ * LRU 截断改为周期性 compact (写入超过 1.5x 上限时触发) — O(1) 写而非 O(n)。
+ */
 function appendToFile(characterId: string, entry: SoulChangeLogEntry): void {
   const p = logPath(characterId)
-  // 读原序（NDJSON 一行一 entry，无 reverse）
-  const existing: SoulChangeLogEntry[] = []
-  if (existsSync(p)) {
+  // 原子追加 — 单 syscall，多并发写不会互相覆盖
+  appendFileSync(p, JSON.stringify(entry) + '\n', 'utf-8')
+  // 周期 compact: 当行数 > 1.5x 上限时重写截断 (避免每次都 O(n))
+  try {
+    const raw = readFileSync(p, 'utf-8')
+    const lineCount = raw.split('\n').filter((l) => l.trim()).length
+    if (lineCount > MAX_LOG_ENTRIES * 1.5) {
+      compactLog(p, raw)
+    }
+  } catch {
+    /* compact 失败不影响主流程 */
+  }
+}
+
+function compactLog(p: string, raw: string): void {
+  const entries: SoulChangeLogEntry[] = []
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
     try {
-      const raw = readFileSync(p, 'utf-8')
-      for (const line of raw.split('\n')) {
-        if (!line.trim()) continue
-        try {
-          existing.push(JSON.parse(line))
-        } catch {
-          /* 损坏行跳过 */
-        }
-      }
+      entries.push(JSON.parse(line))
     } catch {
-      /* read fail 视为空 */
+      /* 损坏行跳过 */
     }
   }
-  existing.push(entry)
-  // LRU 截断 (保留最新的 MAX_LOG_ENTRIES 条)
-  const kept = existing.slice(-MAX_LOG_ENTRIES)
+  const kept = entries.slice(-MAX_LOG_ENTRIES)
   writeFileSync(p, kept.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf-8')
 }
 
@@ -147,5 +156,12 @@ export function clearSoulChangeLog(characterId: string): void {
   // P0 SEC (H2): 验证 characterId 防路径污染
   if (!isValidCharacterId(characterId)) return
   const p = logPath(characterId)
-  if (existsSync(p)) writeFileSync(p, '', 'utf-8')
+  // code-reviewer L3: 用 unlinkSync 而非 truncate (语义更明确)
+  if (existsSync(p)) {
+    try {
+      unlinkSync(p)
+    } catch {
+      writeFileSync(p, '', 'utf-8') // fallback (e.g. 权限)
+    }
+  }
 }

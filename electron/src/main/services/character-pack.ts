@@ -18,9 +18,10 @@
  *   - 跨机器迁移 character (备份恢复)
  *   - 角色市场分发（社区分享 soul + 美化好的 emotional baseline）
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import AdmZip from 'adm-zip'
+import yaml from 'js-yaml'
 import type { Character } from '@shared/character'
 import {
   charactersRoot,
@@ -60,11 +61,12 @@ function isValidWebp(buf: Buffer): boolean {
 /**
  * P0 SEC (C1): 防 zip path traversal — 拒绝 entry name 解析后逃出目标目录。
  * resolve(baseDir, entryName) 必须以 baseDir + sep 开头。
+ * ts-reviewer M2: 移除等值分支死码 (空 entry name 会被上游 filename regex 先 reject)
  */
 function isSafeZipPath(baseDir: string, entryName: string): boolean {
   const absBase = resolve(baseDir)
   const absTarget = resolve(absBase, entryName)
-  return absTarget === absBase || absTarget.startsWith(absBase + sep)
+  return absTarget.startsWith(absBase + sep)
 }
 
 export interface CharacterPackMeta {
@@ -260,10 +262,25 @@ export function importCharacterPack(
     return { ok: false, reason: 'soul/identity.yaml 缺失（无法确定 live2d 模型）' }
   }
   const identityRaw = identityEntry.getData().toString('utf-8')
-  // 简易 yaml 解析: 只拉关键 line（不引 js-yaml 避免循环 import）
-  const modelDirMatch = identityRaw.match(/model_dir:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
-  const modelFileMatch = identityRaw.match(/model_file:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
-  const callMasterMatch = identityRaw.match(/call_master_as:\s*['"]?([^'"\n]+?)['"]?\s*$/m)
+  // code-reviewer M3: 用 js-yaml.load 正确解析 (regex 对含空格 / block scalar 路径会截断)
+  // JSON_SCHEMA 阻断 !!js/* 标签注入
+  let identityObj: Record<string, unknown> = {}
+  try {
+    const parsed = yaml.load(identityRaw, { schema: yaml.JSON_SCHEMA })
+    if (parsed && typeof parsed === 'object') {
+      identityObj = parsed as Record<string, unknown>
+    }
+  } catch {
+    /* 解析失败 fallback 到默认值 */
+  }
+  const avatarObj =
+    identityObj.avatar && typeof identityObj.avatar === 'object'
+      ? (identityObj.avatar as Record<string, unknown>)
+      : {}
+  const modelDir = typeof avatarObj.model_dir === 'string' ? avatarObj.model_dir : ''
+  const modelFile = typeof avatarObj.model_file === 'string' ? avatarObj.model_file : ''
+  const callMaster =
+    typeof identityObj.call_master_as === 'string' ? identityObj.call_master_as : ''
 
   // 3. 创建新 character (自动生成新 id 避免与现有冲突)
   // P0 SEC (M2): newName 长度截断防 DoS
@@ -272,9 +289,9 @@ export function importCharacterPack(
   try {
     created = createCharacter({
       name: newName,
-      call_master_as: (callMasterMatch?.[1] ?? '主人').slice(0, MAX_IMPORT_NAME_LEN),
-      live2d_model_dir: (modelDirMatch?.[1] ?? 'HuTao-Live2D').slice(0, 200),
-      live2d_model_file: (modelFileMatch?.[1] ?? 'Hu Tao.model3.json').slice(0, 200),
+      call_master_as: (callMaster || '主人').slice(0, MAX_IMPORT_NAME_LEN),
+      live2d_model_dir: (modelDir || 'HuTao-Live2D').slice(0, 200),
+      live2d_model_file: (modelFile || 'Hu Tao.model3.json').slice(0, 200),
       template: 'custom',
     })
   } catch (e) {
@@ -302,9 +319,19 @@ export function importCharacterPack(
   }
 
   // 5. 写 preferences.json (覆盖默认)
+  // security-reviewer LOW: parse + reserialize 确保是合法 JSON (拒绝写损坏数据)
   const prefsEntry = zip.getEntry('preferences.json')
   if (prefsEntry) {
-    writeFileSync(characterPreferencesPath(created.id), prefsEntry.getData())
+    try {
+      const parsed = JSON.parse(prefsEntry.getData().toString('utf-8'))
+      writeFileSync(
+        characterPreferencesPath(created.id),
+        JSON.stringify(parsed, null, 2),
+        'utf-8',
+      )
+    } catch (e) {
+      console.warn('[character-pack] preferences.json 损坏，跳过:', e)
+    }
   }
 
   // 6. 写 emotional-state.json (可选)
@@ -333,9 +360,9 @@ export function importCharacterPack(
     if (isValidWebp(thumbData)) {
       const thumbDir = join(charactersRoot(), '..', 'thumbs')
       try {
-        const fs = require('node:fs') as typeof import('node:fs')
-        fs.mkdirSync(thumbDir, { recursive: true })
-        fs.writeFileSync(join(thumbDir, `${created.id}.webp`), thumbData)
+        // ts-reviewer M1: 用 static import (mkdirSync 已在文件顶部 import)
+        mkdirSync(thumbDir, { recursive: true })
+        writeFileSync(join(thumbDir, `${created.id}.webp`), thumbData)
       } catch (e) {
         console.warn('[character-pack] thumb write failed (skipped):', e)
       }

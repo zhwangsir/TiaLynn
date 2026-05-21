@@ -14,7 +14,14 @@
  * 纯函数 — 不读 config，调用方传入基线 + 当前 emotion + intensity。
  */
 
-/** mood → (rate %, pitch Hz) 在 intensity=1 时的目标 delta */
+/**
+ * mood → (rate %, pitch Hz) 在 intensity=1 时的目标 delta。
+ *
+ * 这些值是主观调好的经验值 — 改之前先听一下效果。
+ * code-reviewer M5: 4 个 no-op 条目 (calm/neutral/anxious/surprise) 是
+ * intentionally no-op，明确表达"这些情绪 TTS 不调音"。
+ * 移除后调用方未知 emotion 也是返基线 — 但保留显式表达 intent 更好。
+ */
 const PROSODY_TARGET: Record<string, { rateDelta: number; pitchHz: number }> = {
   happy: { rateDelta: 10, pitchHz: 5 },
   tease: { rateDelta: 8, pitchHz: 4 },
@@ -23,12 +30,15 @@ const PROSODY_TARGET: Record<string, { rateDelta: number; pitchHz: number }> = {
   missing: { rateDelta: -6, pitchHz: -4 },
   angry: { rateDelta: 6, pitchHz: -3 },
   sleepy: { rateDelta: -15, pitchHz: -2 },
-  // 以下不调 (delta=0)
+  // 以下 intentionally no-op (delta=0) — 显式表达"这些情绪不调音"
   calm: { rateDelta: 0, pitchHz: 0 },
   neutral: { rateDelta: 0, pitchHz: 0 },
   anxious: { rateDelta: 0, pitchHz: 0 },
   surprise: { rateDelta: 0, pitchHz: 0 },
 }
+
+/** security-reviewer LOW: emotion 长度上限 (避免 IPC 传 10MB 字符串 .toLowerCase() 开销) */
+const MAX_EMOTION_LEN = 32
 
 export interface ProsodyBase {
   /** 用户在 settings 设的 rate 基线 (如 '+0%' / '+10%') */
@@ -57,7 +67,11 @@ function parseSign(s: string | undefined, suffix: string): number {
   if (!s) return 0
   const re = new RegExp(`^([+-]?\\d+(?:\\.\\d+)?)${escapeReg(suffix)}$`)
   const m = s.trim().match(re)
-  if (!m) return 0
+  if (!m) {
+    // security-reviewer LOW: 解析失败时 warn (避免静默 fallback 到 0 让用户配置失效不知道)
+    console.warn(`[tts-prosody] 解析失败 "${s}" 期望格式 "[+-]N${suffix}"，使用 0`)
+    return 0
+  }
   return parseFloat(m[1]!)
 }
 
@@ -90,15 +104,20 @@ export function adjustProsody(
   intensity: number | undefined | null,
 ): ProsodyAdjusted {
   if (!emotion) return { rate: base.rate, pitch: base.pitch }
-  const target = PROSODY_TARGET[emotion.toLowerCase()]
+  // security-reviewer LOW: 长度 cap 防 DoS (10MB emotion .toLowerCase 浪费)
+  const safeEmotion = emotion.slice(0, MAX_EMOTION_LEN).toLowerCase()
+  const target = PROSODY_TARGET[safeEmotion]
   if (!target) return { rate: base.rate, pitch: base.pitch }
 
+  // ts-reviewer M4: 类型守卫窄化 intensity 为 number
   // intensity 缺省 (null/undefined/NaN) → 0.5；明确 0 → 完全不调
-  const hasIntensity = typeof intensity === 'number' && Number.isFinite(intensity)
-  if (hasIntensity && intensity === 0) {
-    return { rate: base.rate, pitch: base.pitch }
-  }
-  const i = hasIntensity ? Math.max(0, Math.min(intensity, 1)) : 0.5
+  const i: number =
+    typeof intensity === 'number' && Number.isFinite(intensity)
+      ? intensity === 0
+        ? 0
+        : Math.max(0, Math.min(intensity, 1))
+      : 0.5
+  if (i === 0) return { rate: base.rate, pitch: base.pitch }
   const scale = i < 0.3 ? i * 0.5 : i
 
   const rateDelta = target.rateDelta * scale
@@ -114,7 +133,7 @@ export function adjustProsody(
     rate: formatPct(baseRate + rateDelta),
     pitch: formatHz(basePitch + pitchDelta),
     applied: {
-      emotion: emotion.toLowerCase(),
+      emotion: safeEmotion,
       intensity: i,
       rateDelta,
       pitchDelta,

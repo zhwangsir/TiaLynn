@@ -483,6 +483,37 @@ async function openDataDir(): Promise<void> {
 const packStatus = ref('')
 const packIncludeMemory = ref(false) // memory.db 隐私敏感默认关
 
+// P5: soul auto-learner 手动触发
+const learnerStatus = ref('')
+const learnerSyncing = ref(false)
+async function syncLearner(): Promise<void> {
+  if (learnerSyncing.value) return
+  learnerSyncing.value = true
+  learnerStatus.value = ''
+  try {
+    const r = await window.api.soulLearner.sync({})
+    if (r.ok) {
+      if (r.applied && r.applied > 0) {
+        learnerStatus.value = `✓ 已写入 ${r.applied} 条习得特征到 learned_traits.yaml`
+        bus.emit('ui:toast', {
+          kind: 'success',
+          message: `learned_traits 已更新 (${r.applied} 条)`,
+          ttl_ms: 3000,
+        })
+      } else {
+        learnerStatus.value = `✓ 跳过 (${r.reason ?? '未达阈值'})`
+      }
+    } else {
+      learnerStatus.value = `✗ 失败: ${r.reason}`
+      bus.emit('ui:toast', { kind: 'error', message: `同步失败: ${r.reason}`, ttl_ms: 5000 })
+    }
+  } catch (e) {
+    learnerStatus.value = `✗ 异常: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    learnerSyncing.value = false
+  }
+}
+
 async function exportPack(): Promise<void> {
   packStatus.value = '导出中...'
   try {
@@ -869,6 +900,21 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
 
       <!-- P3 UI: 情感状态 debug (J 可视化) -->
       <EmotionalDebugPanel />
+
+      <!-- P5: soul auto-learner — 手动同步 -->
+      <section style="margin-top: 18px">
+        <h3>灵魂自学习 <span class="beta-tag">auto</span></h3>
+        <p class="hint">
+          每 24h 自动把 emotional state 累积的高频话题写回 learned_traits.yaml
+          (count ≥ 5 + |sentiment| ≥ 0.3)。可手动立即触发：
+        </p>
+        <div class="row">
+          <button class="ghost" @click="syncLearner" :disabled="learnerSyncing">
+            {{ learnerSyncing ? '同步中...' : '🧠 立即同步 learned_traits' }}
+          </button>
+        </div>
+        <p v-if="learnerStatus" class="hint" style="margin-top: 6px">{{ learnerStatus }}</p>
+      </section>
 
       <!-- P5: soul yaml 改动审计历史 -->
       <SoulChangeLogPanel />

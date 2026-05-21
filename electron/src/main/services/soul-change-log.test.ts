@@ -115,15 +115,28 @@ describe('loadSoulChangeLog', () => {
     expect(log.map((e) => e.filename).sort()).toEqual(['a.yaml', 'b.yaml'])
   })
 
-  it('LRU 截断到 200 条', () => {
+  it('LRU 周期 compact (写超 1.5x=300 触发截到 200，期间累积 <= 300)', () => {
     const c = mkChar()
-    for (let i = 0; i < 250; i++) {
+    // code-reviewer M1: appendFileSync 纯追加 + 周期 compact (性能 O(1)/write)
+    // 写 N 条后 log 最多保留 300 (compact 阈值)，最少 200 (compact 后)
+    for (let i = 0; i < 310; i++) {
       recordSoulChange(c.id, 'identity.yaml', `name: A${i}`, `name: A${i + 1}`)
     }
     const log = loadSoulChangeLog(c.id)
-    expect(log.length).toBeLessThanOrEqual(200)
-    // 最新的应该是 A250 (newest first)
-    expect(log[0]!.changes[0]!.after).toBe('A250')
+    // 关键不变量: 不会无限增长 (>= 300 时 compact 触发)
+    expect(log.length).toBeLessThanOrEqual(300)
+    // 最新的应该是 A310 (newest first)
+    expect(log[0]!.changes[0]!.after).toBe('A310')
+  })
+
+  it('LRU 跨多轮 compact: 写 600 条仍维持 <= 300', () => {
+    const c = mkChar()
+    for (let i = 0; i < 600; i++) {
+      recordSoulChange(c.id, 'identity.yaml', `name: A${i}`, `name: A${i + 1}`)
+    }
+    const log = loadSoulChangeLog(c.id)
+    expect(log.length).toBeLessThanOrEqual(300)
+    expect(log[0]!.changes[0]!.after).toBe('A600')
   })
 })
 

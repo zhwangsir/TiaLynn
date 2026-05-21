@@ -35,7 +35,6 @@ export interface LearnedTrait {
   count: number
   /** 中文极性标签便于 LLM 读 */
   polarity: '喜欢' | '讨厌' | '中性'
-  last_at: number
 }
 
 export interface SyncResult {
@@ -65,7 +64,6 @@ export function pickTraitsFromImprints(
       sentiment: Math.round(imp.sentiment * 100) / 100,
       count: imp.count,
       polarity: polarityOf(imp.sentiment),
-      last_at: imp.last_at,
     })
   }
   // 强度 * log(count+1) 排序
@@ -129,25 +127,49 @@ export function syncLearnedTraits(characterId: string): SyncResult {
   const existing = existsSync(learnedPath) ? safeRead(learnedPath) : ''
 
   const newContent = buildLearnedTraitsYaml(traits, existing)
-  // 内容跟旧一致就跳过 (避免 audit log spam)
-  if (newContent.trim() === existing.trim()) {
-    return { ok: true, applied: 0, reason: 'no change' }
+  // code-reviewer M2 修: 排除 updated_at 时间戳后比较，避免每 24h 必重写
+  if (sameAutoLearnedInterests(newContent, existing)) {
+    return { ok: true, applied: 0, reason: 'no change (interests 一致)' }
   }
 
   const r = writeCharacterSoulFile(characterId, 'learned_traits.yaml', newContent)
   if (!r.ok) {
     return { ok: false, ...(r.reason !== undefined && { reason: r.reason }) }
   }
-  console.log(
-    `[soul-learner] ${characterId}: ${traits.length} traits → learned_traits.yaml`,
-  )
+  // ts-reviewer L2: DEBUG flag 控制 (跟项目约定一致)
+  if (process.env.TIALYNN_DEBUG === '1' || process.env.MAIN_APP_DEBUG === '1') {
+    console.log(
+      `[soul-learner] ${characterId}: ${traits.length} traits → learned_traits.yaml`,
+    )
+  }
   return { ok: true, applied: traits.length }
+}
+
+/** 比较 master_interests 数组本身（排除 updated_at）— 避免时间戳变化触发无意义重写 */
+function sameAutoLearnedInterests(newYaml: string, oldYaml: string): boolean {
+  try {
+    const nObj = yaml.load(newYaml, { schema: yaml.JSON_SCHEMA }) as
+      | { auto_learned?: { master_interests?: unknown[] } }
+      | null
+      | undefined
+    const oObj = yaml.load(oldYaml, { schema: yaml.JSON_SCHEMA }) as
+      | { auto_learned?: { master_interests?: unknown[] } }
+      | null
+      | undefined
+    const nInterests = JSON.stringify(nObj?.auto_learned?.master_interests ?? [])
+    const oInterests = JSON.stringify(oObj?.auto_learned?.master_interests ?? [])
+    return nInterests === oInterests
+  } catch {
+    return false // 解析失败 → 认定不同，触发写
+  }
 }
 
 function safeRead(p: string): string {
   try {
     return readFileSync(p, 'utf-8')
-  } catch {
+  } catch (e) {
+    // security-reviewer LOW: 失败时 warn (避免静默丢用户手写字段)
+    console.warn('[soul-learner] safeRead failed; 用户手写字段可能丢:', e)
     return ''
   }
 }

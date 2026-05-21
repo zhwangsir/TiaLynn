@@ -30,7 +30,8 @@ let cleanups: Array<() => void> = []
 async function refresh(): Promise<void> {
   loading.value = true
   try {
-    entries.value = await window.api.soulChangeLog.list({})
+    // code-reviewer L1: 无参 (默认 active character)
+    entries.value = await window.api.soulChangeLog.list()
   } catch {
     /* ignore */
   } finally {
@@ -38,9 +39,25 @@ async function refresh(): Promise<void> {
   }
 }
 
+// ts-reviewer M3: 避免 Electron renderer 的 window.confirm 同步阻塞 / Electron 拦截
+// 用 inline 二次确认 — 第一次点显示警告，3 秒内再点才执行
+const confirmClear = ref(false)
+let confirmTimeout: ReturnType<typeof setTimeout> | null = null
 async function clearAll(): Promise<void> {
-  if (!confirm('清空所有 soul 改动历史？不可撤销。')) return
-  await window.api.soulChangeLog.clear({})
+  if (!confirmClear.value) {
+    confirmClear.value = true
+    if (confirmTimeout) clearTimeout(confirmTimeout)
+    confirmTimeout = setTimeout(() => {
+      confirmClear.value = false
+    }, 3000)
+    return
+  }
+  if (confirmTimeout) {
+    clearTimeout(confirmTimeout)
+    confirmTimeout = null
+  }
+  confirmClear.value = false
+  await window.api.soulChangeLog.clear()
   await refresh()
   bus.emit('ui:toast', { kind: 'info', message: '改动历史已清空', ttl_ms: 2000 })
 }
@@ -106,7 +123,13 @@ onBeforeUnmount(() => {
         <button class="ghost-tiny" @click="refresh" :disabled="loading">
           {{ loading ? '...' : '🔄' }}
         </button>
-        <button v-if="hasEntries" class="ghost-tiny" @click="clearAll">清空</button>
+        <button
+          v-if="hasEntries"
+          :class="['ghost-tiny', { 'confirm-pending': confirmClear }]"
+          @click="clearAll"
+        >
+          {{ confirmClear ? '再点确认' : '清空' }}
+        </button>
       </div>
     </div>
     <p class="hint">
@@ -189,6 +212,16 @@ h3 {
 }
 .ghost-tiny:hover {
   color: var(--color-bubble-text);
+}
+.ghost-tiny.confirm-pending {
+  color: oklch(55% 0.22 25);
+  background: oklch(95% 0.05 25 / 0.3);
+  border-radius: 999px;
+  animation: confirm-pulse 1.2s ease-in-out infinite;
+}
+@keyframes confirm-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 .hint {
   margin: 4px 0 10px;

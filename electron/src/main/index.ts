@@ -55,6 +55,7 @@ import { registerEmotionalIpc } from './ipc/emotional'
 import { registerEvalIpc } from './ipc/eval'
 import { registerCharacterPackIpc } from './ipc/character-pack'
 import { registerSoulChangeLogIpc } from './ipc/soul-change-log'
+import { registerSoulLearnerIpc } from './ipc/soul-learner'
 import { startEmotionalTicker, stopEmotionalTicker } from './services/emotional-state/ticker'
 import { startPerception, stopPerception } from './services/perception'
 import { startAttention, stopAttention } from './services/attention'
@@ -154,6 +155,7 @@ app.whenReady().then(() => {
   registerEvalIpc(getMainWindow)
   registerCharacterPackIpc(getMainWindow)
   registerSoulChangeLogIpc()
+  registerSoulLearnerIpc()
 
   // v0.8: 启动主体性感知系统（Mouse/Idle/Window/Time sensors）
   // v0.8.2: 从 RuntimeConfig 透传 vision 三件套（持久化在 config.json）
