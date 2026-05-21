@@ -9,6 +9,7 @@
 import { computed, ref } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import { bus } from '../eventbus'
+import { highlightMatch } from './highlight-match'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -189,7 +190,12 @@ function initials(name: string): string {
               </span>
               <span v-if="c.id === character.active?.id" class="active-dot" title="当前角色"></span>
             </div>
-            <div class="card-name">{{ c.name }}</div>
+            <div class="card-name">
+              <template v-for="(seg, si) in highlightMatch(c.name, searchQuery)" :key="si">
+                <mark v-if="seg.matched" class="match-hl">{{ seg.text }}</mark>
+                <template v-else>{{ seg.text }}</template>
+              </template>
+            </div>
             <div class="card-desc" v-if="c.description">{{ c.description }}</div>
             <div class="card-meta">
               <span class="meta-intimacy" :style="{ color: intimacyColor(c.intimacy_level) }">
@@ -441,6 +447,18 @@ h2 {
   font-weight: 600;
   font-size: var(--text-sm);
   margin-top: 6px;
+}
+/* R82: 复用 R81 highlight-match - scoped 内本地颜色 */
+.match-hl {
+  background: oklch(85% 0.15 90 / 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+@media (prefers-color-scheme: dark) {
+  .match-hl {
+    background: oklch(60% 0.18 80 / 0.5);
+  }
 }
 .card-desc {
   font-size: 10px;
