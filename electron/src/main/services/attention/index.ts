@@ -9,6 +9,8 @@ import { scheduler } from './scheduler'
 // M8 多灵魂时 onTrigger 接到 decision.target_character_id 后 getPlanner(id) 切换。
 // reviewer H-HIGH-1:删除 `planner` 死 reexport(无人消费 + 触发 planner module 顶层副作用)
 import { getPlanner } from '../planner'
+// v0.21 Round K:M8 后端最后一步 — onTrigger 真用 active character 作 planner target
+import { getActiveCharacterId } from '../character-store'
 import { triggerScreenSnapshot } from '../perception'
 
 let getWindow: (() => BrowserWindow | null) | null = null
@@ -28,10 +30,17 @@ export function startAttention(
           /* vision 失败不阻塞 planner */
         })
       }
-      // v0.21 Round H + I:用 getPlanner() 替 module singleton。
-      // decision.target_character_id 由 scheduler 在 M8 多灵魂场景设;
-      // 当前 attention/scheduler 暂不设 target_character_id(走 default planner)。
-      const plan = await getPlanner(decision.target_character_id).plan(decision)
+      // v0.21 Round H + I + K:getPlanner factory + target_character_id 真接通。
+      //
+      // Round K:scheduler 不主动设 target_character_id 时,fallback 到当前 active
+      // character。意义:character 切换时 planner 实例自动切换(独立 budget / state),
+      // 旧 active 的 planner 留 Map cache 等下次再切回时复用(O(N) characters)。
+      //
+      // M8 GUI 真做时 scheduler 会主动设 target_character_id(从 mounted 中选),
+      // 这里 fallback active 自然失效。架构师建议的 5 行版本。
+      const targetId =
+        decision.target_character_id ?? (getActiveCharacterId() ?? undefined)
+      const plan = await getPlanner(targetId).plan(decision)
       console.log(
         `[attention] plan reason="${plan.reasoning ?? ''}" actions=${plan.actions.map((a) => a.type).join(',')}`,
       )
