@@ -402,11 +402,18 @@ export const useDialogStore = defineStore('dialog', () => {
         reason: chunk.error.slice(0, 100),
       })
       // UX R22: 友好化 LLM 错误 — domain='llm' 让规则按域过滤
+      // R99: toast 挂 "🔄 重试" action, 让用户从 toast 一键修复
       const fe = toFriendlyError(chunk.error, 'llm')
       bus.emit('ui:toast', {
         kind: 'error',
         message: `${fe.title}：${fe.detail}`,
         ttl_ms: 9000,
+        action: {
+          label: '🔄 重试',
+          do: () => {
+            void retryLast()
+          },
+        },
       })
     }
     if (chunk.done) {
