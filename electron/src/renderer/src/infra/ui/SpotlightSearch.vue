@@ -213,12 +213,17 @@ const results = computed<ResultItem[]>(() => {
   for (const c of characters.value) {
     const s = q ? scoreMatch(c.name, q) : 0.4
     if (q && s === 0) continue
+    // R90: subtitle 含亲密度 + 累计对话次数, 让用户一眼看到角色"分量"
+    const parts: string[] = []
+    if (c.template) parts.push(c.template)
+    parts.push(`♡ ${Math.round(c.intimacy_level)}`)
+    if (c.total_chats > 0) parts.push(`${c.total_chats} 次对话`)
     out.push({
       key: `char-${c.id}`,
       icon: '🎭',
       group: '角色',
       title: c.name,
-      ...(c.template !== undefined && { subtitle: `template: ${c.template}` }),
+      subtitle: parts.join(' · '),
       score: s,
       action: () => {
         emit('close')
