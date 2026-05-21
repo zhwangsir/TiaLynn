@@ -19,8 +19,10 @@ const {
   charactersRoot,
   characterDir,
   characterSoulDir,
+  getMountedCharacterIds,
   listCharacters,
   setActiveCharacterId,
+  setMountedCharacterIds,
   deleteCharacter,
 } = await import('./character-store')
 const {
@@ -184,6 +186,32 @@ describe('importCharacterPack', () => {
     expect(imp.character!.call_master_as).toBe('大人')
     expect(imp.character!.live2d_model_dir).toBe('Hu Tao')
     // 源已删 → 新 id 可以复用源 id 也可以不（generateId 行为）
+  })
+
+  /**
+   * v0.21 Round L:M8 灵魂社会 — import 后自动 mount 新角色
+   * (architect H-1 提议;user 期望"导入完她活着"对齐 M8 多灵魂语义)
+   */
+  it('R-L:import 完新 character 自动出现在 mounted 列表', () => {
+    const fx = makeFixture()
+    // 设 mounted 只有 active fx
+    setActiveCharacterId(fx.id)
+    setMountedCharacterIds([fx.id])
+    const before = getMountedCharacterIds()
+    expect(before).toEqual([fx.id])
+
+    // 导入新 character
+    const exp = exportCharacterPack(fx.id)
+    const imp = importCharacterPack(exp.buffer!)
+    expect(imp.ok).toBe(true)
+    expect(imp.character).toBeDefined()
+    const newId = imp.character!.id
+
+    // mounted 应该自动含新 id
+    const after = getMountedCharacterIds()
+    expect(after).toContain(newId)
+    expect(after).toContain(fx.id) // 旧的也保留
+    expect(after.length).toBe(2)
   })
 
   it('源 character 还在时 import 同名 → 新 id 自动 dedup', () => {

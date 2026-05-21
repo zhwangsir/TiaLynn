@@ -30,6 +30,8 @@ import {
   characterPreferencesPath,
   createCharacter,
   getCharacter,
+  getMountedCharacterIds,
+  setMountedCharacterIds,
 } from './character-store'
 
 export const CHARACTER_PACK_VERSION = '1.0'
@@ -387,6 +389,24 @@ export function importCharacterPack(
         console.warn('[character-pack] memory.db SQLite magic byte 校验失败，已拒绝')
       }
     }
+  }
+
+  // v0.21 Round L:M8 灵魂社会 — import 完自动 mount 新 character。
+  // architect H-1 提议:跟 createCharacter 后 user 期望"她活着"的语义对齐,
+  // 否则 mounted 列表始终只有 active,M8 多灵魂特性形同虚设。
+  // 失败不阻断 import(已成功 createCharacter),只警告。
+  try {
+    const current = getMountedCharacterIds()
+    if (!current.includes(created.id)) {
+      const r = setMountedCharacterIds([...current, created.id])
+      if (!r.ok) {
+        console.warn(
+          `[character-pack] import 成功但 mount 失败: ${r.reason} (character id=${created.id})`,
+        )
+      }
+    }
+  } catch (e) {
+    console.warn('[character-pack] import 成功但 mount 抛错:', e)
   }
 
   return { ok: true, character: created }

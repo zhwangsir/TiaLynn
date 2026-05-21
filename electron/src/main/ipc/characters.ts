@@ -126,8 +126,12 @@ export function registerCharactersIpc(getWindow: () => BrowserWindow | null): vo
     }
     if (ids.length > 16) {
       // 防 DoS:renderer 恶意 / bug 发巨大数组
-      return { ok: false as const, reason: 'too_many_ids(max 16)' }
+      // reviewer R-J MEDIUM-3:reason 改 snake_case 机器可读,16 限制写注释而非括号
+      return { ok: false as const, reason: 'too_many_ids' }
     }
+    // TODO M8-GUI:加 ids.every(x => typeof x === 'string') 校验(reviewer R-J MEDIUM-2)
+    //   当前 getCharacter 接受非 string 时返 undefined → character_not_found,
+    //   不崩溃但 error 信息混乱。GUI consumer 真做时一起加。
     const r = setMountedCharacterIds(ids)
     if (!r.ok) return { ok: false as const, reason: r.reason ?? 'failed' }
     const mountedIds = r.mounted_ids ?? []

@@ -598,11 +598,18 @@ export function _resetAllPlannersForTest(): void {
 /**
  * v0.21 Round J:dispose 指定 character 的 planner 实例。
  * 用在 `deleteCharacter` 后清掉 Map cache 项,避免 stale instance + 内存泄漏。
- * (architect 守护提前抓出 M-1 — 避免 reviewer 第 11 轮再补)
  *
  * 不存在的 characterId 返 false(idempotent,删 character 时不报错)。
+ *
+ * reviewer R-J MEDIUM-1 防御:空字符串拒绝(避免误删 default planner 的
+ * sentinel key`__default__` — 虽然 deleteCharacter 不会传 '',但 caller
+ * 可能直接调,严格 guard 让 default planner 不被意外清掉)
  */
 export function disposePlannerFor(characterId: string): boolean {
+  if (!characterId || characterId.length === 0) {
+    console.warn('[planner] disposePlannerFor: 拒绝空 characterId(防止误删 default)')
+    return false
+  }
   return plannerInstances.delete(characterId)
 }
 
