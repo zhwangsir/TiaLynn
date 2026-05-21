@@ -48,6 +48,7 @@ const emit = defineEmits<{
   (e: 'open-onboarding'): void
   (e: 'reload-model'): void
   (e: 'clear-dialog'): void
+  (e: 'export-dialog'): void
 }>()
 
 const query = ref('')
@@ -106,6 +107,7 @@ const commands: Command[] = [
   { title: '打开对话输入', hint: '💬', shortcut: 'Space', do: () => emit('open-input') },
   { title: '重载模型 / 灵魂', hint: '🔄', do: () => emit('reload-model') },
   { title: '清空对话历史', hint: '🧹', do: () => emit('clear-dialog') },
+  { title: '复制对话为 markdown', hint: '📥', do: () => emit('export-dialog') },
   { title: '重新打开引导 (Onboarding)', hint: '🪄', do: () => emit('open-onboarding') },
   // R79-fix (MED): 三主题命令是"直接进入", 与 ⌘+⇧T 的 cycle 行为语义不同 — 不挂误导性 shortcut
   { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },

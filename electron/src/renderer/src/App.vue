@@ -565,6 +565,7 @@ onBeforeUnmount(() => {
         @open-onboarding="onboardingOpen = true"
         @reload-model="bus.emit('avatar:reload-model')"
         @clear-dialog="dialog.clear()"
+        @export-dialog="exportDialogToClipboard()"
       />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
