@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
+import { parseInlineMarkdown } from '../../brain/inline-markdown'
 import { useThemeMode } from './useThemeMode'
 import { bus } from '../eventbus'
 
@@ -116,6 +117,11 @@ const emotionLabel: Record<string, { icon: string; label: string }> = {
   sleepy: { icon: '😴', label: '困' },
 }
 
+// R51: 把 latest.text 解析为 markdown segments (仅 **bold** / `code`)
+const segments = computed(() =>
+  latest.value?.text ? parseInlineMarkdown(latest.value.text) : [],
+)
+
 // R38: 复制 LLM reply — hover 时显示按钮
 async function copyText(): Promise<void> {
   const t = latest.value?.text
@@ -142,7 +148,13 @@ async function copyText(): Promise<void> {
       @mouseenter="onMouseEnter"
       @mouseleave="onMouseLeave"
     >
-      <span v-if="latest.text" class="text">{{ latest.text }}</span>
+      <span v-if="latest.text" class="text">
+        <template v-for="(seg, i) in segments" :key="i">
+          <strong v-if="seg.type === 'bold'" class="md-bold">{{ seg.text }}</strong>
+          <code v-else-if="seg.type === 'code'" class="md-code">{{ seg.text }}</code>
+          <template v-else>{{ seg.text }}</template>
+        </template>
+      </span>
       <span v-else-if="latest.error" class="text error-text">
         <span class="error-line">没收到回复 — 试试重试或检查 LLM 设置</span>
         <details class="error-detail">
@@ -340,6 +352,26 @@ async function copyText(): Promise<void> {
 .retry-btn:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
+}
+/* R51: inline markdown 渲染 */
+.md-bold {
+  font-weight: 700;
+  color: inherit;
+}
+.md-code {
+  display: inline;
+  padding: 1px 6px;
+  margin: 0 1px;
+  border-radius: var(--radius-sm);
+  background: oklch(0% 0 0 / 0.08);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+  color: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  .md-code {
+    background: oklch(100% 0 0 / 0.08);
+  }
 }
 .error-text {
   color: var(--color-danger);
