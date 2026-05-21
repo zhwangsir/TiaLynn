@@ -583,6 +583,21 @@ const providerOptions = [
   { v: 'ollama', label: 'Ollama 本地' },
 ] as const
 
+/** R103: 不同 provider 的 model placeholder, 避免 ollama 用户照抄 claude-* */
+const MODEL_PLACEHOLDER_BY_PROVIDER: Record<string, string> = {
+  anthropic: 'claude-sonnet-4-6 / claude-opus-4-7',
+  openai_compat: 'qwen2.5-7b / gpt-4o-mini / llama-3.1-8b',
+  ollama: 'qwen2.5:14b / llama3.1:8b',
+}
+const modelPlaceholder = computed<string>(() =>
+  MODEL_PLACEHOLDER_BY_PROVIDER[form.llm_provider] ?? 'claude-sonnet-4-6 / qwen2.5-7b / gpt-4o-mini',
+)
+const endpointPlaceholder = computed<string>(() => {
+  if (form.llm_provider === 'anthropic') return 'https://api.anthropic.com'
+  if (form.llm_provider === 'ollama') return 'http://127.0.0.1:11434/v1'
+  return 'http://127.0.0.1:1234/v1 (LM Studio) / 自定义 OpenAI 兼容'
+})
+
 const showIncomplete = ref(false)
 
 const modelOptions = computed(() => {
@@ -692,11 +707,11 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </label>
         <label>
           <span>Endpoint</span>
-          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" @blur="form.llm_endpoint = normalizeLlmEndpoint(form.llm_endpoint); markDirty()" />
+          <input v-model="form.llm_endpoint" type="text" :placeholder="endpointPlaceholder" @input="markDirty" @blur="form.llm_endpoint = normalizeLlmEndpoint(form.llm_endpoint); markDirty()" />
         </label>
         <label>
           <span>Model</span>
-          <input v-model="form.llm_model" type="text" placeholder="claude-sonnet-4-6 / qwen2.5-7b / gpt-4o-mini" @input="markDirty" />
+          <input v-model="form.llm_model" type="text" :placeholder="modelPlaceholder" @input="markDirty" />
         </label>
         <label>
           <span>API Key</span>
