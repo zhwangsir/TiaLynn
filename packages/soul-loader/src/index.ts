@@ -17,3 +17,11 @@ export { DEFAULT_SOUL } from './types'
 export { mergeSoulPartials, mergeWithDefaults, type MergeInput } from './merger'
 export { buildSystemPrompt, type BuildSystemPromptOptions } from './system-prompt'
 export { isLegacyV01Schema, migrateV01ToV2, type LegacySoulV01 } from './migrate'
+export {
+  diffSoulConfigs,
+  renderDiff,
+  shortValue,
+  type SoulDiff,
+  type FieldChange,
+  type ChangeKind,
+} from './diff'

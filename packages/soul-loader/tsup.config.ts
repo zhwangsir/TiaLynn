@@ -7,6 +7,7 @@ export default defineConfig({
     'src/merger.ts',
     'src/system-prompt.ts',
     'src/migrate.ts',
+    'src/diff.ts',
   ],
   format: ['esm', 'cjs'],
   dts: true,
