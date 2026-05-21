@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogStore } from '../../brain/stores/dialog'
 import { SttSession } from '../../presence/stt/web-speech'
 
@@ -51,6 +51,25 @@ async function submit(): Promise<void> {
   inputRef.value?.focus()
 }
 
+// R36: ↑↓ 浏览 user 历史消息 (terminal / Slack 风格)
+const userHistory = computed<string[]>(() => {
+  // 从最新往旧，去重连续相同
+  const out: string[] = []
+  let last = ''
+  for (let i = dialog.turns.length - 1; i >= 0; i--) {
+    const t = dialog.turns[i]
+    if (t?.role !== 'user') continue
+    const txt = t.text.trim()
+    if (!txt || txt === last) continue
+    out.push(txt)
+    last = txt
+    if (out.length >= 50) break
+  }
+  return out
+})
+const historyIdx = ref(-1) // -1 = 没浏览, 0 = 最新, 1 = 上一条...
+const draftBeforeBrowse = ref<string | null>(null) // 保存浏览前用户已打的草稿
+
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -60,6 +79,50 @@ function onKey(e: KeyboardEvent): void {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
     submit()
+    return
+  }
+  // ↑↓ 历史浏览 — 仅当 textarea 不是多行编辑中态 (cursor 在首/末行边界)
+  const ta = e.target as HTMLTextAreaElement
+  if (e.key === 'ArrowUp' && !e.shiftKey && !e.isComposing) {
+    const beforeCursor = ta.value.slice(0, ta.selectionStart)
+    if (!beforeCursor.includes('\n')) {
+      const hist = userHistory.value
+      if (hist.length === 0) return
+      if (historyIdx.value < 0) draftBeforeBrowse.value = text.value
+      const next = Math.min(historyIdx.value + 1, hist.length - 1)
+      if (next !== historyIdx.value) {
+        e.preventDefault()
+        historyIdx.value = next
+        text.value = hist[next]!
+        void nextTick(() => {
+          ta.setSelectionRange(text.value.length, text.value.length)
+        })
+      }
+    }
+  } else if (e.key === 'ArrowDown' && !e.shiftKey && !e.isComposing) {
+    if (historyIdx.value < 0) return
+    const afterCursor = ta.value.slice(ta.selectionStart)
+    if (!afterCursor.includes('\n')) {
+      e.preventDefault()
+      const next = historyIdx.value - 1
+      if (next < 0) {
+        historyIdx.value = -1
+        text.value = draftBeforeBrowse.value ?? ''
+        draftBeforeBrowse.value = null
+      } else {
+        historyIdx.value = next
+        text.value = userHistory.value[next]!
+      }
+      void nextTick(() => {
+        ta.setSelectionRange(text.value.length, text.value.length)
+      })
+    }
+  } else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+    // 任何其他按键 = 用户开始编辑 → 重置浏览态
+    if (historyIdx.value >= 0) {
+      historyIdx.value = -1
+      draftBeforeBrowse.value = null
+    }
   }
 }
 
