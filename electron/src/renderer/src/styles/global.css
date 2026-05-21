@@ -256,3 +256,42 @@ select:focus {
 /* .bubble 不在这里 — 它有自己的 translateX(-50%) 定位需求，
    scale 由 DialogBubble.vue scoped style 自己合写（避免 specificity 战 + transform 覆盖） */
 
+
+/* R80: 全局 .input-with-toggle 复合输入 — Settings/Onboarding/RVC/TTS API key 显隐共用 */
+.input-with-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-toggle > input {
+  flex: 1;
+  padding-right: 36px;
+}
+.input-with-toggle .toggle-show-btn {
+  position: absolute;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-muted);
+  transition: background 150ms, color 150ms;
+}
+.input-with-toggle .toggle-show-btn:hover {
+  background: var(--color-bubble-surface-hover);
+  color: var(--color-bubble-text);
+}
+.input-with-toggle .toggle-show-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.input-with-toggle .toggle-show-btn:disabled {
+  opacity: 0;
+  pointer-events: none;
+}

@@ -1258,40 +1258,7 @@ select:focus {
   opacity: 0.5;
   cursor: not-allowed;
 }
-/* R74: API Key input + show toggle 复合布局 */
-.input-with-toggle {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.input-with-toggle input {
-  flex: 1;
-  padding-right: 36px; /* 给 toggle 让位 */
-}
-.toggle-show-btn {
-  position: absolute;
-  right: 6px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--color-muted);
-  transition: background var(--duration-fast), color var(--duration-fast);
-}
-.toggle-show-btn:hover {
-  background: var(--color-bubble-surface-hover);
-  color: var(--color-bubble-text);
-}
-.toggle-show-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
+/* R80: .input-with-toggle 已提到 global.css 共享 */
 
 .check-row {
   display: flex;

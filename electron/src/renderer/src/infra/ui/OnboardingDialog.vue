@@ -451,40 +451,7 @@ h2 {
   box-sizing: border-box;
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
-/* R75: show/hide toggle 复合布局, 同 SettingsPanel R74 */
-.input-with-toggle {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.input-with-toggle input {
-  flex: 1;
-  padding-right: 36px;
-}
-.toggle-show-btn {
-  position: absolute;
-  right: 6px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--color-muted);
-  transition: background var(--duration-fast), color var(--duration-fast);
-}
-.toggle-show-btn:hover {
-  background: var(--color-bubble-surface-hover);
-  color: var(--color-bubble-text);
-}
-.toggle-show-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
+/* R80: .input-with-toggle 已提到 global.css 共享 */
 
 .field input:focus {
   border-color: var(--color-accent);
