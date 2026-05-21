@@ -119,6 +119,48 @@ const settingsKeywords: SettingHit[] = [
   { keyword: '快捷键 按键', detail: '查看快捷键 (按 ?)' },
 ]
 
+/** R46: 命令使用频次记忆 — localStorage 持久化让常用命令上浮 */
+const USAGE_STORAGE_KEY = 'tialynn-spotlight-cmd-usage'
+
+function loadUsage(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(USAGE_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      // 安全 — 仅保留 string→number 项
+      const safe: Record<string, number> = {}
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v === 'number' && Number.isFinite(v) && v > 0) safe[k] = v
+      }
+      return safe
+    }
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+function bumpUsage(title: string): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const usage = loadUsage()
+    usage[title] = (usage[title] ?? 0) + 1
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usage))
+  } catch {
+    // localStorage 满 / 隐私 — 静默
+  }
+}
+
+function usageBoost(title: string): number {
+  const usage = loadUsage()
+  const count = usage[title] ?? 0
+  if (count === 0) return 0
+  // 平方根衰减 — 用 10 次 ≈ +0.31, 用 100 次 ≈ +1.0 (天花板)
+  return Math.min(1, Math.sqrt(count) / 10)
+}
+
 function scoreMatch(text: string, q: string): number {
   if (!q) return 0
   const lt = text.toLowerCase()
@@ -135,17 +177,18 @@ const results = computed<ResultItem[]>(() => {
   const q = query.value.trim()
   const out: ResultItem[] = []
 
-  // 命令
+  // 命令 — R46 加 usageBoost 让常用项排前
   for (const c of commands) {
-    const s = q ? scoreMatch(c.title, q) : 0.5
-    if (q && s === 0) continue
+    const matchScore = q ? scoreMatch(c.title, q) : 0.5
+    if (q && matchScore === 0) continue
     out.push({
       key: `cmd-${c.title}`,
       icon: c.hint,
       group: '命令',
       title: c.title,
-      score: s + 0.1, // 命令略优先
+      score: matchScore + 0.1 + usageBoost(c.title),
       action: () => {
+        bumpUsage(c.title)
         emit('close')
         c.do()
       },
