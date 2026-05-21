@@ -9,8 +9,10 @@
  * Bootstrap 完成后淡出，opacity 0 后真正卸载。
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import { useConfigStore } from '../stores/config'
 
 const props = defineProps<{ ready: boolean }>()
+const cfg = useConfigStore()
 
 const MIN_SHOW_MS = 700
 const startTime = ref(Date.now())
@@ -49,6 +51,7 @@ const visible = computed(() => !props.ready || !fadeOut.value)
         <span></span>
         <span></span>
       </div>
+      <div v-if="cfg.version" class="version">v{{ cfg.version }}</div>
     </div>
   </transition>
 </template>
@@ -123,6 +126,17 @@ const visible = computed(() => !props.ready || !fadeOut.value)
   background: oklch(85% 0.12 320 / 0.7);
   animation: dot-fade 1.3s ease-in-out infinite;
 }
+/* R100: 版本号微小显示 */
+.version {
+  position: absolute;
+  bottom: 20px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: oklch(70% 0.04 280 / 0.55);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  animation: brand-rise 0.9s 0.5s var(--ease-out-expo) backwards;
+}
+
 .dots span:nth-child(2) {
   animation-delay: 0.18s;
 }
