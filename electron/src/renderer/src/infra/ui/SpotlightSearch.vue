@@ -184,6 +184,14 @@ function scoreMatch(text: string, q: string): number {
   return 0.5 + startBoost + lenBoost
 }
 
+/** R123: 当前 filter 模式 (footer 角标) */
+const filterMode = computed<string>(() => {
+  const q = query.value.trim()
+  if (q.startsWith('/')) return '/ 仅命令'
+  if (q.startsWith('@')) return '@ 仅角色'
+  return ''
+})
+
 const results = computed<ResultItem[]>(() => {
   let q = query.value.trim()
   // R121: "/" 前缀仅命令; "@" 仅角色 (Discord 风格 namespace 过滤)
@@ -383,6 +391,7 @@ function onBackdrop(e: MouseEvent): void {
           </li>
         </ul>
         <footer v-if="results.length > 0" class="spotlight-footer">
+          <span v-if="filterMode" class="filter-badge">{{ filterMode }}</span>
           <span>{{ results.length }} 项</span>
           <span class="footer-sep">·</span>
           <span><kbd>↵</kbd> 选中</span>
@@ -533,6 +542,15 @@ function onBackdrop(e: MouseEvent): void {
 }
 .footer-sep {
   opacity: 0.4;
+}
+/* R123: 过滤模式 badge — accent 色突出当前生效的 namespace */
+.filter-badge {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: 10px;
 }
 
 /* R110: ⌘+N 数字快选 hint (默认半透明, hover/active 时高亮) */
