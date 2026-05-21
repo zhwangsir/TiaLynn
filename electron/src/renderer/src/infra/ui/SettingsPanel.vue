@@ -565,8 +565,10 @@ async function openModelsDir(): Promise<void> {
 }
 
 function cancel(): void {
+  // R44: dirty 时强制确认（避免误操作丢失大量配置改动）
   if (dirty.value) {
-    // 简单提示：丢弃改动；下次面板打开会从 store 重新读
+    const ok = window.confirm('有未保存的改动，确定放弃吗？')
+    if (!ok) return
     bus.emit('ui:toast', { kind: 'warn', message: '已放弃未保存的改动', ttl_ms: 2500 })
   }
   emit('close')
@@ -648,7 +650,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
     :title="`⚙️ 设置 · v${cfg.version || '0.6'}`"
     theme="light"
     :defaults="{ width: 880, height: 720 }"
-    @close="emit('close')"
+    @close="cancel"
   >
     <template #header-extra>
       <button
