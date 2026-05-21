@@ -106,6 +106,15 @@ const TOKEN_DANGER = 8000
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault()
+    // R105: 分阶段 Esc — 优先停 STT > 中止 LLM > 关闭面板
+    if (sttListening.value) {
+      sttSession?.stop()
+      return
+    }
+    if (dialog.replying) {
+      dialog.abort()
+      return
+    }
     emit('close')
     return
   }
