@@ -24,17 +24,13 @@ useFocusTrap(cardRef, alwaysOpen)
 
 const step = ref<1 | 2 | 3>(1)
 
-/** R124: 步切换后自动 focus 该步主要输入框 */
+/** R124+R126-fix (MED): 步切换后自动 focus 主输入框, 用 data-focus-target 避免 placeholder 文本变化失焦 */
 watch(step, async (s) => {
   await nextTick()
-  if (s === 2) {
-    // step 2: focus endpoint input
-    const el = cardRef.value?.querySelector<HTMLInputElement>('input[placeholder*="11434"], input[placeholder*="127.0.0.1"]')
-    el?.focus()
-  } else if (s === 3) {
-    const el = cardRef.value?.querySelector<HTMLInputElement>('input[placeholder*="8765"]')
-    el?.focus()
-  }
+  const target = s === 2 ? 'step2' : s === 3 ? 'step3' : null
+  if (!target) return
+  const el = cardRef.value?.querySelector<HTMLInputElement>(`[data-focus-target="${target}"]`)
+  el?.focus()
 })
 const llmEndpoint = ref('')
 const llmModel = ref('')
@@ -223,6 +219,7 @@ function skip(): void {
             <span>Endpoint</span>
             <input
               v-model="llmEndpoint"
+              data-focus-target="step2"
               placeholder="http://127.0.0.1:11434/v1"
               @input="checkResult = null"
               @blur="llmEndpoint = normalizeLlmEndpoint(llmEndpoint)"
@@ -290,6 +287,7 @@ $ uvicorn main:app --host 127.0.0.1 --port 8765</pre>
             <span>Sidecar URL（装好 sidecar 后填）</span>
             <input
               v-model="ttsSidecarUrl"
+              data-focus-target="step3"
               placeholder="http://127.0.0.1:8765 — 留空则不启用 TTS"
               @input="ttsResult = null"
               @keydown.enter="finish"

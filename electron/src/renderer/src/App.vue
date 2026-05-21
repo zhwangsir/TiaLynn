@@ -218,6 +218,8 @@ async function onMenuSelect(id: string): Promise<void> {
 
 function closeSettings(): void {
   settingsOpen.value = false
+  // R126-fix (MED): 重置 settingsInitialTab 防下次开 settings 串到 pill 定向的 tab
+  settingsInitialTab.value = undefined
 }
 
 function closeInput(): void {

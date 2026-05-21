@@ -12,8 +12,10 @@ import SoulChangeLogPanel from './SoulChangeLogPanel.vue'
 import { normalizeLlmEndpoint, normalizeSimpleUrl } from '../../brain/normalize-endpoint'
 import type { RuntimeConfig } from '@shared/types'
 
-/** R119: 接 initialTab prop, 让 ServiceStatusPill 等组件能定向跳转 */
-const props = defineProps<{ initialTab?: 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp' }>()
+/** R119: 接 initialTab prop, 让 ServiceStatusPill 等组件能定向跳转
+ *  R126-fix (LOW): SettingsTab 类型抽到顶部, defineProps 引用同一 type 避免双 source */
+type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
+const props = defineProps<{ initialTab?: SettingsTab }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const cfg = useConfigStore()
@@ -62,8 +64,7 @@ const userEdited = ref(false)
 const saveStatus = ref<{ ok: boolean; message: string } | null>(null)
 /** v0.13: 磁盘占用统计 dialog */
 const diskUsageOpen = ref(false)
-/** v0.13 (M1): 当前 tab，5 个分类，v-show 保 form 状态不丢 */
-type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
+/** v0.13 (M1): 当前 tab, v-show 保 form 状态不丢; SettingsTab 类型在顶部已定义 */
 const activeTab = ref<SettingsTab>(props.initialTab ?? 'llm')
 
 /** R107+R109-fix (HIGH): tabs ←→ 键盘导航, 切换后 focus 转移到新 tab (WAI-ARIA roving tabindex 标准) */
