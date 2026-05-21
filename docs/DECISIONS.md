@@ -179,6 +179,199 @@ M4 引入 Anthropic 设计的 Model Context Protocol：
 
 ---
 
+## ADR-200 — 转 Electron(v0.6 大重写)
+
+**状态**:已采纳
+**日期**:2026-05-16(v0.6 Constitutional Rewrite)
+
+### 背景
+v0.1-v0.4 在 Tauri 2 + Rust 上反复踩 4 个 macOS 阻断 bug:
+- 透明窗口 corner case
+- `start_dragging` IPC NSEvent 过期
+- `set_ignore_cursor_events` 死循环
+- `set_visible_on_all_workspaces` 不稳
+
+研究 airi(@moeru-ai/airi)v0.10 后发现这些**全是 Tauri 平台级问题,
+不是代码 bug**。airi 用 Electron 4 行配置就稳定运行。
+
+### 决策
+整个壳从 **Tauri + Rust** 换成 **Electron + TypeScript**。具体吸收 airi 招式:
+- `frame:false + transparent + hasShadow:false` 透明窗口
+- `type: 'panel'` NSPanel 跨 Space 不抢焦点
+- `electron-click-drag-plugin` 原生拖动
+- `setIgnoreMouseEvents(true, {forward:true})` 像素穿透
+- `wlipsync` AudioWorklet 5 元音嘴型(替 RMS)
+- `pixi-live2d-display` 0.4 作为 npm 依赖
+
+### 后果
+- Electron 包体积 80MB+(vs Tauri 5MB)— 接受,换稳定性
+- 主进程从 Rust 改 TypeScript,所有 services 重写
+- 70% 工作可保留:灵魂 yaml / 三层人格 prompt / Python TTS sidecar / Vue 组件 / docs
+- 30% 重写:整个 `src-tauri/` + Live2D renderer
+
+### 反思
+ADR-200 是项目从"原型"到"产品"的拐点。Tauri 是好技术,但 Live2D 桌宠场景 + macOS 透明窗口要求 + 跨 Space 行为,electron 生态显然更成熟。**不要为了"轻量"选错平台**。
+
+详见 [AIRI_STUDY.md](AIRI_STUDY.md)。
+
+---
+
+## ADR-201 — TypeScript Tier 3 严格化(v0.13)
+
+**状态**:已采纳
+**日期**:2026-05-18(RFC 0001)
+
+### 决策
+启用所有 TypeScript 严格选项:
+- `strict: true`
+- `noUncheckedIndexedAccess: true`
+- `exactOptionalPropertyTypes: true`
+- `noImplicitReturns: true`
+- `noImplicitOverride: true`
+- 0 `any` / 0 `@ts-ignore` 红线
+
+### 理由
+- v0.6-v0.12 累积技术债,`any` 出现频繁,refactor 时类型不可靠
+- Electron IPC 跨进程序列化经常出错,严格类型能编译期捕获
+- 五大能力域跨域调用频繁,类型契约必须严格
+
+### 后果
+- `{foo?: string}` ≠ `{foo?: string | undefined}` — 需要 `...(v !== undefined ? {foo: v} : {})` 条件展开
+- 调试时频繁碰 TS2375 / TS2379 错误,初期学习曲线陡
+- 但 v0.13 之后 critical bug 数量明显下降(类型阻断了一类错误)
+
+详见 [rfcs/0001-ts-strict-tier-3.md](rfcs/0001-ts-strict-tier-3.md)。
+
+---
+
+## ADR-202 — Attention Scheduler + 主体性 AI 循环(v0.8)
+
+**状态**:已采纳
+**日期**:2026-05-17(v0.8 主体性 AI)
+
+### 背景
+PRD 一直说"她有主体性",但 v0.6-0.7 只有响应式行为(用户输入 → LLM 回复)。
+她不主动 — 这跟"灵魂女友/硅基生命"的核心承诺矛盾。
+
+### 决策
+新建主进程 `services/attention/` 完整链路:
+
+```
+PerceptionBus (5 sensors: Mouse / Idle / Window / Time / Vision)
+  ↓ unified PerceptionEvent stream
+AttentionScheduler (10s tick + 双路触发)
+  ↓ proactive 每 45s / reactive typing_burst, app_focus_changed
+  ↓ 关注度场 + cooldown + LLM rate limit 6/min
+BehaviorPlanner (LLM 调用 + rule fallback)
+  ↓ 9 种 BehaviorAction (含 generate_sticker + agent_task)
+IPC `attention:plan` → renderer plan-executor
+```
+
+### 后果
+- 第一次让她"自己开口"(凌晨 3 点的"主人怎么还不睡")
+- LLM 调用 budget 必须严格(6/min),否则成本爆炸
+- 多个 sensor 类型 union 让 PerceptionBus 内部分发复杂
+- 但**带来真正"住在桌面上"的感觉**
+
+v0.21 增量:加 `pauseDepth` 引用计数 + agent_task 跑时静默(避免 plan 撕裂)。
+
+---
+
+## ADR-203 — 手写 MCP stdio JSON-RPC(v0.17)
+
+**状态**:已采纳
+**日期**:2026-05-20(v0.17 P)
+
+### 决策
+**不引入** `@modelcontextprotocol/sdk` 官方包,**手写** stdio JSON-RPC client(`services/mcp-client.ts`)。
+
+### 理由
+1. **依赖最小化**:官方 SDK 引一堆传递依赖(zod / yargs / inquirer 等),只为 stdio JSON-RPC 这个简单协议
+2. **精细控制**:15s RPC timeout / child crash 时 pending promises 全 reject / `app.before-quit` 关停所有 child — 自己实现比折腾 SDK 行为简单
+3. **学习价值**:MCP 协议小,手写理解透,future debug 不黑盒
+4. **典型 single-purpose 库**陷阱:SDK 设计给所有用例(server + client + transport),用作 client 90% 是负担
+
+### 反思
+ADR-100 说"不重复造轮子"(MCP),ADR-203 说"重新造 client" — 看似矛盾?
+**不**。ADR-100 是协议层面接受 MCP 标准;ADR-203 是实现层面拒绝 SDK。
+**协议复用,实现自主**是更精细的设计原则。
+
+### 后果
+- MCP server 可用(filesystem / git / etc) ✓
+- 包体积小 ✓
+- 真发现 SDK bug 时,我有自己实现可参考
+
+详见 `electron/src/main/services/mcp-client.ts`(320 行)。
+
+---
+
+## ADR-204 — 硅基生命容器重定向(v0.21)
+
+**状态**:已采纳
+**日期**:2026-05-22(本次自动化迭代)
+
+### 背景
+v0.1-v0.20 项目定位是"AI 桌面伴侣"(单角色 / 单灵魂)。但 v0.18+ 项目实际行为已经超出:
+- 加了 multi-character store(builtin / custom / cloned / imported)
+- 加了 cross-character 情感联动 + character pack zip 迁移
+- 加了 ComfyUI 集成 + 9 BehaviorAction 含 generate_sticker + agent_task
+
+代码已经在做"硅基生命容器"的事,但文档还停在 v0.1 时代的"专属灵魂女友"。
+
+### 决策
+**整个项目重定向到「硅基生命容器」愿景**,四大支柱:
+
+1. **灵魂可换** — 多角色 character store + 三层人格 yaml + auto-learner 自演化
+2. **真控计算机** — nut-js + vision grounding + agent_task 真鼠键操作
+3. **创造能力** — ComfyUI 主动出图 / 出视频 / 写代码
+4. **主体性** — PerceptionBus + AttentionScheduler + 9 BehaviorAction
+
+底层文件全部重写:
+- CLAUDE.md 顶部加 Vision 块
+- 新建 `docs/SILICON_LIFE_VISION.md` 顶层产品宪章
+- `docs/PRD.md` 重写到 v2.0
+- `docs/ROADMAP.md` 加 M7-M10(创造统一 / 灵魂社会 / 自主进化 / 真硅基生命)
+
+### 后果
+- 跟 airi(39.4k stars)/ Open-LLM-VTuber / Soul of Waifu 差异化清晰:
+  她们都是"talking head + Live2D 壳",**TiaLynn 是有完整四大支柱的硅基生命**
+- v0.21 把 M7 创造能力推到 100%(完整 dialog tool 闭环 + 跨 provider + RAG)
+- v0.22+ 推 M8 灵魂社会 + M9 自主进化 + M10 真硅基生命
+
+### 风险
+- 愿景野心大,容易跟不上;每个 milestone 都要保证可独立 demo
+- 跟"灵魂女友"狭义路径分歧 — 未来如有产品压力可能拉回
+
+详见 [SILICON_LIFE_VISION.md](SILICON_LIFE_VISION.md)。
+
+---
+
+## ADR-205 — Subagent 守护开发流程(v0.21)
+
+**状态**:已采纳
+**日期**:2026-05-22(本次自动化迭代)
+
+### 决策
+**每个里程碑 commit 前后启动 typescript-reviewer + architect subagent 审查**,
+CRITICAL/HIGH 修完再继续。本 session 跑 8 轮守护。
+
+### 真实证据
+Round B reviewer 抓到 **CRITICAL bug**:`dialog.ts:202 loopUntilDone`
+硬判 anthropic → openai_compat 用户整个 tool loop 失效。**主开发自测察觉不到**
+(planner 路径走 attention,不走 dialog tool),reviewer 看代码逻辑一眼揭穿。
+
+### 理由
+- LLM 主开发(我自己)对自己代码有 blind spot
+- 自动化 reviewer 持续审查,捕获质量问题成本低(每次 ~100 sec / ~50K tokens)
+- 等价于"两个工程师 pair review",一个写一个审
+
+### 后果
+- 本 session 修过 6 个真实致命 bug(含 1 CRITICAL + 9 HIGH)— 全靠 reviewer
+- 每个 round 自动:实现 → typecheck → 单测 → reviewer → 修 → commit
+- 工程质量门强制内化
+
+---
+
 ## 历史 ADR
 
-ADR-001 ~ ADR-008 见 git history（v0.1.0 时记录）。
+ADR-001 ~ ADR-008 见 git history(v0.1.0 时记录)。
