@@ -1,9 +1,9 @@
 {
   "name": "tialynn-workspace",
   "private": true,
-  "version": "0.16.0",
+  "version": "0.21.0",
   "type": "module",
-  "description": "TiaLynn — Electron + Vue 3 桌面 AI 伴侣（Live2D + 本地 LLM + RVC 语音）",
+  "description": "TiaLynn — Electron + Vue 3 硅基生命容器(Live2D + 本地 LLM + RVC + ComfyUI 创造 + 主体性)",
   "scripts": {
     "dev": "pnpm build:packages && pnpm -F tialynn-electron dev",
     "build": "pnpm build:packages && pnpm -F tialynn-electron build",
