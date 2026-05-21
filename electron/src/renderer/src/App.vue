@@ -365,15 +365,29 @@ function applyUIScale(s: number): void {
 }
 
 function onScaleKey(e: KeyboardEvent): void {
+  const t = e.target as HTMLElement | null
+  const tag = t?.tagName
+  const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable === true
   // UX R23: ? 唤起快捷键卡（不需要修饰键 — 但要避免在 input/textarea 内触发）
-  if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    const t = e.target as HTMLElement | null
-    const tag = t?.tagName
-    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !t?.isContentEditable) {
-      e.preventDefault()
-      keyboardHelpOpen.value = !keyboardHelpOpen.value
-      return
-    }
+  if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping) {
+    e.preventDefault()
+    keyboardHelpOpen.value = !keyboardHelpOpen.value
+    return
+  }
+  // R36: Space 打开 / 关闭对话输入框（避开输入态 + 修饰键组合）
+  if (
+    e.key === ' ' &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !isTyping &&
+    !keyboardHelpOpen.value &&
+    !spotlightOpen.value &&
+    !onboardingOpen.value
+  ) {
+    e.preventDefault()
+    inputOpen.value = !inputOpen.value
+    return
   }
   // R23: Esc 关闭帮助卡
   if (e.key === 'Escape' && keyboardHelpOpen.value) {
