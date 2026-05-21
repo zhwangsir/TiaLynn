@@ -297,6 +297,94 @@ export function getActiveCharacter(): Character | null {
   return getCharacter(id)
 }
 
+/**
+ * v0.21 Round I:M8 灵魂社会前置 — mountedCharacterIds 数组。
+ *
+ * "Mounted" = 代码层并行存活(独立 planner / memory.db / emotional state),
+ * 跟"active"(GUI 焦点)区分。M8 多 Live2D 同框时 mounted 数组里多个 character
+ * 都在跑;GUI Live2DStage 当前显示 active 那个,后续 v0.23 refactor 时
+ * 允许 N 个 canvas 同框。
+ *
+ * 存储跟 active-character.json 同一文件(向后兼容:旧文件没 mounted_ids
+ * 字段时,返回 [active_id])。
+ */
+interface ActiveCharacterFile {
+  id?: string
+  switched_at?: number
+  /** v0.21 Round I:并行 mounted 的 character id 列表(active 必须在其中) */
+  mounted_ids?: string[]
+}
+
+function readActiveFile(): ActiveCharacterFile {
+  const p = activeIdPath()
+  if (!existsSync(p)) return {}
+  try {
+    return JSON.parse(readFileSync(p, 'utf-8')) as ActiveCharacterFile
+  } catch {
+    return {}
+  }
+}
+
+function writeActiveFile(file: ActiveCharacterFile): void {
+  writeFileSync(activeIdPath(), JSON.stringify(file, null, 2), 'utf-8')
+}
+
+/**
+ * 返回当前 mounted character id 数组(总是非空且含 active)。
+ * 旧文件无 mounted_ids 字段时 fallback 到 [active_id]。
+ */
+export function getMountedCharacterIds(): string[] {
+  const file = readActiveFile()
+  if (file.mounted_ids && file.mounted_ids.length > 0) {
+    // 防御:如果 active 没在 mounted_ids 里,补进去
+    const activeId = file.id
+    if (activeId && !file.mounted_ids.includes(activeId)) {
+      return [activeId, ...file.mounted_ids]
+    }
+    return [...file.mounted_ids]
+  }
+  // Fallback:旧版本数据,只 active 一个
+  if (file.id) return [file.id]
+  return []
+}
+
+/**
+ * 设置 mounted character ids 列表。
+ *
+ * 约束:
+ * - 所有 id 必须存在(`getCharacter(id) !== null`)
+ * - active 必须在数组内(若不在,自动补到首位)
+ * - 空数组拒绝(至少要保留 active)
+ */
+export function setMountedCharacterIds(ids: string[]): {
+  ok: boolean
+  mounted_ids?: string[]
+  reason?: string
+} {
+  if (ids.length === 0) {
+    return { ok: false, reason: 'empty_list_not_allowed' }
+  }
+  // 去重 + 校验
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const id of ids) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    if (!getCharacter(id)) {
+      return { ok: false, reason: `character_not_found: ${id}` }
+    }
+    deduped.push(id)
+  }
+  const file = readActiveFile()
+  // active 必须在 mounted 内 — 若不在自动补
+  if (file.id && !deduped.includes(file.id)) {
+    deduped.unshift(file.id)
+  }
+  const next: ActiveCharacterFile = { ...file, mounted_ids: deduped }
+  writeActiveFile(next)
+  return { ok: true, mounted_ids: deduped }
+}
+
 // === Legacy 迁移 ===
 
 let migrationChecked = false

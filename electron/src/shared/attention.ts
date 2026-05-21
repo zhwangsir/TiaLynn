@@ -132,6 +132,14 @@ export interface SchedulerDecision {
   reason: string
   /** 当前关注度快照（传给 Planner） */
   snapshot: AttentionSnapshot
+  /**
+   * v0.21 Round I:M8 前置 — 决策给哪个灵魂。
+   * 当前 attention scheduler 不主动设(走 default planner);
+   * M8 真做时 scheduler 根据 perception context 选 target,attention/index.ts
+   * 收到后 getPlanner(decision.target_character_id) 切对应 planner 实例。
+   * undefined = 用 default planner(保留向后兼容)。
+   */
+  target_character_id?: string
 }
 
 export interface AttentionConfig {

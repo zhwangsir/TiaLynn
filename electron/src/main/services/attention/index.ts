@@ -28,9 +28,10 @@ export function startAttention(
           /* vision 失败不阻塞 planner */
         })
       }
-      // v0.21 Round H:用 getPlanner() 替 module singleton。
-      // 当前所有 trigger 走 default planner(同旧行为);M8 多灵魂时改 getPlanner(decision.target_character_id)
-      const plan = await getPlanner().plan(decision)
+      // v0.21 Round H + I:用 getPlanner() 替 module singleton。
+      // decision.target_character_id 由 scheduler 在 M8 多灵魂场景设;
+      // 当前 attention/scheduler 暂不设 target_character_id(走 default planner)。
+      const plan = await getPlanner(decision.target_character_id).plan(decision)
       console.log(
         `[attention] plan reason="${plan.reasoning ?? ''}" actions=${plan.actions.map((a) => a.type).join(',')}`,
       )

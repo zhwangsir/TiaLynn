@@ -28,10 +28,12 @@ const {
   getActiveCharacter,
   getActiveCharacterId,
   getCharacter,
+  getMountedCharacterIds,
   listCharacters,
   readCharacterSoulFile,
   recordChatInteraction,
   setActiveCharacterId,
+  setMountedCharacterIds,
   updateCharacter,
   writeCharacterSoulFile,
 } = await import('./character-store')
@@ -250,5 +252,95 @@ describe('Active character', () => {
     const r = await deleteCharacter(c1.id)
     expect(r.ok).toBe(true)
     expect(getActiveCharacter()?.id).toBe(c2.id)
+  })
+})
+
+/**
+ * v0.21 Round I:M8 灵魂社会前置 — mountedCharacterIds API。
+ * "Mounted" = 代码层多 character 并行存活;"active" = GUI 焦点单选。
+ */
+describe('mountedCharacterIds(M8 前置)', () => {
+  it('空 storage:返 [] (没 active 也没 mounted)', () => {
+    expect(getMountedCharacterIds()).toEqual([])
+  })
+
+  it('只 active 无 mounted_ids 字段:fallback 到 [active_id]', () => {
+    const c = createCharacter(minimal)
+    setActiveCharacterId(c.id)
+    // active-character.json 此时只有 {id, switched_at},无 mounted_ids
+    expect(getMountedCharacterIds()).toEqual([c.id])
+  })
+
+  it('setMountedCharacterIds 设单个 character → get 一致', () => {
+    const c = createCharacter(minimal)
+    setActiveCharacterId(c.id)
+    const r = setMountedCharacterIds([c.id])
+    expect(r.ok).toBe(true)
+    expect(r.mounted_ids).toEqual([c.id])
+    expect(getMountedCharacterIds()).toEqual([c.id])
+  })
+
+  it('多 character 并行 mounted:get 返完整列表', () => {
+    const c1 = createCharacter(minimal)
+    const c2 = createCharacter({ ...minimal, name: 'Beta' })
+    const c3 = createCharacter({ ...minimal, name: 'Gamma' })
+    setActiveCharacterId(c1.id)
+    const r = setMountedCharacterIds([c1.id, c2.id, c3.id])
+    expect(r.ok).toBe(true)
+    expect(r.mounted_ids).toEqual([c1.id, c2.id, c3.id])
+    expect(getMountedCharacterIds()).toEqual([c1.id, c2.id, c3.id])
+  })
+
+  it('空数组 → 拒绝(至少要保留 active)', () => {
+    const c = createCharacter(minimal)
+    setActiveCharacterId(c.id)
+    const r = setMountedCharacterIds([])
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('empty_list_not_allowed')
+  })
+
+  it('含不存在 id → 拒绝', () => {
+    const c = createCharacter(minimal)
+    setActiveCharacterId(c.id)
+    const r = setMountedCharacterIds([c.id, 'nonexistent'])
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/character_not_found/)
+  })
+
+  it('重复 id → 去重', () => {
+    const c1 = createCharacter(minimal)
+    const c2 = createCharacter({ ...minimal, name: 'Beta' })
+    setActiveCharacterId(c1.id)
+    const r = setMountedCharacterIds([c1.id, c2.id, c1.id, c2.id])
+    expect(r.ok).toBe(true)
+    expect(r.mounted_ids).toEqual([c1.id, c2.id])
+  })
+
+  it('mounted 不含 active → 自动补 active 到首位', () => {
+    const c1 = createCharacter(minimal)
+    const c2 = createCharacter({ ...minimal, name: 'Beta' })
+    setActiveCharacterId(c1.id)
+    const r = setMountedCharacterIds([c2.id]) // 没 c1
+    expect(r.ok).toBe(true)
+    expect(r.mounted_ids).toEqual([c1.id, c2.id]) // active 补首位
+  })
+
+  it('持久化 + reload 一致(JSON 写盘 + 再读)', () => {
+    const c1 = createCharacter(minimal)
+    const c2 = createCharacter({ ...minimal, name: 'Beta' })
+    setActiveCharacterId(c1.id)
+    setMountedCharacterIds([c1.id, c2.id])
+    // 模拟 reload — 直接 readActiveFile path 验证
+    const reloaded = getMountedCharacterIds()
+    expect(reloaded).toEqual([c1.id, c2.id])
+  })
+
+  it('防御:setMountedCharacterIds 后旧 active id 仍 readable', () => {
+    const c1 = createCharacter(minimal)
+    const c2 = createCharacter({ ...minimal, name: 'Beta' })
+    setActiveCharacterId(c1.id)
+    setMountedCharacterIds([c1.id, c2.id])
+    // active 字段不被 mounted 操作覆盖
+    expect(getActiveCharacterId()).toBe(c1.id)
   })
 })
