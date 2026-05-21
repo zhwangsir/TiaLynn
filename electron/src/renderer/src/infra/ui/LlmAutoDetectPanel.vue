@@ -34,6 +34,18 @@ function toggleExpand(endpoint: string): void {
   expandedEndpoints.value = next
 }
 
+/** R115: latency 颜色: <100ms 绿 / <500ms 黄 / >=500ms 红 */
+function latencyClass(ms: number): string {
+  if (ms < 100) return 'fast'
+  if (ms < 500) return 'medium'
+  return 'slow'
+}
+function latencyHint(ms: number): string {
+  if (ms < 100) return `极快 (${ms}ms)`
+  if (ms < 500) return `正常 (${ms}ms)`
+  return `较慢 (${ms}ms) — 可能影响流式响应`
+}
+
 async function autoDetect(): Promise<void> {
   detecting.value = true
   detectError.value = ''
@@ -80,7 +92,10 @@ function applyDetected(item: DetectedItem, model?: string): void {
         <div class="detected-head">
           <span class="detected-label">✓ {{ d.label }}</span>
           <span class="detected-endpoint">{{ d.endpoint }}</span>
-          <span class="detected-latency">{{ d.latencyMs }}ms</span>
+          <span
+            :class="['detected-latency', latencyClass(d.latencyMs)]"
+            :title="latencyHint(d.latencyMs)"
+          >{{ d.latencyMs }}ms</span>
         </div>
         <div v-if="d.models.length > 0" class="detected-models">
           <button
@@ -173,6 +188,19 @@ function applyDetected(item: DetectedItem, model?: string): void {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* R115: latency 三档颜色 */
+.detected-latency.fast {
+  color: var(--color-success);
+  font-weight: 600;
+}
+.detected-latency.medium {
+  color: var(--color-warn);
+}
+.detected-latency.slow {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
 .detected-latency {
   font-size: 10px;
   color: var(--color-muted);
