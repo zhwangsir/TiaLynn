@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { ref, toRaw } from 'vue'
 import type { ModelInfo, RuntimeConfig, SoulConfig } from '@shared/types'
 import { bus } from '../eventbus'
+import { toFriendlyError } from '../friendly-error'
 
 /**
  * Electron IPC 用 V8 结构化克隆，对 Vue reactive Proxy 不友好。
@@ -84,7 +85,7 @@ export const useConfigStore = defineStore('config', () => {
     testResult.value = null
     try {
       // 字面量字段 → 已是 plain，无需 toPlain，但保险起见过一遍
-      testResult.value = await window.api.llm.test(
+      const r = await window.api.llm.test(
         toPlain({
           provider: dto.llm_provider,
           endpoint: dto.llm_endpoint,
@@ -92,6 +93,16 @@ export const useConfigStore = defineStore('config', () => {
           model: dto.llm_model,
         }),
       )
+      // R61: 失败 message 走 friendly-error 翻译, 让用户能看懂操作建议
+      if (r.ok) {
+        testResult.value = r
+      } else {
+        const fe = toFriendlyError(r.message, 'llm')
+        testResult.value = { ok: false, message: `${fe.title}：${fe.detail}` }
+      }
+    } catch (e) {
+      const fe = toFriendlyError(e, 'llm')
+      testResult.value = { ok: false, message: `${fe.title}：${fe.detail}` }
     } finally {
       testing.value = false
     }
