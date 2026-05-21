@@ -73,8 +73,15 @@ const passthroughEnabled = computed(
     !inputOpen.value,
 )
 
+// R77: platform 感知快捷键标签 — mac ⌘ 其他 Ctrl
+const cmdKey: string = (() => {
+  const uad = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData
+  const isMac = uad?.platform === 'macOS' || /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
+  return isMac ? '⌘' : 'Ctrl'
+})()
+
 const menuItems = computed<MenuItem[]>(() => [
-  { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '💬 打开对话', icon: iconChat, shortcut: '↵' },
+  { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '💬 打开对话', icon: iconChat, shortcut: 'Space' },
   { id: 'sep0', label: '', separator: true },
   // 角色
   { id: 'pick-character', label: `🎭 切换角色${character.active ? ` (当前: ${character.active.name})` : ''}`, icon: iconChat },
@@ -93,8 +100,8 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'sep-zoom', label: '', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
-  { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}` },
-  { id: 'keyboard-help', label: '⌨️ 快捷键帮助 (?)', icon: iconGear },
+  { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}`, shortcut: `${cmdKey}+⇧T` },
+  { id: 'keyboard-help', label: '⌨️ 快捷键帮助', icon: iconGear, shortcut: '?' },
   { id: 'sep-sys', label: '', separator: true },
   // 窗口
   { id: 'pin', label: pinned.value ? '📌 取消置顶' : '📍 置顶', icon: iconPin },
