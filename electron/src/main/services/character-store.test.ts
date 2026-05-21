@@ -102,18 +102,18 @@ describe('updateCharacter', () => {
 })
 
 describe('deleteCharacter', () => {
-  it('删除后 listCharacters 不含 + 目录被清', () => {
+  it('删除后 listCharacters 不含 + 目录被清', async () => {
     const c = createCharacter(minimal)
     const dir = `${charactersRoot()}/${c.id}`
     expect(existsSync(dir)).toBe(true)
-    const r = deleteCharacter(c.id)
+    const r = await deleteCharacter(c.id)
     expect(r.ok).toBe(true)
     expect(existsSync(dir)).toBe(false)
     expect(listCharacters().length).toBe(0)
   })
 
-  it('不存在的 id → ok=false reason', () => {
-    const r = deleteCharacter('nope')
+  it('不存在的 id → ok=false reason', async () => {
+    const r = await deleteCharacter('nope')
     expect(r.ok).toBe(false)
     expect(r.reason).toBeTruthy()
   })
@@ -232,22 +232,22 @@ describe('Active character', () => {
     expect(r.ok).toBe(false)
   })
 
-  it('deleteCharacter 当前 active → 拒绝（保护机制）', () => {
+  it('deleteCharacter 当前 active → 拒绝（保护机制）', async () => {
     const c = createCharacter(minimal)
     setActiveCharacterId(c.id)
-    const r = deleteCharacter(c.id)
+    const r = await deleteCharacter(c.id)
     expect(r.ok).toBe(false)
     expect(r.reason).toBe('cannot_delete_active')
     expect(getActiveCharacter()?.id).toBe(c.id) // 还在
   })
 
-  it('切到其他 active 再删 → 成功 + fallback', () => {
+  it('切到其他 active 再删 → 成功 + fallback', async () => {
     const c1 = createCharacter(minimal)
     const c2 = createCharacter({ ...minimal, name: 'Other' })
     setActiveCharacterId(c1.id)
     // 先切到 c2 → 然后才能删 c1
     setActiveCharacterId(c2.id)
-    const r = deleteCharacter(c1.id)
+    const r = await deleteCharacter(c1.id)
     expect(r.ok).toBe(true)
     expect(getActiveCharacter()?.id).toBe(c2.id)
   })

@@ -159,7 +159,7 @@ describe('exportCharacterPack', () => {
 })
 
 describe('importCharacterPack', () => {
-  it('import 自己刚 export 的 pack → 新 character 创建成功', () => {
+  it('import 自己刚 export 的 pack → 新 character 创建成功', async () => {
     const fx = makeFixture()
     const exp = exportCharacterPack(fx.id)
     // 删原 character 模拟"换机器" scenario
@@ -173,7 +173,7 @@ describe('importCharacterPack', () => {
       template: 'custom',
     })
     setActiveCharacterId(dummy.id)
-    deleteCharacter(fx.id)
+    await deleteCharacter(fx.id)
     expect(listCharacters().find((c) => c.id === fx.id)).toBeUndefined()
 
     const imp = importCharacterPack(exp.buffer!)

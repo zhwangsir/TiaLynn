@@ -224,7 +224,7 @@ export function cloneCharacter(sourceId: string, newName?: string): { ok: boolea
   }
 }
 
-export function deleteCharacter(id: string): { ok: boolean; reason?: string } {
+export async function deleteCharacter(id: string): Promise<{ ok: boolean; reason?: string }> {
   const c = getCharacter(id)
   if (!c) return { ok: false, reason: 'not_found' }
   if (c.builtin) return { ok: false, reason: 'builtin_protected' }
@@ -234,10 +234,10 @@ export function deleteCharacter(id: string): { ok: boolean; reason?: string } {
   try {
     // v0.21:删 character dir 前先关掉对应 memory.db 句柄
     // (M3 长期记忆 sqlite WAL,handle 不关时 macOS/Win rmSync 偶发失败)
+    // 用 dynamic await import 避免 character-store ↔ memory-store 静态循环依赖,
+    // 且 ESM 包(electron/package.json type:module)下 require 不可用。
     try {
-      // dynamic import 避 character-store ↔ memory-store 循环依赖
-
-      const { closeMemoryDb } = require('./memory-store') as typeof import('./memory-store')
+      const { closeMemoryDb } = await import('./memory-store')
       closeMemoryDb(id)
     } catch {
       /* memory-store 模块缺失时不阻塞删除 */
