@@ -26,6 +26,8 @@ const step = ref<1 | 2 | 3>(1)
 const llmEndpoint = ref('')
 const llmModel = ref('')
 const llmApiKey = ref('')
+// R75: show/hide 切换, 同 SettingsPanel R74
+const showApiKey = ref(false)
 const ttsSidecarUrl = ref('')
 const checking = ref(false)
 const checkResult = ref<{ ok: boolean; message: string } | null>(null)
@@ -223,7 +225,22 @@ function skip(): void {
           </label>
           <label class="field">
             <span>API Key（可选）</span>
-            <input v-model="llmApiKey" type="password" placeholder="本地端点通常留空" />
+            <div class="input-with-toggle">
+              <input
+                v-model="llmApiKey"
+                :type="showApiKey ? 'text' : 'password'"
+                placeholder="本地端点通常留空"
+              />
+              <button
+                v-if="llmApiKey"
+                type="button"
+                class="toggle-show-btn"
+                :title="showApiKey ? '隐藏' : '显示'"
+                :aria-label="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                :aria-pressed="showApiKey"
+                @click="showApiKey = !showApiKey"
+              >{{ showApiKey ? '🙈' : '👁' }}</button>
+            </div>
           </label>
 
           <div class="probe-row">
@@ -433,6 +450,41 @@ h2 {
   box-sizing: border-box;
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
+/* R75: show/hide toggle 复合布局, 同 SettingsPanel R74 */
+.input-with-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-toggle input {
+  flex: 1;
+  padding-right: 36px;
+}
+.toggle-show-btn {
+  position: absolute;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-muted);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.toggle-show-btn:hover {
+  background: var(--color-bubble-surface-hover);
+  color: var(--color-bubble-text);
+}
+.toggle-show-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .field input:focus {
   border-color: var(--color-accent);
   box-shadow: var(--shadow-focus);
