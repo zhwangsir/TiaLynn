@@ -374,6 +374,15 @@ function onBackdrop(e: MouseEvent): void {
             {{ query ? `没有匹配 "${query}"` : '输入关键字搜索…' }}
           </li>
         </ul>
+        <footer v-if="results.length > 0" class="spotlight-footer">
+          <span>{{ results.length }} 项</span>
+          <span class="footer-sep">·</span>
+          <span><kbd>↵</kbd> 选中</span>
+          <span class="footer-sep">·</span>
+          <span><kbd>{{ CMD_KEY }}</kbd>+<kbd>1-9</kbd> 直选</span>
+          <span class="footer-sep">·</span>
+          <span><kbd>Esc</kbd> 关闭</span>
+        </footer>
       </div>
     </div>
   </transition>
@@ -493,6 +502,29 @@ function onBackdrop(e: MouseEvent): void {
 }
 .item.active .match-hl {
   background: oklch(85% 0.18 80 / 0.7);
+}
+
+/* R113: footer hint 条 — 显示总数 + 键盘提示 */
+.spotlight-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-bubble-border);
+  font-size: 10px;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+.spotlight-footer kbd {
+  padding: 1px 5px;
+  background: var(--color-bubble-surface);
+  border: 1px solid var(--color-bubble-border);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 9px;
+}
+.footer-sep {
+  opacity: 0.4;
 }
 
 /* R110: ⌘+N 数字快选 hint (默认半透明, hover/active 时高亮) */
