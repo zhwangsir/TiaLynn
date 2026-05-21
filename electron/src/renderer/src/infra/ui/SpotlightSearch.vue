@@ -28,6 +28,8 @@ interface ResultItem {
   group: '命令' | '角色' | '历史' | '设置'
   title: string
   subtitle?: string
+  /** R78: 快捷键 hint 显示在 group 标签前 */
+  shortcut?: string
   /** 0~1 越高越前 */
   score: number
   /** 选中后执行 */
@@ -88,22 +90,31 @@ async function refreshSources(): Promise<void> {
 }
 
 // ——— 命令源（始终可用，不需要 IPC）———
+/** R78: platform 感知快捷键标签 */
+const cmdKey: string = (() => {
+  const uad = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData
+  const isMac = uad?.platform === 'macOS' || /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent)
+  return isMac ? '⌘' : 'Ctrl'
+})()
+
 interface Command {
   title: string
   hint: string
+  /** R78: 已绑定的快捷键 hint, 显示在结果项右侧 */
+  shortcut?: string
   do: () => void
 }
 const commands: Command[] = [
   { title: '打开设置', hint: '⚙️', do: () => emit('open-settings') },
   { title: '切换角色', hint: '🎭', do: () => emit('open-character-picker') },
   { title: '编辑灵魂', hint: '✏️', do: () => emit('open-soul-editor') },
-  { title: '打开对话输入', hint: '💬', do: () => emit('open-input') },
+  { title: '打开对话输入', hint: '💬', shortcut: 'Space', do: () => emit('open-input') },
   { title: '重载模型 / 灵魂', hint: '🔄', do: () => emit('reload-model') },
   { title: '清空对话历史', hint: '🧹', do: () => emit('clear-dialog') },
   { title: '重新打开引导 (Onboarding)', hint: '🪄', do: () => emit('open-onboarding') },
-  { title: '主题：跟随系统', hint: '🌓', do: () => theme.setMode('auto') },
-  { title: '主题：浅色模式', hint: '☀️', do: () => theme.setMode('light') },
-  { title: '主题：深色模式', hint: '🌙', do: () => theme.setMode('dark') },
+  { title: '主题：跟随系统', hint: '🌓', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('auto') },
+  { title: '主题：浅色模式', hint: '☀️', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('light') },
+  { title: '主题：深色模式', hint: '🌙', shortcut: `${cmdKey}+⇧T`, do: () => theme.setMode('dark') },
 ]
 
 // ——— 设置索引（静态关键词 → 跳设置）———
@@ -190,6 +201,7 @@ const results = computed<ResultItem[]>(() => {
       icon: c.hint,
       group: '命令',
       title: c.title,
+      ...(c.shortcut !== undefined && { shortcut: c.shortcut }),
       score: matchScore + 0.1 + usageBoostFromMap(usageMap, c.title),
       action: () => {
         bumpUsage(c.title)
@@ -332,6 +344,7 @@ function onBackdrop(e: MouseEvent): void {
               <div class="item-title">{{ r.title }}</div>
               <div v-if="r.subtitle" class="item-sub">{{ r.subtitle }}</div>
             </div>
+            <span v-if="r.shortcut" class="item-shortcut">{{ r.shortcut }}</span>
             <span class="item-group">{{ r.group }}</span>
           </li>
           <li v-if="results.length === 0" class="empty">
@@ -441,6 +454,21 @@ function onBackdrop(e: MouseEvent): void {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* R78: 已绑定快捷键 hint */
+.item-shortcut {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bubble);
+  border: 1px solid var(--color-bubble-border);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+.item.active .item-shortcut {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 .item-group {
   font-size: 10px;
