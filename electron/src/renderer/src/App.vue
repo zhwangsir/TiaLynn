@@ -30,6 +30,7 @@ import { useCharacterStore } from './infra/stores/character'
 import { iconChat, iconGear, iconMinus, iconPin, iconReload, iconX } from './infra/ui/icons'
 import { useConfigStore } from './infra/stores/config'
 import { useDialogStore } from './brain/stores/dialog'
+import { exportTurnsToMarkdown } from './brain/dialog-export'
 import { useSpeechStore } from './presence/stores/speech'
 import { useApprovalStore } from './hands/approval-store'
 import { bus } from './infra/eventbus'
@@ -86,6 +87,7 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'creator-studio', label: '🎨 创作工坊', icon: iconChat },
   { id: 'health-dashboard', label: '🔬 模型健康仪表盘', icon: iconChat },
   { id: 'reload', label: '🔄 重载模型 / 灵魂', icon: iconReload },
+  { id: 'export-dialog', label: '📥 复制对话为 markdown', icon: iconChat },
   { id: 'sep-model', label: '', separator: true },
   // 立绘缩放
   { id: 'zoom-in', label: '🔍 放大立绘 (+)' },
@@ -111,6 +113,34 @@ function openMenu(x: number, y: number): void {
 }
 function closeMenu(): void {
   menuOpen.value = false
+}
+
+/** R87: 把当前对话历史复制为 markdown 到剪贴板 */
+async function exportDialogToClipboard(): Promise<void> {
+  const turns = dialog.turns.map((t) => ({
+    role: t.role,
+    text: t.text,
+    ts: t.ts,
+    ...(t.emotion !== undefined && { emotion: t.emotion }),
+    ...(t.intensity !== undefined && { intensity: t.intensity }),
+    ...(t.error !== undefined && { error: t.error }),
+  }))
+  const name = character.active?.name ?? '助手'
+  const md = exportTurnsToMarkdown(turns, name)
+  try {
+    await navigator.clipboard.writeText(md)
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `✓ 已复制 ${turns.filter((t) => t.role !== 'system').length} 条对话`,
+      ttl_ms: 2500,
+    })
+  } catch (e) {
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: `复制失败：${String(e).slice(0, 60)}`,
+      ttl_ms: 4000,
+    })
+  }
 }
 
 async function onMenuSelect(id: string): Promise<void> {
@@ -168,6 +198,9 @@ async function onMenuSelect(id: string): Promise<void> {
     case 'reload':
       await cfg.rescanModels()
       await cfg.reloadSoul()
+      break
+    case 'export-dialog':
+      await exportDialogToClipboard()
       break
     case 'pin':
       pinned.value = !pinned.value
