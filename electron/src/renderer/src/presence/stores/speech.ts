@@ -32,6 +32,8 @@ export const useSpeechStore = defineStore('speech', () => {
   let spokenUpTo = 0
   /** 上一次 emotion-changed 缓存（流式中段 emotion 未知，用缓存的） */
   let lastKnownEmotion: EmotionId = 'neutral'
+  /** P5: 同步 intensity 让 TTS prosody 调节 */
+  let lastKnownIntensity = 0.5
   /**
    * v0.11: 双队列 — 合成并行 fire（不等播完），播放串行 chain。
    * 老版本: enqueue → 等播完 → 才合成下一句 → 听感「s1.播完 → 1-3s 静音合成 s2 → s2.开始」
@@ -43,8 +45,11 @@ export const useSpeechStore = defineStore('speech', () => {
   let streamHadSentence = false
 
   function bootstrap(): void {
-    bus.on('brain:emotion-changed', ({ emotion }) => {
+    bus.on('brain:emotion-changed', ({ emotion, intensity }) => {
       lastKnownEmotion = emotion
+      if (typeof intensity === 'number' && Number.isFinite(intensity)) {
+        lastKnownIntensity = intensity
+      }
     })
 
     bus.on('brain:reply-token', ({ stream_id, delta }) => {
@@ -124,8 +129,14 @@ export const useSpeechStore = defineStore('speech', () => {
     const cfg = useConfigStore()
     const voice = cfg.config?.emotion_voice_map[emotion]
     // 立刻 fire 合成 — 不等任何东西
+    // P5: 传 intensity 让 main 端 adjustProsody 调节 rate/pitch
     const synthPromise: Promise<Awaited<ReturnType<typeof window.api.tts.speak>>> = window.api.tts
-      .speak({ text, emotion, ...(voice !== undefined ? { voice } : {}) })
+      .speak({
+        text,
+        emotion,
+        intensity: lastKnownIntensity,
+        ...(voice !== undefined ? { voice } : {}),
+      })
       .catch((e) => {
         console.warn('[speech] synth failed:', e)
         return { ok: false, reason: String(e) }

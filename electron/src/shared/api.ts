@@ -523,7 +523,13 @@ export interface TialynnApi {
     onChanged(cb: () => void): () => void
   }
   tts: {
-    speak(payload: { text: string; voice?: string; emotion?: string }): Promise<{
+    speak(payload: {
+      text: string
+      voice?: string
+      emotion?: string
+      /** P5: 0..1 emotion intensity, prosody mood-aware 调节用 */
+      intensity?: number
+    }): Promise<{
       ok: boolean
       audio_b64?: string
       mime?: string

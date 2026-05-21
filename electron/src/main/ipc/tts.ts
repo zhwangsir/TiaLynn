@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadConfig } from '../services/config-store'
 import { validateSidecarUrl } from '../services/url-guard'
+import { adjustProsody } from '../services/tts/prosody'
 import { ttsListRvcVoices, ttsProbe, ttsSpeak } from '@shared/channels/tts'
 import { handleInvoke } from './channel-helpers'
 
@@ -105,9 +106,21 @@ export function registerTtsIpc(): void {
               body.rvc_rms_mix_rate = cfg.rvc_rms_mix_rate ?? 1.0
               body.rvc_resample_sr = cfg.rvc_resample_sr ?? 0
             }
-            if (cfg.tts_rate) body.rate = cfg.tts_rate
+            // P5: mood-aware prosody — emotion + intensity 叠加 rate/pitch 调整
+            const prosody = adjustProsody(
+              { rate: cfg.tts_rate ?? '+0%', pitch: cfg.tts_pitch ?? '+0Hz' },
+              payload.emotion,
+              payload.intensity,
+            )
+            body.rate = prosody.rate
+            body.pitch = prosody.pitch
             if (cfg.tts_volume) body.volume = cfg.tts_volume
-            if (cfg.tts_pitch) body.pitch = cfg.tts_pitch
+            if (prosody.applied) {
+              console.log(
+                `[tts] prosody mood-aware: ${prosody.applied.emotion}/${prosody.applied.intensity.toFixed(2)} ` +
+                  `→ rate ${prosody.rate} pitch ${prosody.pitch}`,
+              )
+            }
             // v0.17：从 120s 改 15s — 远程 sidecar 挂了别让用户每次等 2 分钟
             // 合理的 RVC 合成 < 8s（含 RVC 转音色），15s 留余量
             const r = await fetch(url, {

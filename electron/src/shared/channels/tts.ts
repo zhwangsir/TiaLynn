@@ -4,7 +4,13 @@
 import { defineChannel } from '../ipc-channel'
 
 export const ttsSpeak = defineChannel<
-  { text: string; voice?: string; emotion?: string },
+  {
+    text: string
+    voice?: string
+    emotion?: string
+    /** P5: 0..1 emotion intensity，用于 prosody 调整 (越强 rate/pitch delta 越大) */
+    intensity?: number
+  },
   { ok: boolean; audio_b64?: string; mime?: string; reason?: string }
 >('tts:speak')
 
