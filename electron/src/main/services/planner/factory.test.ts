@@ -65,9 +65,12 @@ describe('planner factory(M8 灵魂社会前置)', () => {
     expect(new Set(planners).size).toBe(3)
 
     // 各自 reuse
-    for (const id of ids) {
+    // reviewer H-LOW-2:noUncheckedIndexedAccess strict 下 planners[i] 是
+    // `BehaviorPlanner | undefined`,用 non-null assertion(ids 是常量,index 必然有效)
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i]!
       const again = getPlanner(id)
-      expect(again).toBe(planners[ids.indexOf(id)])
+      expect(again).toBe(planners[i]!)
     }
   })
 })

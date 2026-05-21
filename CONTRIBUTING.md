@@ -143,7 +143,7 @@ Closes #xxx
 
 ```
 [ ] typecheck 通过(`pnpm typecheck` — tsconfig.node + vue-tsc 都过)
-[ ] 全 vitest 单测通过(`pnpm test`)— ≥ 590 passed,无回归
+[ ] 全 vitest 单测通过(`pnpm test`)— 输出 0 failed,无回归(每加新功能 passed 数同步增长)
 [ ] E2E spec(如有改 main process / IPC):`pnpm e2e` 通过
 [ ] commit message 走 conventional commits(feat / fix / docs / refactor / chore / test)
 [ ] commit message 描述 why,不只是 what
@@ -212,7 +212,7 @@ Round B reviewer agent 抓到 **CRITICAL bug**:`dialog.ts:202 loopUntilDone`
 硬判 anthropic → openai_compat 用户整个 tool loop 失效。**主开发自测察觉不到**
 (planner 路径走 attention,不走 dialog tool),reviewer 看代码逻辑一眼揭穿。
 
-每个 commit 100s ~ 50K tokens,比"两人 pair review"成本低 10x。
+每个 commit 100s ~ 50K tokens(v0.21 实测 8 轮平均)。比人工 pair review 显著低成本(无需另一位工程师同步在场),且能 24/7 跑。
 
 ## 关于灵魂(Soul)修改的特殊规则
 

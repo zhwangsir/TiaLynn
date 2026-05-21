@@ -7,7 +7,8 @@ import { scheduler } from './scheduler'
 // v0.21 Round H:用 getPlanner() factory 替代 module-level singleton。
 // 当前不传 characterId 用 default(等价旧 singleton)。
 // M8 多灵魂时 onTrigger 接到 decision.target_character_id 后 getPlanner(id) 切换。
-import { getPlanner, planner } from '../planner'
+// reviewer H-HIGH-1:删除 `planner` 死 reexport(无人消费 + 触发 planner module 顶层副作用)
+import { getPlanner } from '../planner'
 import { triggerScreenSnapshot } from '../perception'
 
 let getWindow: (() => BrowserWindow | null) | null = null
@@ -63,7 +64,8 @@ export function attentionSnapshot(): import('@shared/attention').AttentionSnapsh
 }
 
 /** Renderer 主动获取/订阅时用 */
-export { scheduler, planner }
+// reviewer H-HIGH-1:planner reexport 死链(grep 确认无外部消费者),移除
+export { scheduler }
 
 /** 用于诊断：拿最近 N 个 plan（主进程内存） */
 const planHistory: BehaviorPlan[] = []

@@ -562,6 +562,11 @@ function clamp01(v: number): number {
  * v0.23+ 升级:character delete 时 disposePlannerFor(id) 清 Map entry,避免泄漏。
  */
 const plannerInstances = new Map<string, BehaviorPlanner>()
+/**
+ * reviewer H-LOW-1:default planner 的 sentinel key。
+ * 约定:characterId 不应包含 `__` 双下划线前后缀(实际 character-store 用 UUID,
+ * 不会冲突,但注释明确这条约定)。若 M8 真撞,改 Symbol-keyed Map。
+ */
 const DEFAULT_PLANNER_KEY = '__default__'
 
 export function getPlanner(characterId?: string): BehaviorPlanner {
@@ -574,7 +579,14 @@ export function getPlanner(characterId?: string): BehaviorPlanner {
   return instance
 }
 
-/** test 用:清空所有缓存的 planner 实例(单测隔离) */
+/**
+ * test 用:清空所有缓存的 planner 实例(单测隔离)。
+ *
+ * reviewer H-MEDIUM-1 已知 trade-off:`_` 前缀是命名约定而非真隔离 —
+ * production 打包后此函数同样导出,任何 caller 都能误调。当前规模下接受,
+ * v0.23 (M8 真做) 时可考虑用 NODE_ENV gate 或 Symbol-keyed Map 让 reset
+ * 只在 test 环境工作。
+ */
 export function _resetAllPlannersForTest(): void {
   plannerInstances.clear()
 }
