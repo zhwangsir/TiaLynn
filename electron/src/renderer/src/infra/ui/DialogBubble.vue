@@ -23,6 +23,8 @@ const latest = computed(() => {
 
 const visible = ref(true)
 const bubbleEl = ref<HTMLDivElement | null>(null)
+/** R54: 用户主动关闭后的 turn id, 同 id 不重显, 下一条 turn 时清空 */
+const dismissedTurnId = ref<string | null>(null)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 /** R52: 流式回复时自动滚到底部, 让用户看到最新 token */
@@ -46,8 +48,12 @@ watch(
   // R43 fix (MED): 追踪 error 字段, 否则 LLM 失败 (id 已存在 + text 空) watch 不触发,
   // error bubble 满足 v-if 却被 visible=false 隐藏, 用户看不到重试按钮
   () => [latest.value?.id, latest.value?.text, latest.value?.error],
-  () => {
+  ([newId]) => {
     if (!latest.value) return
+    // R54: 用户已主动关掉当前 turn → 不重显
+    if (dismissedTurnId.value === newId) return
+    // 新 turn → 清掉旧 dismiss
+    if (newId !== dismissedTurnId.value) dismissedTurnId.value = null
     visible.value = true
     // R52: streaming 中 / 文本变化时 auto-scroll 到底部
     if (latest.value.streaming || latest.value.text) scrollToBottom()
@@ -56,6 +62,13 @@ watch(
   },
   { immediate: true },
 )
+
+/** R54: 主动关闭当前 bubble */
+function dismiss(): void {
+  if (hideTimer) clearTimeout(hideTimer)
+  visible.value = false
+  dismissedTurnId.value = (latest.value?.id ?? null) as string | null
+}
 
 function onMouseEnter(): void {
   if (hideTimer) clearTimeout(hideTimer)
@@ -196,6 +209,13 @@ async function copyText(): Promise<void> {
         aria-label="复制对话"
         @click.stop="copyText"
       >📋</button>
+      <button
+        v-if="!latest.streaming"
+        class="dismiss-btn"
+        title="关闭气泡"
+        aria-label="关闭对话气泡"
+        @click.stop="dismiss"
+      >✕</button>
       <button
         v-if="latest.error && !dialog.replying"
         class="retry-btn"
@@ -343,6 +363,39 @@ async function copyText(): Promise<void> {
     background: oklch(0% 0 0 / 0.4);
   }
   .copy-btn:hover {
+    background: oklch(0% 0 0 / 0.6);
+  }
+}
+/* R54: 关闭按钮 — 右上角, 紧贴 .copy-btn 旁边 */
+.dismiss-btn {
+  position: absolute;
+  top: 6px;
+  right: 32px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: oklch(100% 0 0 / 0.6);
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.bubble:hover .dismiss-btn,
+.dismiss-btn:focus-visible {
+  opacity: 1;
+}
+.dismiss-btn:hover {
+  background: oklch(100% 0 0 / 0.85);
+}
+@media (prefers-color-scheme: dark) {
+  .dismiss-btn {
+    background: oklch(0% 0 0 / 0.4);
+  }
+  .dismiss-btn:hover {
     background: oklch(0% 0 0 / 0.6);
   }
 }
