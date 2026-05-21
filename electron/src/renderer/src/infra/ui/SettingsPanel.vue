@@ -599,7 +599,7 @@ function cancel(): void {
   emit('close')
 }
 
-/** R127: 从剪贴板读 JSON 并 merge 到 form (跳过 *** 脱敏字段) */
+/** R127+R131-fix: 从剪贴板读 JSON 并 merge 到 form */
 async function importConfig(): Promise<void> {
   let text = ''
   try {
@@ -631,34 +631,50 @@ async function importConfig(): Promise<void> {
     bus.emit('ui:toast', { kind: 'error', message: '不是合法的配置对象', ttl_ms: 3000 })
     return
   }
-  const ok = window.confirm('用剪贴板 JSON 覆盖当前 form？(保留已有 API key, 需点保存才生效)')
+  const ok = window.confirm('用剪贴板 JSON 覆盖当前 form？(脱敏字段 *** 会跳过, 需点保存才生效)')
   if (!ok) return
   let applied = 0
+  let skippedMask = 0
+  let skippedType = 0
+  // R131-fix (HIGH): 严格 type guard, 拒绝 object/array 进 scalar 字段; null/undefined 字段也要类型 match
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
     if (!(k in form)) continue
-    // 跳过 mask 占位
-    if (v === '***') continue
-    // 类型检查: 当前值与新值同类型
+    if (v === '***') {
+      skippedMask++
+      continue
+    }
+    // 仅允许 scalar (string/number/boolean) 写入; object/array/function 跳过
+    if (v !== null && typeof v === 'object') {
+      skippedType++
+      continue
+    }
     const curr = (form as unknown as Record<string, unknown>)[k]
-    if (typeof curr !== typeof v && curr !== null && curr !== undefined) continue
+    // 当前有值时要求类型 match; null/undefined 时仅允许 string/number/boolean
+    if (curr !== null && curr !== undefined && typeof curr !== typeof v) {
+      skippedType++
+      continue
+    }
     ;(form as unknown as Record<string, unknown>)[k] = v
     applied++
   }
   markDirty()
+  const parts = [`✓ 导入 ${applied} 项`]
+  if (skippedMask > 0) parts.push(`跳过 ${skippedMask} 个脱敏`)
+  if (skippedType > 0) parts.push(`跳过 ${skippedType} 个类型不符`)
   bus.emit('ui:toast', {
     kind: 'success',
-    message: `✓ 导入 ${applied} 项配置 (未保存)`,
-    ttl_ms: 3000,
+    message: parts.join(' · ') + '（未保存）',
+    ttl_ms: 4000,
   })
 }
 
-/** R125: 导出当前 form (含未保存改动) 为 JSON 到剪贴板. 敏感字段已 mask. */
+/** R125+R131-fix: 导出当前 form 为 JSON. 集中维护敏感字段 allowlist */
+const SENSITIVE_FIELDS: ReadonlyArray<keyof RuntimeConfig> = ['llm_api_key']
+
 async function exportConfig(): Promise<void> {
   const safe = { ...form } as RuntimeConfig & Record<string, unknown>
-  // mask 敏感字段
-  if (safe.llm_api_key) safe.llm_api_key = '***'
-  if ((safe as { rvc_api_key?: string }).rvc_api_key) {
-    ;(safe as { rvc_api_key?: string }).rvc_api_key = '***'
+  for (const k of SENSITIVE_FIELDS) {
+    if (safe[k]) (safe as Record<string, unknown>)[k] = '***'
   }
   const json = JSON.stringify(safe, null, 2)
   try {

@@ -19,6 +19,16 @@ useFocusTrap(cardRef, openRef)
 /** R79: 复用全局 CMD_KEY 单例, 不再每组件各算一份 */
 const cmdKey = computed(() => CMD_KEY)
 
+// R131-fix (LOW): Section/Shortcut interface 在 filteredSections 之前定义
+interface Shortcut {
+  keys: string[]
+  label: string
+}
+interface Section {
+  title: string
+  items: Shortcut[]
+}
+
 /** R129: 搜索过滤快捷键 (按 label 子串) */
 const search = ref('')
 
@@ -35,15 +45,6 @@ const filteredSections = computed<Section[]>(() => {
     }))
     .filter((sec) => sec.items.length > 0)
 })
-
-interface Shortcut {
-  keys: string[]
-  label: string
-}
-interface Section {
-  title: string
-  items: Shortcut[]
-}
 
 const sections = computed<Section[]>(() => [
   {

@@ -5,6 +5,7 @@ import { estimateTokens } from '../../brain/token-estimate'
 import { SttSession } from '../../presence/stt/web-speech'
 import { useCharacterStore } from '../stores/character'
 import { CMD_KEY } from './useCmdKey'
+import { bus } from '../eventbus'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -102,6 +103,19 @@ const estimatedTokens = computed<number>(() => {
 /** R66: warn 阈值 — 多数 LLM 8K 上下文, 留 buffer 给 system prompt + history */
 const TOKEN_WARN = 6000
 const TOKEN_DANGER = 8000
+
+/** R130: 粘超长内容时 toast warn (避免误粘大 paste 直接 Enter) */
+const PASTE_WARN_THRESHOLD = 5000
+function onPaste(e: ClipboardEvent): void {
+  const pasted = e.clipboardData?.getData('text') ?? ''
+  if (pasted.length > PASTE_WARN_THRESHOLD) {
+    bus.emit('ui:toast', {
+      kind: 'warn',
+      message: `已粘入 ${pasted.length} 字 — 可能超 LLM 上下文, 注意右上 token 角标`,
+      ttl_ms: 4000,
+    })
+  }
+}
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
@@ -221,6 +235,7 @@ onBeforeUnmount(() => {
         rows="1"
         class="input"
         @keydown="onKey"
+        @paste="onPaste"
       />
       <button
         v-if="!dialog.replying"

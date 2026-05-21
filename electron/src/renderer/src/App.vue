@@ -144,6 +144,11 @@ async function exportDialogToClipboard(): Promise<void> {
   }
 }
 
+/** R131-fix (LOW): 提取 abort handler 替代模板内短路求值 */
+function handleAbortLlm(): void {
+  if (dialog.replying) dialog.abort()
+}
+
 async function onMenuSelect(id: string): Promise<void> {
   switch (id) {
     case 'chat':
@@ -578,7 +583,7 @@ onBeforeUnmount(() => {
         @export-dialog="exportDialogToClipboard()"
         @open-help="keyboardHelpOpen = true"
         @reset-ui-scale="applyUIScale(1)"
-        @abort-llm="dialog.replying && dialog.abort()"
+        @abort-llm="handleAbortLlm"
       />
       <ErrorBoundary scope="panel" label="角色选择器">
         <CharacterPicker
