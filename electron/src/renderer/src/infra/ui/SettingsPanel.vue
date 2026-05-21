@@ -598,6 +598,31 @@ function cancel(): void {
   emit('close')
 }
 
+/** R125: 导出当前 form (含未保存改动) 为 JSON 到剪贴板. 敏感字段已 mask. */
+async function exportConfig(): Promise<void> {
+  const safe = { ...form } as RuntimeConfig & Record<string, unknown>
+  // mask 敏感字段
+  if (safe.llm_api_key) safe.llm_api_key = '***'
+  if ((safe as { rvc_api_key?: string }).rvc_api_key) {
+    ;(safe as { rvc_api_key?: string }).rvc_api_key = '***'
+  }
+  const json = JSON.stringify(safe, null, 2)
+  try {
+    await navigator.clipboard.writeText(json)
+    bus.emit('ui:toast', {
+      kind: 'success',
+      message: `✓ 已复制 ${Object.keys(safe).length} 项配置 (API key 已脱敏)`,
+      ttl_ms: 3000,
+    })
+  } catch (e) {
+    bus.emit('ui:toast', {
+      kind: 'error',
+      message: `复制失败：${String(e).slice(0, 60)}`,
+      ttl_ms: 4000,
+    })
+  }
+}
+
 const providerOptions = [
   { v: 'anthropic', label: 'Anthropic Claude' },
   { v: 'openai_compat', label: 'OpenAI 兼容 (LM Studio / SiliconFlow / OpenAI)' },
@@ -692,6 +717,11 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
     @close="cancel"
   >
     <template #header-extra>
+      <button
+        class="header-action-btn"
+        title="导出当前配置为 JSON 到剪贴板"
+        @click="exportConfig"
+      >📤 导出</button>
       <button
         class="header-action-btn"
         title="磁盘占用统计"
