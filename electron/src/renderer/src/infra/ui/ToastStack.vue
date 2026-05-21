@@ -17,13 +17,16 @@ let offHandler: (() => void) | null = null
 
 function push(kind: Toast['kind'], message: string, ttl: number): void {
   const id = nextId++
-  toasts.value.push({ id, kind, message, ttl })
+  toasts.value = [...toasts.value, { id, kind, message, ttl }]
   if (toasts.value.length > MAX_VISIBLE) {
-    toasts.value.splice(0, toasts.value.length - MAX_VISIBLE)
+    toasts.value = toasts.value.slice(-MAX_VISIBLE)
   }
-  setTimeout(() => {
-    toasts.value = toasts.value.filter((t) => t.id !== id)
-  }, ttl)
+  // R31: error toast ttl=0 → 用户必须手动 dismiss（重要错误不会被秒消失）
+  if (ttl > 0) {
+    setTimeout(() => {
+      toasts.value = toasts.value.filter((t) => t.id !== id)
+    }, ttl)
+  }
 }
 
 function dismiss(id: number): void {
@@ -67,11 +70,20 @@ const iconFor: Record<Toast['kind'], string> = {
         class="toast"
         :class="t.kind"
         role="status"
-        @click="dismiss(t.id)"
       >
-        <span class="icon" :class="t.kind">{{ iconFor[t.kind] }}</span>
+        <span class="icon" :class="t.kind" aria-hidden="true">{{ iconFor[t.kind] }}</span>
         <span class="msg">{{ t.message }}</span>
-        <span class="progress" :style="{ animationDuration: t.ttl + 'ms' }"></span>
+        <button
+          class="dismiss"
+          :aria-label="`关闭通知: ${t.message.slice(0, 40)}`"
+          title="关闭 (或点击通知)"
+          @click.stop="dismiss(t.id)"
+        >✕</button>
+        <span
+          v-if="t.ttl > 0"
+          class="progress"
+          :style="{ animationDuration: t.ttl + 'ms' }"
+        ></span>
       </div>
     </transition-group>
   </div>
@@ -147,6 +159,31 @@ const iconFor: Record<Toast['kind'], string> = {
   line-height: 1.45;
   word-break: break-word;
   padding-top: 2px;
+  /* R31: 长 error message 折叠避免遮挡屏幕 */
+  max-height: 10em;
+  overflow-y: auto;
+}
+.dismiss {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.dismiss:hover {
+  background: var(--color-bubble-surface-hover);
+  color: var(--color-bubble-text);
+}
+.dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 /* 倒计时进度条 — 视觉提示「自动消失」 */
