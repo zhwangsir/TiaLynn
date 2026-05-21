@@ -23,11 +23,12 @@ const MAX_VISIBLE = 4
 let offHandler: (() => void) | null = null
 
 function push(kind: Toast['kind'], message: string, ttl: number, action?: ToastAction): void {
-  // R112: 同 kind + message 已在显示 → 仅 +count (不堆叠重复)
+  // R112+R114-fix (LOW): 同 kind + message 已在显示 → 仅 +count (不堆叠重复)
+  // count cap 99 防 ttl=0 toast 无限递增
   const existing = toasts.value.find((t) => t.kind === kind && t.message === message)
   if (existing) {
     toasts.value = toasts.value.map((t) =>
-      t.id === existing.id ? { ...t, count: t.count + 1 } : t,
+      t.id === existing.id ? { ...t, count: Math.min(t.count + 1, 99) } : t,
     )
     return
   }

@@ -307,7 +307,10 @@ function onKey(e: KeyboardEvent): void {
     e.preventDefault()
     emit('close')
   } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
-    // R110: ⌘+1-9 直选第 N 项 (macOS Spotlight 标准)
+    // R110+R114-fix (MED): ⌘+1-9 直选第 N 项 (macOS Spotlight 标准)
+    // 在搜索框内有内容时不触发, 避免误吞用户编辑组合键 (如想用 ⌘+1 重试第一条但已搜了一半的场景)
+    // 但空 query 时直选首条命令仍是合法常用流, 保留
+    if (document.activeElement === inputEl.value && query.value.length > 0) return
     e.preventDefault()
     const idx = parseInt(e.key, 10) - 1
     const item = results.value[idx]

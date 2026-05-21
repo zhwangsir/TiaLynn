@@ -708,7 +708,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
           role="tab"
           :tabindex="activeTab === t.id ? 0 : -1"
           :aria-selected="activeTab === t.id ? 'true' : 'false'"
-          :class="['tab', { active: activeTab === t.id, 'has-dirty': dirty && activeTab !== t.id }]"
+          :class="['tab', { active: activeTab === t.id }]"
           @click="activeTab = t.id"
         >
           <span class="tab-icon">{{ t.icon }}</span>
