@@ -13,7 +13,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const cardRef = ref<HTMLElement | null>(null)
 const { open: openRef } = toRefs(props)
-useFocusTrap(cardRef, () => openRef.value)
+useFocusTrap(cardRef, openRef)
 
 /** R23-fix: navigator.platform 已弃用，优先 userAgentData; fallback userAgent (Electron 上没 userAgentData 但 userAgent 总有) */
 const isMac = computed(() => {

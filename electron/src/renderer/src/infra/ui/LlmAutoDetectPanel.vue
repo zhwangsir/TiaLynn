@@ -52,14 +52,20 @@ function applyDetected(item: DetectedItem, model?: string): void {
 <template>
   <div class="auto-detect">
     <div class="auto-detect-row">
-      <button class="detect-btn" :disabled="detecting" @click="autoDetect">
+      <button
+        class="detect-btn"
+        :disabled="detecting"
+        :aria-busy="detecting"
+        :aria-label="detecting ? '正在扫描本机 LLM' : '自动检测本机 LLM'"
+        @click="autoDetect"
+      >
         {{ detecting ? '扫描中…' : '🔍 自动检测本机 LLM' }}
       </button>
       <span class="detect-hint">
         扫常见端口（Ollama / LM Studio / vLLM / llama.cpp）
       </span>
     </div>
-    <div v-if="detected.length > 0" class="detected-list">
+    <div v-if="detected.length > 0" class="detected-list" aria-live="polite">
       <div v-for="d in detected" :key="d.endpoint" class="detected-item">
         <div class="detected-head">
           <span class="detected-label">✓ {{ d.label }}</span>

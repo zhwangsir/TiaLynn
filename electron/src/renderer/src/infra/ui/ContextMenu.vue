@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 export interface MenuItem {
   id: string
   label: string
+  /** ⚠ MUST be trusted static SVG only — 通过 v-html 渲染，永远不要传用户输入或外部数据 */
   icon?: string
   shortcut?: string
   danger?: boolean
@@ -103,11 +104,12 @@ watch(
 
 onMounted(() => {
   window.addEventListener('mousedown', onOutside, true)
-  window.addEventListener('keydown', onKeydown)
+  // R32 fix (code-rev): capture phase 与 onOutside 一致，确保菜单按键优先级
+  window.addEventListener('keydown', onKeydown, true)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', onOutside, true)
-  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keydown', onKeydown, true)
 })
 </script>
 

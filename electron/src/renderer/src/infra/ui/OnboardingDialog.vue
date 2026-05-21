@@ -16,7 +16,9 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const cfg = useConfigStore()
 
 const cardRef = ref<HTMLElement | null>(null)
-useFocusTrap(cardRef, () => true) // OnboardingDialog 只在 open 时挂载，常 true
+// 组件只在 open 时 v-if 挂载，trap 在 mount 期内常 active
+const alwaysOpen = computed(() => true)
+useFocusTrap(cardRef, alwaysOpen)
 
 const step = ref<1 | 2 | 3>(1)
 const llmEndpoint = ref('')

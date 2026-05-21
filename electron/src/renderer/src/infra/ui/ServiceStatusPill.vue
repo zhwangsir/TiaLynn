@@ -60,6 +60,8 @@ function recomputeFromCfg(): void {
 }
 
 const cleanupHandlers: Array<() => void> = []
+// R32 fix (code-rev MED): unmount race 守卫 — initialProbe 飞行中组件卸载就不再 emit
+let mounted = true
 
 onMounted(() => {
   recomputeFromCfg()
@@ -95,54 +97,62 @@ onMounted(() => {
   void initialProbe()
 })
 
-/** R30: 启动时的一次性轻量 ping — 不重启每次重载，只 mount 触发一次 */
+/** R30: 启动时的一次性轻量 ping — LLM/TTS 并行 (R31-fix ts-rev MEDIUM) */
 async function initialProbe(): Promise<void> {
   const c = cfg.config
   if (!c) return
-  // LLM probe — 复用已有 healthCheck（test_vision: false 略过最重测试）
-  if (c.llm_endpoint && c.llm_model) {
-    try {
-      const r = await window.api.llm.healthCheck({ test_vision: false })
-      bus.emit('service:status', {
-        service: 'llm',
-        status: r.overall_ok ? 'ok' : 'down',
-        ...(!r.overall_ok && {
-          reason: r.results.find((x) => !x.ok)?.detail ?? 'health-check failed',
-        }),
-      })
-    } catch (e) {
-      bus.emit('service:status', {
-        service: 'llm',
-        status: 'down',
-        reason: String(e).slice(0, 100),
-      })
-    }
+  await Promise.all([probeLlmInitial(c), probeTtsInitial(c)])
+}
+
+async function probeLlmInitial(c: typeof cfg.config & object): Promise<void> {
+  if (!c.llm_endpoint || !c.llm_model) return
+  try {
+    const r = await window.api.llm.healthCheck({ test_vision: false })
+    if (!mounted) return
+    bus.emit('service:status', {
+      service: 'llm',
+      status: r.overall_ok ? 'ok' : 'down',
+      ...(!r.overall_ok && {
+        reason: r.results.find((x) => !x.ok)?.detail ?? 'health-check failed',
+      }),
+    })
+  } catch (e) {
+    if (!mounted) return
+    bus.emit('service:status', {
+      service: 'llm',
+      status: 'down',
+      reason: String(e).slice(0, 100),
+    })
   }
-  // TTS probe — 本机 sidecar 直 fetch，2s 超时
+}
+
+async function probeTtsInitial(c: typeof cfg.config & object): Promise<void> {
   const ttsUrl = Array.isArray(c.tts_sidecar_url)
     ? c.tts_sidecar_url.find((u) => u && u.trim())
     : c.tts_sidecar_url
-  if (ttsUrl) {
-    try {
-      const r = await fetch(`${ttsUrl.replace(/\/+$/, '')}/`, {
-        signal: AbortSignal.timeout(2000),
-      })
-      bus.emit('service:status', {
-        service: 'tts',
-        status: r.ok ? 'ok' : 'down',
-        ...(!r.ok && { reason: `HTTP ${r.status}` }),
-      })
-    } catch (e) {
-      bus.emit('service:status', {
-        service: 'tts',
-        status: 'down',
-        reason: String(e).slice(0, 100),
-      })
-    }
+  if (!ttsUrl) return
+  try {
+    const r = await fetch(`${ttsUrl.replace(/\/+$/, '')}/`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    if (!mounted) return
+    bus.emit('service:status', {
+      service: 'tts',
+      status: r.ok ? 'ok' : 'down',
+      ...(!r.ok && { reason: `HTTP ${r.status}` }),
+    })
+  } catch (e) {
+    if (!mounted) return
+    bus.emit('service:status', {
+      service: 'tts',
+      status: 'down',
+      reason: String(e).slice(0, 100),
+    })
   }
 }
 
 onBeforeUnmount(() => {
+  mounted = false
   cleanupHandlers.forEach((fn) => fn())
 })
 
@@ -204,7 +214,7 @@ function openSettings(): void {
       class="dot"
       :style="{ background: colorOf(llmState.status) }"
       :aria-label="labelOf('llm', llmState.status)"
-      role="status"
+      role="img"
       @mouseenter="hovered = 'llm'"
       @mouseleave="hovered = null"
     ></span>
@@ -212,7 +222,7 @@ function openSettings(): void {
       class="dot"
       :style="{ background: colorOf(ttsState.status) }"
       :aria-label="labelOf('tts', ttsState.status)"
-      role="status"
+      role="img"
       @mouseenter="hovered = 'tts'"
       @mouseleave="hovered = null"
     ></span>
@@ -220,10 +230,12 @@ function openSettings(): void {
       class="dot"
       :style="{ background: colorOf(visionState.status) }"
       :aria-label="labelOf('vision', visionState.status)"
-      role="status"
+      role="img"
       @mouseenter="hovered = 'vision'"
       @mouseleave="hovered = null"
     ></span>
+    <!-- 单一 live region 汇总变化，避免 3 个独立 region 屏读器连读 -->
+    <span class="sr-only" aria-live="polite">{{ tooltip }}</span>
   </button>
 </template>
 
@@ -277,5 +289,17 @@ function openSettings(): void {
 }
 .dot:hover {
   transform: scale(1.4);
+}
+/* 仅屏读器可见的 a11y live region */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>
