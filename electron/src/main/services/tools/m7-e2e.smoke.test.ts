@@ -26,7 +26,15 @@ describe.skipIf(!SHOULD_RUN)('M7 真出图 e2e smoke', () => {
     if (!existsSync(configPath)) {
       throw new Error('~/.tialynn/config.json 不存在 — 先做 onboarding')
     }
-    const cfg = JSON.parse(readFileSync(configPath, 'utf-8')) as { comfyui_endpoint?: string }
+    // reviewer HIGH-1:JSON.parse throw 在 vitest 里报 "uncaught exception" 而非清晰 fail
+    let cfg: { comfyui_endpoint?: string }
+    try {
+      cfg = JSON.parse(readFileSync(configPath, 'utf-8')) as { comfyui_endpoint?: string }
+    } catch (e) {
+      throw new Error(
+        `config.json 格式非法: ${e instanceof Error ? e.message : String(e)}`,
+      )
+    }
     if (!cfg.comfyui_endpoint) {
       throw new Error('comfyui_endpoint 未配置')
     }

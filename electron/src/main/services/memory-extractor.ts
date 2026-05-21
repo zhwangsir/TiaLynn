@@ -21,7 +21,10 @@ import { getActiveCharacter } from './character-store'
 /**
  * Fallback embedding — 32 维 hash 编码，无 LLM endpoint 时用。
  * v0.21 export 给 creative tool 等其他写入路径共享,统一向量长度让 RAG cosine 可工作。
- * v0.22 接通真 embedding endpoint 时只换实现,signature 不变。
+ *
+ * reviewer M-1 修正:v0.22 真接 embedding endpoint 时,**所有调用点必须改 await**
+ * (真 embedding 是 `async (text) => Promise<number[]>`,本同步签名仅为 v0.21 占位)。
+ * grep `fallbackEmbedding\(` 找全部调用点,逐个加 await。
  */
 export function fallbackEmbedding(text: string): number[] {
   const vec = new Array(32).fill(0) as number[]
