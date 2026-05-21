@@ -44,7 +44,7 @@
 - ~~**新 DECISIONS ADR**~~ — ✅ v0.21 本 session 补 6 个 ADR(ADR-200 转 Electron / 201 TS Tier 3 / 202 Attention / 203 手写 MCP / 204 硅基生命 / 205 Subagent 守护)
 - ~~**TTS 安装文档**~~ — ✅ v0.21 本 session [SIDECAR_SETUP.md](SIDECAR_SETUP.md)
 - ~~**USER_GUIDE.md**~~ — ✅ v0.21 本 session [USER_GUIDE.md](USER_GUIDE.md)
-- **CONTRIBUTING.md** （已存在 root）：补 PR / RFC / commit 风格规范
+- ~~**CONTRIBUTING.md** PR / RFC / commit 风格规范~~ — ✅ v0.21 本 session 补 PR 检查清单 + Conventional Commits + RFC 流程 + Subagent 守护 workflow
 
 ## 当前 audit 改动（v2.0 硅基生命重定向 — 2026-05-22）
 

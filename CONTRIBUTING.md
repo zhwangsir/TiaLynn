@@ -124,10 +124,112 @@ Closes #xxx
 
 ## 关键文档
 
-- [docs/STATUS.md](docs/STATUS.md) — 文档现状索引（有的文档已过时）
+- [docs/SILICON_LIFE_VISION.md](docs/SILICON_LIFE_VISION.md) ⭐ — 顶层产品宪章(四大支柱)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 系统架构(v0.21 当前 / 9 BehaviorAction / IPC)
+- [docs/PRD.md](docs/PRD.md) — 产品需求文档(v2.0)
+- [docs/ROADMAP.md](docs/ROADMAP.md) — M0-M10 路线
+- [docs/DECISIONS.md](docs/DECISIONS.md) — 架构决策 ADR(ADR-100~107 + 200~205)
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — 用户上手指南
+- [docs/SIDECAR_SETUP.md](docs/SIDECAR_SETUP.md) — TTS sidecar 安装文档
+- [docs/STATUS.md](docs/STATUS.md) — 文档现状索引
 - [docs/ARCHITECTURE_MOTION_SYSTEM.md](docs/ARCHITECTURE_MOTION_SYSTEM.md) — 动作系统
 - [docs/SOUL_SCHEMA.md](docs/SOUL_SCHEMA.md) — 灵魂档案 schema
 - [docs/rfcs/0001-ts-strict-tier-3.md](docs/rfcs/0001-ts-strict-tier-3.md) — TS 严格化决策
+- [CLAUDE.md](CLAUDE.md) — Claude Code 工程上下文(给 AI 看的)
+
+## PR 检查清单(合并前必过)
+
+每个 PR 必须满足:
+
+```
+[ ] typecheck 通过(`pnpm typecheck` — tsconfig.node + vue-tsc 都过)
+[ ] 全 vitest 单测通过(`pnpm test`)— ≥ 590 passed,无回归
+[ ] E2E spec(如有改 main process / IPC):`pnpm e2e` 通过
+[ ] commit message 走 conventional commits(feat / fix / docs / refactor / chore / test)
+[ ] commit message 描述 why,不只是 what
+[ ] CRITICAL / HIGH bug 全修(reviewer agent 跑过)
+[ ] CHANGELOG 或 docs/RELEASE_vX.Y.md 加一行
+[ ] 不破坏 CLAUDE.md 红线(LSUIElement / skipTransformProcessType / asset-protocol case 等)
+```
+
+## Conventional Commits 风格
+
+| 类型 | 用途 | 示例 |
+|---|---|---|
+| `feat` | 新功能 | `feat(M7): 注册 creative_generate_sticker dialog tool` |
+| `fix` | bug 修复 | `fix(asset-protocol): Chromium URL host 大小写丢失` |
+| `refactor` | 重构(不改行为) | `refactor(Round A): ComfyClient 共享单例消重` |
+| `docs` | 文档 | `docs(Round F): 补 6 个新 ADR` |
+| `test` | 测试 | `test(M7): m7-e2e.smoke 真出图端到端验证` |
+| `chore` | 杂活 | `chore: bump 0.16.0 → 0.21.0` |
+| `perf` | 性能 | `perf(planner): rule fallback 比 LLM 决策快 25x` |
+
+**body 描述 why**:
+```
+feat(Round B): openai-compat 完整 tool_calls 流式支持
+
+M7 创造统一最后 20%:之前 dialog.ts:282 只 anthropic 用户能让 LLM 主动调
+creative_generate_sticker。本轮把 LM Studio / Ollama 等 OAI 兼容用户也打通。
+
+设计选择(Karpathy Rule 2:最少代码):
+- 不动 ChatMessage 类型...
+```
+
+## RFC 流程(大架构变动)
+
+> 影响 200+ 行 / 跨多个 service / 改 IPC channel 协议 — 必须先写 RFC
+
+1. `docs/rfcs/NNNN-short-name.md` 草稿(参考 [0001-ts-strict-tier-3.md](docs/rfcs/0001-ts-strict-tier-3.md))
+2. PR 标题前缀 `RFC:`
+3. 列:背景 / 决策 / 替代方案 / 实现路径 / 风险 / 测试 / rollback 策略
+4. 至少 1 人 review(或 typescript-reviewer agent 自动审查)
+5. 合并 RFC = 接受方向;实现 PR 在后续单独跟进
+
+历史 RFC:
+- [0001-ts-strict-tier-3.md](docs/rfcs/0001-ts-strict-tier-3.md) — TypeScript Tier 3 严格化
+
+## Subagent 守护工作流(v0.21 标准 dev flow)
+
+本项目用 Claude Code subagent 守护开发质量(ADR-205)。本地 dev 也可手动跑:
+
+### 每个里程碑(round-by-round)
+```
+1. 实现 feature
+2. typecheck + 单测过
+3. dev 真启动 30s 验证不破坏运行
+4. 启动 typescript-reviewer agent 审查刚改的 diff
+5. 修 CRITICAL + HIGH 反馈
+6. commit
+```
+
+### 大里程碑额外加 architect 守护
+- 启动 architect agent 审查跟「硅基生命容器」四大支柱对齐
+- 找 hidden risks(pre-existing 技术债 + 未来 M8-M10 阻断点)
+
+### 真实证据(本项目 v0.21 跑了 8 轮守护)
+
+Round B reviewer agent 抓到 **CRITICAL bug**:`dialog.ts:202 loopUntilDone`
+硬判 anthropic → openai_compat 用户整个 tool loop 失效。**主开发自测察觉不到**
+(planner 路径走 attention,不走 dialog tool),reviewer 看代码逻辑一眼揭穿。
+
+每个 commit 100s ~ 50K tokens,比"两人 pair review"成本低 10x。
+
+## 关于灵魂(Soul)修改的特殊规则
+
+`default.yaml` + `~/.tialynn/soul/*.yaml` 是 TiaLynn 人格的**语义核心**。
+
+**改 layer1_core(底层本质)**:
+- PR 描述必须解释为什么改
+- 建议先在 Issue 讨论
+- 改完跑 character-eval(`SMOKE_TEST=1 pnpm test --run runner.smoke`),分数下降 >5 需 explain
+
+**改 emotions.states**:
+- 验证 8 个情绪在 Live2D 上视觉合理(截图 PR)
+- emotion_voice_map 8 voice 也要对齐
+
+**改 signature_lines**:
+- 鼓励扩充
+- 保持人格 tone 一致(黏人 / 病娇 / 占有欲 / 撒娇)
 
 ## 行为守则
 

@@ -547,4 +547,40 @@ function clamp01(v: number): number {
   return clamp(v, 0, 1)
 }
 
-export const planner = new BehaviorPlanner()
+/**
+ * v0.21 Round H:planner 单例 → factory(收 task #32 / reviewer Round A MEDIUM-4)
+ *
+ * Round A 已把 llmCallTimestamps 挪进 BehaviorPlanner instance field,
+ * 本次完成 M8 灵魂社会前置最后一步:per-character planner 实例。
+ *
+ * 设计:
+ * - 默认调 `getPlanner()` 拿 default 灵魂 planner(向后兼容)
+ * - 传 characterId 时,Map cache 返回该 character 独立实例(独立 budget / state)
+ * - M8 多灵魂同框时 attention scheduler 在 onTrigger 拿到 decision.target_character_id 后
+ *   `getPlanner(decision.target_character_id)` 选对应 planner
+ *
+ * v0.23+ 升级:character delete 时 disposePlannerFor(id) 清 Map entry,避免泄漏。
+ */
+const plannerInstances = new Map<string, BehaviorPlanner>()
+const DEFAULT_PLANNER_KEY = '__default__'
+
+export function getPlanner(characterId?: string): BehaviorPlanner {
+  const key = characterId ?? DEFAULT_PLANNER_KEY
+  let instance = plannerInstances.get(key)
+  if (!instance) {
+    instance = new BehaviorPlanner()
+    plannerInstances.set(key, instance)
+  }
+  return instance
+}
+
+/** test 用:清空所有缓存的 planner 实例(单测隔离) */
+export function _resetAllPlannersForTest(): void {
+  plannerInstances.clear()
+}
+
+/**
+ * @deprecated v0.21 留向后兼容,attention/index.ts 已改用 getPlanner()。
+ * v0.23 多灵魂全推完时移除此 const export(届时所有 callsite 都需 characterId)。
+ */
+export const planner = getPlanner()

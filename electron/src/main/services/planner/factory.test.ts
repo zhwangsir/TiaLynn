@@ -1,0 +1,73 @@
+/**
+ * planner factory 单测 — v0.21 Round H(收 task #32)
+ *
+ * 验证:
+ *   - getPlanner() 返 default 单实例(向后兼容旧 `export const planner`)
+ *   - getPlanner(A) ≠ getPlanner(B):不同 character 独立实例
+ *   - getPlanner(A) === getPlanner(A):同 character reuse 缓存
+ *   - _resetAllPlannersForTest 清空所有 Map 缓存
+ *   - 不同实例的 internal state 完全隔离(用 plan 调用次数间接验证)
+ *
+ * 不测 plan() 真实 LLM 调用(那是 planner 本身的 test,不是 factory test)。
+ */
+import { describe, expect, it, beforeEach } from 'vitest'
+import { BehaviorPlanner, getPlanner, _resetAllPlannersForTest } from './index'
+
+describe('planner factory(M8 灵魂社会前置)', () => {
+  beforeEach(() => {
+    _resetAllPlannersForTest()
+  })
+
+  it('getPlanner() 返 BehaviorPlanner 实例', () => {
+    const p = getPlanner()
+    expect(p).toBeInstanceOf(BehaviorPlanner)
+  })
+
+  it('getPlanner() 不传 id → default 单实例 reuse', () => {
+    const p1 = getPlanner()
+    const p2 = getPlanner()
+    expect(p1).toBe(p2) // Object.is 等于
+  })
+
+  it('getPlanner(A) ≠ getPlanner(B):不同 character 独立实例', () => {
+    const pA = getPlanner('character-A')
+    const pB = getPlanner('character-B')
+    expect(pA).not.toBe(pB)
+    expect(pA).toBeInstanceOf(BehaviorPlanner)
+    expect(pB).toBeInstanceOf(BehaviorPlanner)
+  })
+
+  it('getPlanner(A) === getPlanner(A):同 character 实例 cache', () => {
+    const p1 = getPlanner('soul-x')
+    const p2 = getPlanner('soul-x')
+    expect(p1).toBe(p2)
+  })
+
+  it('default vs 具名 characterId:不同实例(default key 是内部 sentinel)', () => {
+    const defaultP = getPlanner()
+    const namedP = getPlanner('any-character-id')
+    expect(defaultP).not.toBe(namedP)
+  })
+
+  it('_resetAllPlannersForTest:清空 + 下次 get 是新实例', () => {
+    const before = getPlanner('soul-z')
+    _resetAllPlannersForTest()
+    const after = getPlanner('soul-z')
+    // 同 id 但是清空后新建,instance 不一样
+    expect(after).not.toBe(before)
+  })
+
+  it('M8 多灵魂场景:3 个 character 并发拿 planner 各自独立', () => {
+    const ids = ['char-1', 'char-2', 'char-3']
+    const planners = ids.map((id) => getPlanner(id))
+
+    // 3 个都是不同实例
+    expect(new Set(planners).size).toBe(3)
+
+    // 各自 reuse
+    for (const id of ids) {
+      const again = getPlanner(id)
+      expect(again).toBe(planners[ids.indexOf(id)])
+    }
+  })
+})

@@ -4,7 +4,10 @@
 import type { BrowserWindow } from 'electron'
 import type { AttentionConfig, BehaviorPlan, SchedulerDecision } from '@shared/attention'
 import { scheduler } from './scheduler'
-import { planner } from '../planner'
+// v0.21 Round H:用 getPlanner() factory 替代 module-level singleton。
+// 当前不传 characterId 用 default(等价旧 singleton)。
+// M8 多灵魂时 onTrigger 接到 decision.target_character_id 后 getPlanner(id) 切换。
+import { getPlanner, planner } from '../planner'
 import { triggerScreenSnapshot } from '../perception'
 
 let getWindow: (() => BrowserWindow | null) | null = null
@@ -24,7 +27,9 @@ export function startAttention(
           /* vision 失败不阻塞 planner */
         })
       }
-      const plan = await planner.plan(decision)
+      // v0.21 Round H:用 getPlanner() 替 module singleton。
+      // 当前所有 trigger 走 default planner(同旧行为);M8 多灵魂时改 getPlanner(decision.target_character_id)
+      const plan = await getPlanner().plan(decision)
       console.log(
         `[attention] plan reason="${plan.reasoning ?? ''}" actions=${plan.actions.map((a) => a.type).join(',')}`,
       )
