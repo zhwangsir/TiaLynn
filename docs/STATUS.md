@@ -11,6 +11,8 @@
 | [PRD.md](PRD.md) | 产品需求文档（v2.0 重写） | v2.0 当前 |
 | [ROADMAP.md](ROADMAP.md) | 完整 M0-M10 路线图（v2.0 重写，加 M7-M10） | v2.0 当前 |
 | [RELEASE_v0.21.md](RELEASE_v0.21.md) | v0.21 硅基生命容器重定向 + M7 100% + 0 → 1 用户路径 | v0.21 当前 |
+| [USER_GUIDE.md](USER_GUIDE.md) | 主人 + 0→1 用户上手指南(onboarding / FAQ / macOS 权限 / 数据备份 / 故障诊断) | **v0.21 当前**(本 session 新建) |
+| [SIDECAR_SETUP.md](SIDECAR_SETUP.md) | TTS sidecar 安装文档(各 backend 依赖 / 启动 / 嘴型同步 / embedding) | **v0.21 当前**(本 session 新建) |
 | [RELEASE_v0.20.md](RELEASE_v0.20.md) | v0.20 灵魂自演化 + 多 mood 并存 release notes | v0.20 当前 |
 | [RELEASE_v0.19.md](RELEASE_v0.19.md) | v0.19 多角色生态闭环 | v0.19 当前 |
 | [RELEASE_v0.18.md](RELEASE_v0.18.md) | v0.18 三层人格 + 情感系统 | v0.18 当前 |
@@ -40,8 +42,8 @@
 
 - ~~**新 ARCHITECTURE.md**~~ — ✅ v0.21 本 session 重写(完整 9 BehaviorAction + ComfyUI 创造路径 + dialog tool 跨 provider)
 - ~~**新 DECISIONS ADR**~~ — ✅ v0.21 本 session 补 6 个 ADR(ADR-200 转 Electron / 201 TS Tier 3 / 202 Attention / 203 手写 MCP / 204 硅基生命 / 205 Subagent 守护)
-- **TTS 安装文档**：sidecar/install.sh 流程 + 各 backend (Edge / CosyVoice / F5-TTS / RVC) 各自的依赖坑
-- **USER_GUIDE.md**：onboarding 流程 + 常见问题 + 性能调优
+- ~~**TTS 安装文档**~~ — ✅ v0.21 本 session [SIDECAR_SETUP.md](SIDECAR_SETUP.md)
+- ~~**USER_GUIDE.md**~~ — ✅ v0.21 本 session [USER_GUIDE.md](USER_GUIDE.md)
 - **CONTRIBUTING.md** （已存在 root）：补 PR / RFC / commit 风格规范
 
 ## 当前 audit 改动（v2.0 硅基生命重定向 — 2026-05-22）
