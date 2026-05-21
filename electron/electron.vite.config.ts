@@ -4,7 +4,13 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // workspace 包 bundle 进 out/ — 否则 electron-builder asar 阶段会因
+    // packages/* 在 electron/ 外抱怨 "must be under electron/"
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@tialynn/motion-factory', '@tialynn/soul-loader'],
+      }),
+    ],
     build: {
       outDir: 'out/main',
       rollupOptions: {
@@ -21,7 +27,13 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    // workspace 包 bundle 进 out/ — 否则 electron-builder asar 阶段会因
+    // packages/* 在 electron/ 外抱怨 "must be under electron/"
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@tialynn/motion-factory', '@tialynn/soul-loader'],
+      }),
+    ],
     build: {
       outDir: 'out/preload',
       rollupOptions: {
