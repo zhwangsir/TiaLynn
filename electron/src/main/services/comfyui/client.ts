@@ -217,7 +217,19 @@ export class ComfyClient {
     const deadline = Date.now() + maxWait
     let announcedRunning = false
     while (Date.now() < deadline) {
-      const hist = await this.getHistory(promptId).catch(() => null)
+      // v0.21 Round C 收 reviewer HIGH-1:每轮先检查 instance abort
+      // 之前 `.catch(() => null)` 把 abort 引发的 ComfyError 吞成 null,
+      // 让轮询循环继续 sleep 到 deadline(最长 5 分钟),"立即停"语义失效
+      if (this.aborter.signal.aborted) {
+        throw new ComfyError(`生成被中断 (client 废弃): prompt_id=${promptId}`)
+      }
+      const hist = await this.getHistory(promptId).catch((e: unknown) => {
+        // 如果是 instance abort 引发的,rethrow 让循环立即退出
+        if (this.aborter.signal.aborted) {
+          throw e
+        }
+        return null
+      })
       if (hist) {
         const status = (hist.status ?? {}) as { completed?: boolean; status_str?: string }
         if (status.completed) {
@@ -229,7 +241,20 @@ export class ComfyClient {
         announcedRunning = true
         onProgress?.('running')
       }
-      await sleep(pollMs)
+      // sleep 也要支持 abort 中断 — race instance signal vs timeout
+      await Promise.race([
+        sleep(pollMs),
+        new Promise<void>((_, reject) => {
+          const onAbort = (): void => {
+            reject(new ComfyError(`生成被中断 (client 废弃): prompt_id=${promptId}`))
+          }
+          if (this.aborter.signal.aborted) {
+            onAbort()
+          } else {
+            this.aborter.signal.addEventListener('abort', onAbort, { once: true })
+          }
+        }),
+      ])
     }
     throw new ComfyError(`生成超时 (${maxWait}ms) prompt_id=${promptId}`)
   }

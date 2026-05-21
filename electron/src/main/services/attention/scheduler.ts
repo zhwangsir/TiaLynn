@@ -59,7 +59,6 @@ export class AttentionScheduler {
   start(): void {
     if (this.timer) return
     this.attachSensors()
-    this.paused = false
     // 初始化 lastProactiveAt = now，避免启动后第一个 tick 立即触发（应当等满 proactive_interval）
     this.lastProactiveAt = Date.now()
     this.timer = setInterval(() => this.tick(), this.config.tick_ms)
@@ -77,23 +76,34 @@ export class AttentionScheduler {
    * 跑步操作时 attention 仍然每 45s 触发 "glance_at_screen" plan 撕裂 UX。
    * paused 状态保留 sensors + timer,只在 tick / reactive 入口 short-circuit。
    * 调用方 try/finally 保证 resume(防 agent loop 异常退出忘记 resume)。
+   *
+   * 收 reviewer HIGH-2:改用 pauseDepth 引用计数,而非 boolean。
+   * 嵌套调用场景:outer agent 触发 inner agent 时,inner finally resume()
+   * 不能提前清掉 outer 的 pause。pauseDepth 0→1 才真 log "paused",
+   * pauseDepth →0 才真 log "resumed",中间嵌套不打扰 attention。
    */
-  private paused = false
+  private pauseDepth = 0
 
   pause(reason: string): void {
-    if (this.paused) return
-    this.paused = true
-    console.log(`[scheduler] paused: ${reason}`)
+    this.pauseDepth++
+    if (this.pauseDepth === 1) {
+      console.log(`[scheduler] paused: ${reason}`)
+    }
   }
 
   resume(): void {
-    if (!this.paused) return
-    this.paused = false
-    console.log(`[scheduler] resumed`)
+    if (this.pauseDepth <= 0) {
+      console.warn('[scheduler] resume() 调多了 — pauseDepth 已经 0')
+      return
+    }
+    this.pauseDepth--
+    if (this.pauseDepth === 0) {
+      console.log(`[scheduler] resumed`)
+    }
   }
 
   isPaused(): boolean {
-    return this.paused
+    return this.pauseDepth > 0
   }
 
   updateConfig(patch: Partial<AttentionConfig>): AttentionConfig {
@@ -214,7 +224,7 @@ export class AttentionScheduler {
    * Planner 收到 reason 后会按 system prompt 输出协同的 speak + play_group。
    */
   private tryReactiveTrigger(reason: string): void {
-    if (!this.config.enabled || !this.onTriggerCb || this.paused) return
+    if (!this.config.enabled || !this.onTriggerCb || this.pauseDepth > 0) return
     const now = Date.now()
     if (now - this.lastReactiveAt < this.REACTIVE_COOLDOWN_MS) return
     if (now - this.state.last_action_at < this.config.min_action_interval_ms) return
@@ -230,7 +240,7 @@ export class AttentionScheduler {
   // ============ Tick 决策 ============
 
   private tick(): void {
-    if (!this.config.enabled || !this.onTriggerCb || this.paused) return
+    if (!this.config.enabled || !this.onTriggerCb || this.pauseDepth > 0) return
     // 自然衰减
     this.decay('focus_on_screen', 0.05)
     this.decay('focus_on_master', 0.02)
