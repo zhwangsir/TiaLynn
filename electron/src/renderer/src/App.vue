@@ -427,6 +427,17 @@ function onScaleKey(e: KeyboardEvent): void {
     return
   }
   if (!e.metaKey && !e.ctrlKey) return
+  // R40: Cmd/Ctrl + . 中止正在生成的 LLM 回复 (macOS 标准 "cancel")
+  if (e.key === '.' && dialog.replying) {
+    e.preventDefault()
+    dialog.abort()
+    bus.emit('ui:toast', {
+      kind: 'info',
+      message: '已中止当前回复',
+      ttl_ms: 2000,
+    })
+    return
+  }
   // UX R24: Cmd/Ctrl + K 唤起全局 Spotlight 搜索
   if (e.key === 'k' || e.key === 'K') {
     e.preventDefault()

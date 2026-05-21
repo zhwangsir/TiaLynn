@@ -42,6 +42,8 @@ const sections = computed<Section[]>(() => [
       { keys: ['Esc'], label: '关闭对话 / 弹窗' },
       { keys: ['Enter'], label: '发送消息' },
       { keys: ['Shift', 'Enter'], label: '换行' },
+      { keys: ['↑', '↓'], label: '浏览历史消息（光标在首/末位时）' },
+      { keys: [cmdKey.value, '.'], label: '中止正在生成的回复' },
     ],
   },
   {
