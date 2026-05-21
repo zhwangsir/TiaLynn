@@ -28,7 +28,7 @@ vi.mock('./chinese-models', () => ({
 describe('toOpenAITool 转换', () => {
   it('ToolDefinition → OpenAI function 格式', () => {
     const def: ToolDefinition = {
-      name: 'creative.generate_sticker',
+      name: 'creative_generate_sticker',
       description: '画一张贴纸',
       risk: 'medium',
       category: 'creative',
@@ -42,7 +42,7 @@ describe('toOpenAITool 转换', () => {
     }
     const out = toOpenAITool(def)
     expect(out.type).toBe('function')
-    expect(out.function.name).toBe('creative.generate_sticker')
+    expect(out.function.name).toBe('creative_generate_sticker')
     expect(out.function.description).toBe('画一张贴纸')
     expect(out.function.parameters.type).toBe('object')
     expect(out.function.parameters.required).toEqual(['emotion'])
@@ -95,7 +95,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
                   index: 0,
                   id: 'call_abc',
                   type: 'function',
-                  function: { name: 'creative.generate_sticker', arguments: '' },
+                  function: { name: 'creative_generate_sticker', arguments: '' },
                 },
               ],
             },
@@ -142,7 +142,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
     const toolUseEvts = events.filter((e) => e.tool_use)
     expect(toolUseEvts.length).toBe(1)
     expect(toolUseEvts[0]!.tool_use!.id).toBe('call_abc')
-    expect(toolUseEvts[0]!.tool_use!.name).toBe('creative.generate_sticker')
+    expect(toolUseEvts[0]!.tool_use!.name).toBe('creative_generate_sticker')
     expect(toolUseEvts[0]!.tool_use!.input).toEqual({ emotion: 'happy' })
 
     const needsToolsEvts = events.filter((e) => e.needs_tools)
@@ -164,7 +164,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
                 {
                   index: 0,
                   id: 'call_xyz',
-                  function: { name: 'creative.generate_sticker', arguments: '{"emotion":"shy"}' },
+                  function: { name: 'creative_generate_sticker', arguments: '{"emotion":"shy"}' },
                 },
               ],
             },

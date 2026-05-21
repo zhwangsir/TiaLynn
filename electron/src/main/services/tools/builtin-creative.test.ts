@@ -1,5 +1,5 @@
 /**
- * M7 创造统一 — creative.generate_sticker tool 测试
+ * M7 创造统一 — creative_generate_sticker tool 测试
  *
  * 覆盖:
  *   - emotion 枚举校验(拒绝非法值)
@@ -65,7 +65,7 @@ function makeMockWindow(): {
   }
 }
 
-describe('creative.generate_sticker tool', () => {
+describe('creative_generate_sticker tool', () => {
   let invokeCreative: (input: Record<string, unknown>) => Promise<string>
   let win: ReturnType<typeof makeMockWindow>
 
@@ -87,8 +87,8 @@ describe('creative.generate_sticker tool', () => {
     win = makeMockWindow()
     registerBuiltins(() => win as unknown as Electron.BrowserWindow)
 
-    const got = registry.get('creative.generate_sticker')
-    if (!got) throw new Error('register 失败:creative.generate_sticker 不在 registry')
+    const got = registry.get('creative_generate_sticker')
+    if (!got) throw new Error('register 失败:creative_generate_sticker 不在 registry')
     invokeCreative = got.impl
   })
 
@@ -99,11 +99,11 @@ describe('creative.generate_sticker tool', () => {
     vi.clearAllMocks()
   })
 
-  it('注册成功: creative.generate_sticker 在 registry', async () => {
+  it('注册成功: creative_generate_sticker 在 registry', async () => {
     const registry = await import('./registry')
-    expect(registry.get('creative.generate_sticker')).toBeDefined()
-    expect(registry.get('creative.generate_sticker')!.def.category).toBe('creative')
-    expect(registry.get('creative.generate_sticker')!.def.risk).toBe('medium')
+    expect(registry.get('creative_generate_sticker')).toBeDefined()
+    expect(registry.get('creative_generate_sticker')!.def.category).toBe('creative')
+    expect(registry.get('creative_generate_sticker')!.def.risk).toBe('medium')
   })
 
   it('合法 emotion + 调用成功 → 返回友好字符串 + emit done event', async () => {

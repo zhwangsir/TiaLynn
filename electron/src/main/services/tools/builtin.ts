@@ -5,7 +5,7 @@
  * 用户可在 settings 增加额外根（v0.7）。
  *
  * M7 创造统一（v0.21）：
- *   - 新增 creative.generate_sticker —— 让 LLM 在 dialog 路径里调 ComfyUI 出图。
+ *   - 新增 creative_generate_sticker —— 让 LLM 在 dialog 路径里调 ComfyUI 出图。
  *     和 BehaviorPlanner 的 `generate_sticker` action 走同一个 workflow，
  *     但调用方是 dialog LLM 而不是 attention LLM。
  *   - 出图后 emit `comfyui:progress {kind:'sticker', state:'done'}` 给 renderer，
@@ -19,6 +19,7 @@ import { register } from './registry'
 import { ensureDir, getPaths } from '../paths'
 import { getSharedComfyClient } from '../comfyui/client'
 import { buildStickerWorkflow, type StickerParams } from '../comfyui/workflows'
+import { addMemoryForActive } from '../memory-store'
 
 function allowedRoots(): string[] {
   const home = homedir()
@@ -75,14 +76,14 @@ function isValidEmotion(s: string): s is StickerEmotion {
 }
 
 /**
- * M7：注册 creative.generate_sticker 让 dialog LLM 主动出图。
+ * M7：注册 creative_generate_sticker 让 dialog LLM 主动出图。
  * 跟 BehaviorPlanner 的 `generate_sticker` action 复用 buildStickerWorkflow。
  * 生成后通过 webContents.send 给 renderer，StickerOverlay 自动浮窗。
  */
 function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
   register(
     {
-      name: 'creative.generate_sticker',
+      name: 'creative_generate_sticker',
       description:
         '画一张表情贴纸送主人（通过 ComfyUI）。当主人说想看你画的东西、或想给主人惊喜时调用。' +
         '生成后会自动浮在桌面上，不需要再额外发文件路径给主人。一次只生成 1 张。' +
@@ -149,7 +150,7 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
           await client.downloadImage(img.filename, img.subfolder, img.type, dest)
           saved.push(dest)
         } catch (e) {
-          console.warn('[creative.generate_sticker] download skipped', img.filename, e)
+          console.warn('[creative_generate_sticker] download skipped', img.filename, e)
         }
       }
 
@@ -163,6 +164,24 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
         throw new Error('ComfyUI 没返回任何图片')
       }
       const extraDesc = extraPrompt ? `(${extraPrompt})` : ''
+
+      // v0.21 Round D:M7 闭环 — 写 per-character memory.db,让 LLM 在下次
+      // 对话能回忆"我画过什么"("那张星空我重新画一遍" / "上次画的贴纸主人喜欢吗")
+      // embedding 暂用空数组(后续 v0.22 加 embedding 时再补);importance 0.6 中高
+      // 因为创作行为相对稀疏(30 分钟最多 1-2 次),每次都值得记
+      try {
+        addMemoryForActive({
+          kind: 'event',
+          text: `我画了一张「${emotion}」${extraDesc}贴纸送给主人,已浮在桌面上`,
+          embedding: [],
+          importance: 0.6,
+          source: 'creative_generate_sticker',
+        })
+      } catch (e) {
+        // 写记忆失败不影响主流程,只警告
+        console.warn('[creative_generate_sticker] memory 写入失败:', e)
+      }
+
       return `已画好一张「${emotion}」${extraDesc}贴纸送主人，已浮在桌面上 ❤️`
     },
   )
