@@ -28,6 +28,14 @@ function fmtTs(ts: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/**
+ * R92-fix (MED): escape 行首 markdown 标记字符, 防 user/assistant text 污染导出格式。
+ * 仅转义最常导致结构破坏的: # header, --- ___ hr; 不动 **bold** `code` 等 inline。
+ */
+function escapeMdStructural(text: string): string {
+  return text.replace(/^(#{1,6}\s|---+\s*$|___+\s*$)/gm, '\\$1')
+}
+
 export function exportTurnsToMarkdown(
   turns: readonly ExportTurn[],
   characterName: string,
@@ -54,7 +62,8 @@ export function exportTurnsToMarkdown(
     if (t.error) {
       meta += ` · ❌ 失败`
     }
-    lines.push(`**${roleLabel}** · ${meta}\n\n${t.text || '_（空）_'}\n`)
+    const safeText = t.text ? escapeMdStructural(t.text) : '_（空）_'
+    lines.push(`**${roleLabel}** · ${meta}\n\n${safeText}\n`)
   }
   return lines.join('\n')
 }

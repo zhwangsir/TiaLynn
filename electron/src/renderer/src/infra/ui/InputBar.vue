@@ -23,7 +23,7 @@ const sttListening = ref(false)
 const sttError = ref('')
 let sttSession: SttSession | null = null
 
-/** R89: STT 错误码 → 中文友好提示 */
+/** R89: STT 错误码 → 中文友好提示 (静态 map, Vue setup 单脚本块限制下放在顶层) */
 const STT_ERROR_LABEL: Record<string, string> = {
   'not-allowed': '🎙 请授权麦克风访问 (设置 → 隐私 → 麦克风)',
   'service-not-allowed': '🎙 浏览器禁用了麦克风',

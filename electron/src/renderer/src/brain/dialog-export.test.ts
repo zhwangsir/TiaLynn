@@ -65,6 +65,31 @@ describe('exportTurnsToMarkdown', () => {
     expect(out).toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
+  it('R92-fix: 行首 # 转义防破坏 H1', () => {
+    const turns: ExportTurn[] = [
+      { role: 'user', text: '# 我的标题\n说话', ts: TS },
+    ]
+    const out = exportTurnsToMarkdown(turns, 'x')
+    expect(out).toContain('\\# 我的标题')
+  })
+
+  it('R92-fix: 行首 --- 转义防破坏 hr', () => {
+    const turns: ExportTurn[] = [
+      { role: 'user', text: 'hello\n---', ts: TS },
+    ]
+    const out = exportTurnsToMarkdown(turns, 'x')
+    expect(out).toContain('\\---')
+  })
+
+  it('R92-fix: inline **bold** / `code` 不转义 (允许用户用 markdown)', () => {
+    const turns: ExportTurn[] = [
+      { role: 'user', text: '我说 **重点** 和 `代码`', ts: TS },
+    ]
+    const out = exportTurnsToMarkdown(turns, 'x')
+    expect(out).toContain('**重点**')
+    expect(out).toContain('`代码`')
+  })
+
   it('intensity 缺失时不带百分比', () => {
     const turns: ExportTurn[] = [
       { role: 'assistant', text: 'hi', ts: TS, emotion: 'happy' },
