@@ -149,22 +149,28 @@ function openSettings(): void {
 </script>
 
 <template>
-  <button class="pill" :title="tooltip" @click="openSettings">
+  <button class="pill" :title="tooltip" :aria-label="tooltip" @click="openSettings">
     <span
       class="dot"
       :style="{ background: colorOf(llmState.status) }"
+      :aria-label="labelOf('llm', llmState.status)"
+      role="status"
       @mouseenter="hovered = 'llm'"
       @mouseleave="hovered = null"
     ></span>
     <span
       class="dot"
       :style="{ background: colorOf(ttsState.status) }"
+      :aria-label="labelOf('tts', ttsState.status)"
+      role="status"
       @mouseenter="hovered = 'tts'"
       @mouseleave="hovered = null"
     ></span>
     <span
       class="dot"
       :style="{ background: colorOf(visionState.status) }"
+      :aria-label="labelOf('vision', visionState.status)"
+      role="status"
       @mouseenter="hovered = 'vision'"
       @mouseleave="hovered = null"
     ></span>

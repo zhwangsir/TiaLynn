@@ -10,9 +10,13 @@ import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import type { RuntimeConfig } from '@shared/types'
 import LlmAutoDetectPanel from './LlmAutoDetectPanel.vue'
+import { useFocusTrap } from './useFocusTrap'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const cfg = useConfigStore()
+
+const cardRef = ref<HTMLElement | null>(null)
+useFocusTrap(cardRef, () => true) // OnboardingDialog 只在 open 时挂载，常 true
 
 const step = ref<1 | 2 | 3>(1)
 const llmEndpoint = ref('')
@@ -115,7 +119,7 @@ function skip(): void {
 <template>
   <transition name="onboard" appear>
     <div class="overlay" @click.self="skip">
-      <div class="card">
+      <div ref="cardRef" class="card" role="dialog" aria-modal="true" aria-label="TiaLynn 首次设置">
         <header>
           <div class="step-dots">
             <span :class="['dot', { active: step === 1 }]"></span>

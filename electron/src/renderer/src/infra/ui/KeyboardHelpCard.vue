@@ -5,10 +5,15 @@
  * 按 "?" 唤起 — 平台感知（mac 显 ⌘，其他显 Ctrl）。
  * 让用户不用看 README 就能发现功能。
  */
-import { computed } from 'vue'
+import { computed, ref, toRefs } from 'vue'
+import { useFocusTrap } from './useFocusTrap'
 
-defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+const cardRef = ref<HTMLElement | null>(null)
+const { open: openRef } = toRefs(props)
+useFocusTrap(cardRef, () => openRef.value)
 
 /** R23-fix: navigator.platform 已弃用，优先 userAgentData; fallback userAgent (Electron 上没 userAgentData 但 userAgent 总有) */
 const isMac = computed(() => {
@@ -76,7 +81,7 @@ function onBackdrop(e: MouseEvent): void {
 <template>
   <transition name="help">
     <div v-if="open" class="overlay" @click="onBackdrop">
-      <div class="card" role="dialog" aria-label="键盘快捷键">
+      <div ref="cardRef" class="card" role="dialog" aria-modal="true" aria-label="键盘快捷键">
         <header>
           <h2>键盘快捷键</h2>
           <button class="close-btn" aria-label="关闭" @click="emit('close')">✕</button>

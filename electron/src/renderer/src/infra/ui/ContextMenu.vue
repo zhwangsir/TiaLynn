@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 
 export interface MenuItem {
   id: string
@@ -48,17 +48,66 @@ function onOutside(e: MouseEvent): void {
   if (!menuRef.value.contains(e.target as Node)) emit('close')
 }
 
-function onEsc(e: KeyboardEvent): void {
-  if (e.key === 'Escape' && props.open) emit('close')
+// R29 a11y: ↑↓ Enter 键盘导航 — focused index 状态
+const focusedIdx = ref(-1)
+
+/** 选中可聚焦项（跳过 separator/disabled） */
+function selectableIndices(): number[] {
+  return props.items
+    .map((it, i) => (it.separator || it.disabled ? -1 : i))
+    .filter((i) => i >= 0)
 }
+
+function moveFocus(dir: 1 | -1): void {
+  const idxs = selectableIndices()
+  if (idxs.length === 0) return
+  const cur = idxs.indexOf(focusedIdx.value)
+  const next = cur < 0 ? (dir > 0 ? 0 : idxs.length - 1) : (cur + dir + idxs.length) % idxs.length
+  focusedIdx.value = idxs[next]!
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  if (!props.open) return
+  if (e.key === 'Escape') {
+    emit('close')
+    return
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    moveFocus(1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    moveFocus(-1)
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    if (focusedIdx.value >= 0) {
+      e.preventDefault()
+      const item = props.items[focusedIdx.value]
+      if (item) pick(item)
+    }
+  }
+}
+
+// 打开时重置焦点到第 1 个可选项
+watch(
+  () => props.open,
+  (now) => {
+    if (now) {
+      const idxs = selectableIndices()
+      focusedIdx.value = idxs[0] ?? -1
+      void nextTick(() => menuRef.value?.focus())
+    } else {
+      focusedIdx.value = -1
+    }
+  },
+)
 
 onMounted(() => {
   window.addEventListener('mousedown', onOutside, true)
-  window.addEventListener('keydown', onEsc)
+  window.addEventListener('keydown', onKeydown)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', onOutside, true)
-  window.removeEventListener('keydown', onEsc)
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -69,6 +118,7 @@ onBeforeUnmount(() => {
       ref="menuRef"
       class="ctx-menu"
       role="menu"
+      tabindex="-1"
       :style="position"
       @contextmenu.prevent
     >
@@ -77,10 +127,12 @@ onBeforeUnmount(() => {
         <button
           v-else
           class="item"
-          :class="{ danger: item.danger, disabled: item.disabled }"
+          :class="{ danger: item.danger, disabled: item.disabled, focused: focusedIdx === i }"
           :disabled="item.disabled"
           role="menuitem"
+          :tabindex="focusedIdx === i ? 0 : -1"
           @click="pick(item)"
+          @mouseenter="focusedIdx = i"
         >
           <span class="icon" v-html="item.icon ?? ''" />
           <span class="label">{{ item.label }}</span>
@@ -120,6 +172,7 @@ onBeforeUnmount(() => {
   transition: background var(--duration-fast), color var(--duration-fast),
     padding var(--duration-fast) var(--ease-out-expo);
 }
+.item.focused:not(.disabled),
 .item:hover:not(.disabled) {
   background: var(--color-bubble-surface-hover);
   /* hover 时图标轻微右滑 — 微反馈 */

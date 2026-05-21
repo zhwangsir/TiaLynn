@@ -251,7 +251,7 @@ function onBackdrop(e: MouseEvent): void {
 <template>
   <transition name="spot">
     <div v-if="open" class="overlay" @click="onBackdrop">
-      <div class="card" role="dialog" aria-label="全局搜索">
+      <div class="card" role="dialog" aria-modal="true" aria-label="全局搜索">
         <div class="input-row">
           <span class="search-icon">🔍</span>
           <input
