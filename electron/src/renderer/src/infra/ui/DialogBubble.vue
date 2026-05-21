@@ -205,6 +205,8 @@ async function copyText(): Promise<void> {
           <code v-else-if="seg.type === 'code'" class="md-code">{{ seg.text }}</code>
           <template v-else>{{ seg.text }}</template>
         </template>
+        <!-- R69: streaming 中 text 末尾闪 caret, 让用户知道还在输出 -->
+        <span v-if="latest.streaming" class="stream-caret" aria-hidden="true"></span>
       </span>
       <span v-else-if="latest.error" class="text error-text">
         <span class="error-line">没收到回复 — 试试重试或检查 LLM 设置</span>
@@ -213,7 +215,11 @@ async function copyText(): Promise<void> {
           <code class="error-raw">{{ latest.error.slice(0, 500) }}</code>
         </details>
       </span>
-      <span v-if="latest.streaming" class="typing-indicator" aria-label="正在输入">
+      <span
+        v-if="latest.streaming && !latest.text"
+        class="typing-indicator"
+        aria-label="正在输入"
+      >
         <span class="dot"></span>
         <span class="dot"></span>
         <span class="dot"></span>
@@ -417,6 +423,21 @@ async function copyText(): Promise<void> {
 .retry-btn:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
+}
+/* R69: streaming 末尾闪烁 caret */
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.65;
+  animation: caret-blink 1.06s steps(2, end) infinite;
+}
+@keyframes caret-blink {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 0; }
 }
 /* R51: inline markdown 渲染 */
 .md-bold {
