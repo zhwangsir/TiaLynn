@@ -2,7 +2,7 @@
  * normalize-endpoint 单测 (UX R55)。
  */
 import { describe, expect, it } from 'vitest'
-import { normalizeLlmEndpoint } from './normalize-endpoint'
+import { normalizeLlmEndpoint, normalizeSimpleUrl } from './normalize-endpoint'
 
 describe('normalizeLlmEndpoint', () => {
   it('空 → 空', () => {
@@ -78,5 +78,33 @@ describe('normalizeLlmEndpoint', () => {
 
   it('去前后空白', () => {
     expect(normalizeLlmEndpoint('  http://x.com/v1  ')).toBe('http://x.com/v1')
+  })
+})
+
+describe('normalizeSimpleUrl (R67)', () => {
+  it('空 → 空', () => {
+    expect(normalizeSimpleUrl('')).toBe('')
+    expect(normalizeSimpleUrl('   ')).toBe('')
+  })
+
+  it('补 scheme + 去末尾 /', () => {
+    expect(normalizeSimpleUrl('localhost:8765/')).toBe('http://localhost:8765')
+  })
+
+  it('保留 https + path', () => {
+    expect(normalizeSimpleUrl('https://x.com/api/tts')).toBe('https://x.com/api/tts')
+  })
+
+  it('不去 path (与 LLM 版区别)', () => {
+    // LLM 版会去 /models, 这个版本保留
+    expect(normalizeSimpleUrl('http://x.com/v1/models')).toBe('http://x.com/v1/models')
+  })
+
+  it('多末尾 / 全去', () => {
+    expect(normalizeSimpleUrl('http://x.com//')).toBe('http://x.com')
+  })
+
+  it('去前后空白', () => {
+    expect(normalizeSimpleUrl('  127.0.0.1:8765  ')).toBe('http://127.0.0.1:8765')
   })
 })

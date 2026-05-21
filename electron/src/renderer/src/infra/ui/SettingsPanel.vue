@@ -9,7 +9,7 @@ import SceneSettingsTab from './settings/SceneSettingsTab.vue'
 import EvalRunner from './EvalRunner.vue'
 import EmotionalDebugPanel from './EmotionalDebugPanel.vue'
 import SoulChangeLogPanel from './SoulChangeLogPanel.vue'
-import { normalizeLlmEndpoint } from '../../brain/normalize-endpoint'
+import { normalizeLlmEndpoint, normalizeSimpleUrl } from '../../brain/normalize-endpoint'
 import type { RuntimeConfig } from '@shared/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -817,7 +817,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </label>
         <label>
           <span>Sidecar URL</span>
-          <input v-model="form.tts_sidecar_url" type="text" placeholder="http://localhost:8765" @input="markDirty" />
+          <input v-model="form.tts_sidecar_url" type="text" placeholder="http://localhost:8765" @input="markDirty" @blur="form.tts_sidecar_url = normalizeSimpleUrl(form.tts_sidecar_url as string); markDirty()" />
         </label>
         <div class="row">
           <button class="ghost" @click="probeTts">探测</button>

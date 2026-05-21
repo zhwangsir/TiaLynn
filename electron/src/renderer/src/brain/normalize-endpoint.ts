@@ -29,3 +29,16 @@ export function normalizeLlmEndpoint(input: string): string {
 
   return url
 }
+
+/**
+ * R67: 简化版 — 仅补 scheme + 去末尾 /, 不动 path (适用 TTS sidecar 等任意 endpoint)
+ */
+export function normalizeSimpleUrl(input: string): string {
+  let url = input.trim()
+  if (!url) return ''
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'http://' + url
+  }
+  url = url.replace(/\/+$/, '')
+  return url
+}
