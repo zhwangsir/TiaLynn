@@ -125,7 +125,7 @@ onBeforeUnmount(() => {
       @contextmenu.prevent
     >
       <template v-for="(item, i) in items" :key="item.id + i">
-        <div v-if="item.separator" class="sep" />
+        <div v-if="item.separator" class="sep" :data-label="item.label || null" />
         <button
           v-else
           class="item"
@@ -232,6 +232,29 @@ onBeforeUnmount(() => {
 .sep {
   height: 1px;
   margin: 4px 6px;
+  background: var(--color-divider);
+}
+/* R101: separator 可带 label 作为 group 标题 */
+.sep[data-label] {
+  height: auto;
+  margin: 8px 6px 4px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+.sep[data-label]::before {
+  content: attr(data-label);
+  padding-right: 6px;
+}
+.sep[data-label]::after {
+  content: '';
+  flex: 1;
+  height: 1px;
   background: var(--color-divider);
 }
 

@@ -77,28 +77,28 @@ const passthroughEnabled = computed(
 
 const menuItems = computed<MenuItem[]>(() => [
   { id: 'chat', label: inputOpen.value ? '隐藏输入框' : '💬 打开对话', icon: iconChat, shortcut: 'Space' },
-  { id: 'sep0', label: '', separator: true },
+  { id: 'sep0', label: '角色', separator: true },
   // 角色
   { id: 'pick-character', label: `🎭 切换角色${character.active ? ` (当前: ${character.active.name})` : ''}`, icon: iconChat },
   { id: 'soul-editor', label: '✏️ 编辑灵魂', icon: iconChat },
-  { id: 'sep-char', label: '', separator: true },
+  { id: 'sep-char', label: '模型 / 工具', separator: true },
   // 模型与资源
   { id: 'library', label: '🎁 资源商店', icon: iconChat },
   { id: 'creator-studio', label: '🎨 创作工坊', icon: iconChat },
   { id: 'health-dashboard', label: '🔬 模型健康仪表盘', icon: iconChat },
   { id: 'reload', label: '🔄 重载模型 / 灵魂', icon: iconReload },
   { id: 'export-dialog', label: '📥 复制对话为 markdown', icon: iconChat },
-  { id: 'sep-model', label: '', separator: true },
+  { id: 'sep-model', label: '立绘', separator: true },
   // 立绘缩放
   { id: 'zoom-in', label: '🔍 放大立绘 (+)' },
   { id: 'zoom-out', label: '🔎 缩小立绘 (−)' },
   { id: 'zoom-reset', label: '↻ 复原大小（auto-fit）' },
-  { id: 'sep-zoom', label: '', separator: true },
+  { id: 'sep-zoom', label: '系统', separator: true },
   // 设置
   { id: 'settings', label: '⚙️ 设置', icon: iconGear },
   { id: 'theme-cycle', label: `🎨 主题：${THEME_LABEL[theme.mode.value]}`, shortcut: `${CMD_KEY}+⇧T` },
   { id: 'keyboard-help', label: '⌨️ 快捷键帮助', icon: iconGear, shortcut: '?' },
-  { id: 'sep-sys', label: '', separator: true },
+  { id: 'sep-sys', label: '窗口', separator: true },
   // 窗口
   { id: 'pin', label: pinned.value ? '📌 取消置顶' : '📍 置顶', icon: iconPin },
   { id: 'minimize', label: '— 收起', icon: iconMinus },
