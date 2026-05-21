@@ -690,7 +690,7 @@ const recommendedCount = computed(() => cfg.models.filter((m) => m.meta?.recomme
         </label>
         <label>
           <span>Endpoint</span>
-          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" @blur="form.llm_endpoint = normalizeLlmEndpoint(form.llm_endpoint)" />
+          <input v-model="form.llm_endpoint" type="text" placeholder="https://api.anthropic.com / http://localhost:11434 / ..." @input="markDirty" @blur="form.llm_endpoint = normalizeLlmEndpoint(form.llm_endpoint); markDirty()" />
         </label>
         <label>
           <span>Model</span>

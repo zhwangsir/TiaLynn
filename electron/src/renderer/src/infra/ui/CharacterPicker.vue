@@ -151,6 +151,7 @@ function initials(name: string): string {
           />
           <button
             v-if="searchQuery"
+            type="button"
             class="search-clear"
             title="清除"
             aria-label="清除搜索"
@@ -330,6 +331,7 @@ h2 {
 .search-clear {
   width: 28px;
   height: 28px;
+  border: none;
   border-radius: 50%;
   background: var(--color-bubble-surface);
   color: var(--color-muted);

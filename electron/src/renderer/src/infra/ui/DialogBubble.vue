@@ -5,9 +5,16 @@ import { parseInlineMarkdown } from '../../brain/inline-markdown'
 import { useThemeMode } from './useThemeMode'
 import { bus } from '../eventbus'
 
-/** 按文字长度动态：保底 5 秒，每字 +250ms，上限 18 秒（防止超长文本永驻） */
+/**
+ * R65: 按文字长度动态隐藏:
+ *   - 保底 5 秒
+ *   - 每字 +250ms
+ *   - 上限 18 秒
+ *   - 超长 (> 500 字) → 0 即不自动隐藏 (用户在读, 自动消失会丢内容, 需主动 ✕ 关)
+ */
 function hideMsFor(text: string | undefined): number {
   const len = text?.length ?? 0
+  if (len > 500) return 0
   return Math.min(18_000, Math.max(5_000, 5_000 + len * 250))
 }
 
@@ -50,9 +57,11 @@ function scrollToBottom(): void {
 
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
+  const ms = hideMsFor(latest.value?.text)
+  if (ms <= 0) return // R65: 超长回复不自动隐藏, 等用户主动 ✕
   hideTimer = setTimeout(() => {
     visible.value = false
-  }, hideMsFor(latest.value?.text))
+  }, ms)
 }
 
 watch(
@@ -370,6 +379,7 @@ async function copyText(): Promise<void> {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: none;
   border-radius: 50%;
   background: oklch(100% 0 0 / 0.6);
   font-size: 11px;
