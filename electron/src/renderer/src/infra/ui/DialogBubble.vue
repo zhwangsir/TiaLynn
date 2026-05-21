@@ -217,20 +217,21 @@ async function copyText(): Promise<void> {
         <span class="emo-icon">{{ emotionLabel[latest.emotion]!.icon }}</span>
         <span class="emo-text">{{ emotionLabel[latest.emotion]!.label }}</span>
       </span>
-      <button
-        v-if="latest.text && !latest.streaming"
-        class="copy-btn"
-        title="复制这条 (Cmd+C)"
-        aria-label="复制对话"
-        @click.stop="copyText"
-      >📋</button>
-      <button
-        v-if="!latest.streaming"
-        class="dismiss-btn"
-        title="关闭气泡"
-        aria-label="关闭对话气泡"
-        @click.stop="dismiss"
-      >✕</button>
+      <div v-if="!latest.streaming" class="bubble-actions">
+        <button
+          v-if="latest.text"
+          class="action-btn"
+          title="复制这条 (Cmd+C)"
+          aria-label="复制对话"
+          @click.stop="copyText"
+        >📋</button>
+        <button
+          class="action-btn"
+          title="关闭气泡"
+          aria-label="关闭对话气泡"
+          @click.stop="dismiss"
+        >✕</button>
+      </div>
       <button
         v-if="latest.error && !dialog.replying"
         class="retry-btn"
@@ -348,11 +349,22 @@ async function copyText(): Promise<void> {
 .emo-text {
   font-weight: 500;
 }
-/* R38: 复制按钮 — hover bubble 时浮出 */
-.copy-btn {
+/* R58: 气泡 actions flex 容器, 替代 R38/R54 各自绝对定位的魔法数字 */
+.bubble-actions {
   position: absolute;
   top: 6px;
   right: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.bubble:hover .bubble-actions,
+.bubble-actions:focus-within {
+  opacity: 1;
+}
+.action-btn {
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -361,56 +373,17 @@ async function copyText(): Promise<void> {
   border-radius: 50%;
   background: oklch(100% 0 0 / 0.6);
   font-size: 11px;
-  opacity: 0;
-  transition: opacity var(--duration-fast), background var(--duration-fast);
-  flex-shrink: 0;
   cursor: pointer;
+  transition: background var(--duration-fast);
 }
-.bubble:hover .copy-btn,
-.copy-btn:focus-visible {
-  opacity: 1;
-}
-.copy-btn:hover {
+.action-btn:hover {
   background: oklch(100% 0 0 / 0.85);
 }
 @media (prefers-color-scheme: dark) {
-  .copy-btn {
+  .action-btn {
     background: oklch(0% 0 0 / 0.4);
   }
-  .copy-btn:hover {
-    background: oklch(0% 0 0 / 0.6);
-  }
-}
-/* R54: 关闭按钮 — 右上角, 紧贴 .copy-btn 旁边 */
-.dismiss-btn {
-  position: absolute;
-  top: 6px;
-  right: 32px;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: oklch(100% 0 0 / 0.6);
-  font-size: 11px;
-  opacity: 0;
-  transition: opacity var(--duration-fast), background var(--duration-fast);
-  flex-shrink: 0;
-  cursor: pointer;
-}
-.bubble:hover .dismiss-btn,
-.dismiss-btn:focus-visible {
-  opacity: 1;
-}
-.dismiss-btn:hover {
-  background: oklch(100% 0 0 / 0.85);
-}
-@media (prefers-color-scheme: dark) {
-  .dismiss-btn {
-    background: oklch(0% 0 0 / 0.4);
-  }
-  .dismiss-btn:hover {
+  .action-btn:hover {
     background: oklch(0% 0 0 / 0.6);
   }
 }
