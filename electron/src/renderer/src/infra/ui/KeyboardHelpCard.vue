@@ -19,6 +19,23 @@ useFocusTrap(cardRef, openRef)
 /** R79: 复用全局 CMD_KEY 单例, 不再每组件各算一份 */
 const cmdKey = computed(() => CMD_KEY)
 
+/** R129: 搜索过滤快捷键 (按 label 子串) */
+const search = ref('')
+
+/** R129: 经搜索过滤后的 sections, 空 sections 不显示 */
+const filteredSections = computed<Section[]>(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return sections.value
+  return sections.value
+    .map((sec) => ({
+      title: sec.title,
+      items: sec.items.filter((it) =>
+        it.label.toLowerCase().includes(q) || it.keys.some((k) => k.toLowerCase().includes(q)),
+      ),
+    }))
+    .filter((sec) => sec.items.length > 0)
+})
+
 interface Shortcut {
   keys: string[]
   label: string
@@ -97,10 +114,22 @@ function onBackdrop(e: MouseEvent): void {
       <div ref="cardRef" class="card" role="dialog" aria-modal="true" aria-label="键盘快捷键">
         <header>
           <h2>键盘快捷键</h2>
+          <input
+            v-model="search"
+            class="kbd-search"
+            type="text"
+            placeholder="🔍 过滤..."
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="过滤快捷键"
+          />
           <button class="close-btn" aria-label="关闭" @click="emit('close')">✕</button>
         </header>
         <div class="body">
-          <section v-for="sec in sections" :key="sec.title" class="sec">
+          <p v-if="filteredSections.length === 0" class="kbd-empty">
+            没有匹配的快捷键
+          </p>
+          <section v-for="sec in filteredSections" :key="sec.title" class="sec">
             <h3>{{ sec.title }}</h3>
             <ul>
               <li v-for="it in sec.items" :key="it.label">
@@ -156,6 +185,31 @@ h2 {
   font-size: var(--text-lg);
   font-weight: 600;
 }
+/* R129: 搜索框 */
+.kbd-search {
+  flex: 1;
+  margin: 0 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-bubble-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bubble-surface);
+  color: var(--color-bubble-text);
+  font-size: var(--text-sm);
+  outline: none;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+.kbd-search:focus {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+.kbd-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
 .close-btn {
   background: transparent;
   color: var(--color-muted);
