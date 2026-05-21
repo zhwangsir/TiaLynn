@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { bus } from '../eventbus'
 import DiskUsageDialog from './DiskUsageDialog.vue'
@@ -64,8 +64,8 @@ const diskUsageOpen = ref(false)
 type SettingsTab = 'llm' | 'avatar' | 'scene' | 'tts' | 'rvc' | 'soul' | 'mcp'
 const activeTab = ref<SettingsTab>('llm')
 
-/** R107: tabs ←→ 键盘导航 (WAI-ARIA tablist 标准) */
-function onTabsKeydown(e: KeyboardEvent): void {
+/** R107+R109-fix (HIGH): tabs ←→ 键盘导航, 切换后 focus 转移到新 tab (WAI-ARIA roving tabindex 标准) */
+async function onTabsKeydown(e: KeyboardEvent): Promise<void> {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return
   e.preventDefault()
   const idx = tabs.findIndex((t) => t.id === activeTab.value)
@@ -76,6 +76,11 @@ function onTabsKeydown(e: KeyboardEvent): void {
   else if (e.key === 'Home') nextIdx = 0
   else if (e.key === 'End') nextIdx = tabs.length - 1
   activeTab.value = tabs[nextIdx]!.id
+  // 转移焦点到新 active tab 让屏读器朗读 + 视觉 focus ring 跟随
+  await nextTick()
+  const nav = (e.currentTarget as HTMLElement | null)
+  const next = nav?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIdx]
+  next?.focus()
 }
 const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'llm', label: '大脑', icon: '🧠' },

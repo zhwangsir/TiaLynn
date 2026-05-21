@@ -331,14 +331,13 @@ async function copyText(): Promise<void> {
   gap: 8px;
   pointer-events: auto;
   max-height: min(28vh, 220px);
+  overflow-y: auto;
   transition: max-height var(--duration-normal) var(--ease-out-expo);
 }
-/* R106: expanded 时取消高度限制 */
+/* R106+R109-fix: expanded 时放大高度上限; 继承 base transition 让 collapse 也有动画 */
 .bubble.expanded {
   max-height: min(70vh, 600px);
-  overflow-y: auto;
   z-index: 1500;
-  transition: background var(--duration-normal) var(--ease-in-out);
 }
 
 @media (max-height: 360px) {
