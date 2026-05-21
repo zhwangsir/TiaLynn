@@ -166,19 +166,34 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
       const extraDesc = extraPrompt ? `(${extraPrompt})` : ''
 
       // v0.21 Round D:M7 闭环 — 写 per-character memory.db,让 LLM 在下次
-      // 对话能回忆"我画过什么"("那张星空我重新画一遍" / "上次画的贴纸主人喜欢吗")
-      // embedding 暂用空数组(后续 v0.22 加 embedding 时再补);importance 0.6 中高
-      // 因为创作行为相对稀疏(30 分钟最多 1-2 次),每次都值得记
+      // 对话能回忆"我画过什么"。
+      //
+      // ⚠️ v0.21 当前限制(reviewer MEDIUM-2):embedding 用空数组占位,
+      // memory-store.searchMemories 计算 cosine 时 length 不等返 0,
+      // 该条 event 记忆**对 RAG 不可检索**,只供 listMemories UI 展示。
+      // M7 "LLM 回忆画过什么"的目标实质上在 v0.22 加 embedding endpoint 调用后
+      // 才会真正成立。当前不破坏,日后修补即可。
+      //
+      // importance 0.6 中高:创作行为相对稀疏(30 分钟最多 1-2 次),每次值得记。
+      // (TODO v0.22:抽 MEMORY_IMPORTANCE_CREATIVE 常量;reviewer LOW-1)
+      // (TODO v0.22:同 emotion 重复画去重;当前无 RAG 影响,留 reviewer LOW-2)
       try {
-        addMemoryForActive({
+        const memResult = addMemoryForActive({
           kind: 'event',
           text: `我画了一张「${emotion}」${extraDesc}贴纸送给主人,已浮在桌面上`,
           embedding: [],
           importance: 0.6,
           source: 'creative_generate_sticker',
         })
+        // reviewer MEDIUM-1:addMemoryForActive 无 active character 时返 null
+        // 不抛错,try/catch 触发不到 — 显式日志保可观测性
+        if (!memResult) {
+          console.warn(
+            '[creative_generate_sticker] no active character, memory write skipped',
+          )
+        }
       } catch (e) {
-        // 写记忆失败不影响主流程,只警告
+        // 写记忆失败不影响主流程,只警告(addMemory 内部 SQLite 错才会到这里)
         console.warn('[creative_generate_sticker] memory 写入失败:', e)
       }
 
@@ -194,7 +209,7 @@ function registerCreativeTools(getWindow: () => BrowserWindow | null): void {
 export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
   register(
     {
-      name: 'fs.list_dir',
+      name: 'fs_list_dir',
       description: '列出目录下的文件和子目录（最多 100 项）',
       risk: 'low',
       category: 'fs',
@@ -226,7 +241,7 @@ export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
 
   register(
     {
-      name: 'fs.read_file',
+      name: 'fs_read_file',
       description: '读取文本文件内容（最多 16KB；二进制不支持）',
       risk: 'low',
       category: 'fs',
@@ -250,7 +265,7 @@ export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
 
   register(
     {
-      name: 'system.open_path',
+      name: 'system_open_path',
       description: '用系统默认应用打开本地文件/文件夹',
       risk: 'medium',
       category: 'system',
@@ -272,7 +287,7 @@ export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
 
   register(
     {
-      name: 'system.open_url',
+      name: 'system_open_url',
       description: '在默认浏览器打开 URL（只允许 http/https）',
       risk: 'medium',
       category: 'system',
@@ -294,7 +309,7 @@ export function registerBuiltins(getWindow: () => BrowserWindow | null): void {
 
   register(
     {
-      name: 'system.notify',
+      name: 'system_notify',
       description: '发桌面通知',
       risk: 'low',
       category: 'system',

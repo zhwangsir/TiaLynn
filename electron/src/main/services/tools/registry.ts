@@ -69,15 +69,15 @@ export function buildSummary(call: ToolInvocation): string {
   const tool = tools.get(call.tool_name)
   if (!tool) return `调用未知工具 ${call.tool_name}`
   switch (call.tool_name) {
-    case 'fs.list_dir':
+    case 'fs_list_dir':
       return `列出目录：${String(call.input.path ?? '?')}`
-    case 'fs.read_file':
+    case 'fs_read_file':
       return `读取文件：${String(call.input.path ?? '?')}`
-    case 'system.open_path':
+    case 'system_open_path':
       return `用默认应用打开：${String(call.input.path ?? '?')}`
-    case 'system.open_url':
+    case 'system_open_url':
       return `在浏览器打开：${String(call.input.url ?? '?')}`
-    case 'system.notify':
+    case 'system_notify':
       return `桌面通知：${String(call.input.title ?? '?')}`
     default: {
       const keys = Object.keys(call.input).slice(0, 3).join(', ')

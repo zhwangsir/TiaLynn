@@ -15,12 +15,48 @@ function path(): string {
   return join(getPaths().userDataDir, 'tool-policy.json')
 }
 
+/**
+ * v0.21 Round D:tool name 从 `fs.list_dir` 改 `fs_list_dir` 等(OpenAI function
+ * name regex 兼容)。老用户的 policy 文件可能存了旧 key,加 migration 自动转。
+ */
+const TOOL_NAME_MIGRATIONS: Record<string, string> = {
+  'creative.generate_sticker': 'creative_generate_sticker',
+  'fs.list_dir': 'fs_list_dir',
+  'fs.read_file': 'fs_read_file',
+  'system.open_path': 'system_open_path',
+  'system.open_url': 'system_open_url',
+  'system.notify': 'system_notify',
+}
+
+function migrateLegacyNames(p: ToolPolicy): { policy: ToolPolicy; migrated: number } {
+  let migrated = 0
+  for (const [oldName, newName] of Object.entries(TOOL_NAME_MIGRATIONS)) {
+    if (p[oldName] !== undefined && p[newName] === undefined) {
+      p[newName] = p[oldName]
+      delete p[oldName]
+      migrated++
+    }
+  }
+  return { policy: p, migrated }
+}
+
 export function load(): ToolPolicy {
   if (cached) return cached
   const p = path()
   if (existsSync(p)) {
     try {
-      cached = JSON.parse(readFileSync(p, 'utf-8')) as ToolPolicy
+      const raw = JSON.parse(readFileSync(p, 'utf-8')) as ToolPolicy
+      const { policy: migrated, migrated: count } = migrateLegacyNames(raw)
+      if (count > 0) {
+        console.log(`[tool-policy] migrated ${count} legacy tool name(s) to underscore form`)
+        // 持久化迁移后的 policy
+        try {
+          writeFileSync(path(), JSON.stringify(migrated, null, 2), 'utf-8')
+        } catch (e) {
+          console.warn('[tool-policy] save migration failed:', e)
+        }
+      }
+      cached = migrated
       return cached
     } catch (e) {
       console.warn('[tool-policy] parse failed:', e)

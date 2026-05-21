@@ -201,7 +201,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
                 {
                   index: 0,
                   id: 'call_bad',
-                  function: { name: 'fs.read_file', arguments: 'not-json!' },
+                  function: { name: 'fs_read_file', arguments: 'not-json!' },
                 },
               ],
             },
@@ -222,7 +222,7 @@ describe('OpenAiCompatProvider tool_calls 流式累积', () => {
     )
 
     const toolUse = events.find((e) => e.tool_use)?.tool_use
-    expect(toolUse?.name).toBe('fs.read_file')
+    expect(toolUse?.name).toBe('fs_read_file')
     expect(toolUse?.input).toEqual({}) // invalid JSON 降级为空对象
   })
 
