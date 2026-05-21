@@ -220,6 +220,8 @@ async function onPillClick(): Promise<void> {
   // 触发主动重 probe — 给用户一种"刚刚是临时挂掉了"的快速恢复机会
   bus.emit('ui:toast', { kind: 'info', message: '正在重新检查服务…', ttl_ms: 1500 })
   await initialProbe()
+  // R49-fix (HIGH): await 后组件可能已卸载, 守卫避免对已死组件 emit/state read
+  if (!mounted) return
   if (anyDown.value) {
     // 仍然 down → 跳设置
     openSettings()

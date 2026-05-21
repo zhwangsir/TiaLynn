@@ -145,7 +145,7 @@ async function copyText(): Promise<void> {
       <span v-if="latest.text" class="text">{{ latest.text }}</span>
       <span v-else-if="latest.error" class="text error-text">
         <span class="error-line">没收到回复 — 试试重试或检查 LLM 设置</span>
-        <details v-if="latest.error" class="error-detail">
+        <details class="error-detail">
           <summary>查看错误详情</summary>
           <code class="error-raw">{{ latest.error.slice(0, 500) }}</code>
         </details>

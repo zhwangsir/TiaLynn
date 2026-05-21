@@ -153,8 +153,8 @@ function bumpUsage(title: string): void {
   }
 }
 
-function usageBoost(title: string): number {
-  const usage = loadUsage()
+/** R49-fix (HIGH): 接受已读出的 usage map, 避免 computed 内 n 次 JSON.parse */
+function usageBoostFromMap(usage: Record<string, number>, title: string): number {
   const count = usage[title] ?? 0
   if (count === 0) return 0
   // 平方根衰减 — 用 10 次 ≈ +0.31, 用 100 次 ≈ +1.0 (天花板)
@@ -176,6 +176,8 @@ function scoreMatch(text: string, q: string): number {
 const results = computed<ResultItem[]>(() => {
   const q = query.value.trim()
   const out: ResultItem[] = []
+  // R49-fix: 一次性读 usage map, 循环内 O(1) lookup
+  const usageMap = loadUsage()
 
   // 命令 — R46 加 usageBoost 让常用项排前
   for (const c of commands) {
@@ -186,7 +188,7 @@ const results = computed<ResultItem[]>(() => {
       icon: c.hint,
       group: '命令',
       title: c.title,
-      score: matchScore + 0.1 + usageBoost(c.title),
+      score: matchScore + 0.1 + usageBoostFromMap(usageMap, c.title),
       action: () => {
         bumpUsage(c.title)
         emit('close')
