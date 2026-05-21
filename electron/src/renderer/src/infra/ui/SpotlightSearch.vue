@@ -185,7 +185,11 @@ function scoreMatch(text: string, q: string): number {
 }
 
 const results = computed<ResultItem[]>(() => {
-  const q = query.value.trim()
+  let q = query.value.trim()
+  // R121: "/" 前缀仅命令; "@" 仅角色 (Discord 风格 namespace 过滤)
+  const onlyCmd = q.startsWith('/')
+  const onlyChar = q.startsWith('@')
+  if (onlyCmd || onlyChar) q = q.slice(1).trim()
   const out: ResultItem[] = []
   // R49-fix: 一次性读 usage map, 循环内 O(1) lookup
   const usageMap = loadUsage()
@@ -193,7 +197,7 @@ const results = computed<ResultItem[]>(() => {
   const activeId = characterStore.active?.id
 
   // 命令 — R46 加 usageBoost 让常用项排前
-  for (const c of commands) {
+  if (!onlyChar) for (const c of commands) {
     const matchScore = q ? scoreMatch(c.title, q) : 0.5
     if (q && matchScore === 0) continue
     out.push({
@@ -212,7 +216,7 @@ const results = computed<ResultItem[]>(() => {
   }
 
   // 角色
-  for (const c of characters.value) {
+  if (!onlyCmd) for (const c of characters.value) {
     const s = q ? scoreMatch(c.name, q) : 0.4
     if (q && s === 0) continue
     // R90+R92-fix (MED): subtitle 含 template/亲密度/对话次数, 零值不显示
@@ -237,8 +241,8 @@ const results = computed<ResultItem[]>(() => {
     })
   }
 
-  // 历史（只在有 query 时显示，避免噪音）
-  if (q && q.length >= 2) {
+  // 历史（只在有 query 时显示，避免噪音; / 或 @ 前缀模式不显示）
+  if (!onlyCmd && !onlyChar && q && q.length >= 2) {
     for (const t of historyTurns.value) {
       const s = scoreMatch(t.text, q)
       if (s === 0) continue
@@ -263,8 +267,8 @@ const results = computed<ResultItem[]>(() => {
     }
   }
 
-  // 设置关键词
-  for (const k of settingsKeywords) {
+  // 设置关键词 (/ 仅命令 / @ 仅角色 时跳过)
+  if (!onlyCmd && !onlyChar) for (const k of settingsKeywords) {
     const s = q ? scoreMatch(k.keyword, q) : 0
     if (q && s === 0) continue
     out.push({
@@ -344,7 +348,7 @@ function onBackdrop(e: MouseEvent): void {
             v-model="query"
             class="search-input"
             type="text"
-            placeholder="搜命令 / 角色 / 历史 / 设置… (Esc 关闭)"
+            placeholder="搜命令 / 角色 / 历史 / 设置…  / 仅命令  @ 仅角色"
             spellcheck="false"
             autocomplete="off"
           />
