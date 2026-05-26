@@ -22,7 +22,7 @@
 | [DECISIONS.md](DECISIONS.md) | 架构决策 ADR(ADR-100~107 + 新增 ADR-200~205:Electron / TS Tier 3 / Attention / 手写 MCP / 硅基生命 / Subagent 守护) | **v0.21 当前**(本 session 补 6 个 ADR) |
 | [ARCHITECTURE_MOTION_SYSTEM.md](ARCHITECTURE_MOTION_SYSTEM.md) | 动作工业链（v0.7 落地） | v0.7+ 当前 |
 | [SOUL_SCHEMA.md](SOUL_SCHEMA.md) | 灵魂档案 schema（4 yaml 拆分） | v0.5+ 当前 |
-| [../README.md](../README.md) | 用户视角 quick-start + 功能概览 | v0.13 部分过时（需补 v0.20 内容） |
+| [../README.md](../README.md) | 用户视角 quick-start + 四大支柱 + M0-M10 路线 + SILICON_LIFE_VISION 链接 | **v0.21+M8 当前**(Stage 1 W2 重写) |
 | [../CHANGELOG.md](../CHANGELOG.md) | 版本日志 | 部分过时，实际进度看 git log |
 | [rfcs/0001-ts-strict-tier-3.md](rfcs/0001-ts-strict-tier-3.md) | TypeScript Tier 3 严格化 RFC | v0.13 当前 |
 

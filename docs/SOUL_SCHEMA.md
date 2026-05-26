@@ -16,7 +16,7 @@ soul/
 └── core_memories.yaml      # 关键事件 / 共同回忆
 ```
 
-**优先级**：`~/.tialynn/characters/<id>/soul/` > `<projectRoot>/soul/`（用户目录覆盖项目内置）
+**优先级**：`~/.tialynn/chars/<id>/soul/` > `<projectRoot>/soul/`（用户目录覆盖项目内置)
 **热重载**：保存任一 yaml 触发 `soul:changed` IPC，renderer 自动 reload
 **安全**：用 `yaml.JSON_SCHEMA` 解析，禁 `!!js/*` 标签注入
 

@@ -162,7 +162,7 @@ renderer Vue 组件在 `<script setup>` **顶层**直接调 `bus.on(...)` 会在
    └─ dialog.send → memory:rag-context (embedding 检索 top-k) ← prepend system prompt
 ```
 
-- 存储：`main/services/memory-store.ts` → `~/.tialynn/characters/<id>/memory.db`（per-character 隔离，better-sqlite3 WAL）
+- 存储：`main/services/memory-store.ts` → `~/.tialynn/chars/<id>/memory.db`（per-character 隔离，better-sqlite3 WAL）
 - 抽取：`main/services/memory-extractor.ts` → reply-end 后 fire-and-forget，LLM 启发式提取
 - 检索：`dialog.ts send` 前 `fetchRagContext(userText)` Promise.race **800ms timeout**，失败/超时静默 fall through 到无 context 流程，**永不阻塞对话**
 - prepend 位置：system prompt 末尾 `## 你记得的关于 master 的事（仅供你回忆参考，不要直接复述）\n${context}`
