@@ -16,6 +16,11 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/__tests__/*.test.ts'],
     coverage: {
+      thresholds: {
+        lines: 30,
+        branches: 20,
+        functions: 25,
+      },
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/preload/**', 'src/renderer/**'],

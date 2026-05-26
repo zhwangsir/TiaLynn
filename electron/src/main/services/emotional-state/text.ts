@@ -48,8 +48,7 @@ function describeMissing(intensity: number, sinceChatMs: number): string {
  * 调用方：dialog handler 在调 LLM 之前 append；
  * 也可以 plan-executor 在情绪决策前查。
  */
-export function emotionalStateToPromptFragment(state: EmotionalState): string {
-  const now = Date.now()
+export function emotionalStateToPromptFragment(state: EmotionalState, now: number = Date.now()): string {
   const sinceChatMs = now - state.last_chat_at
 
   const parts: string[] = ['# 你现在的状态']

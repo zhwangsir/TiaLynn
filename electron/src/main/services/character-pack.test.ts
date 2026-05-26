@@ -12,6 +12,7 @@ const ctx = makeTmpUserData()
 vi.mock('electron', () => mockElectronModule(ctx.userDataDir))
 vi.mock('./paths', () => ({ getPaths: () => mockPaths(ctx.userDataDir) }))
 
+const NOW = 1_700_000_000_000
 const { existsSync, rmSync, writeFileSync, mkdirSync, readFileSync } = await import('node:fs')
 const { join } = await import('node:path')
 const {
@@ -70,10 +71,10 @@ avatar:
       current_mood: 'happy',
       mood_intensity: 0.7,
       missing_intensity: 0.1,
-      last_chat_at: Date.now(),
-      updated_at: Date.now(),
-      topic_imprints: { 工作: { topic: '工作', sentiment: -0.4, count: 3, last_at: Date.now() } },
-      mood_history: [{ ts: Date.now(), mood: 'happy', trigger: 'init' }],
+      last_chat_at: NOW,
+      updated_at: NOW,
+      topic_imprints: { 工作: { topic: '工作', sentiment: -0.4, count: 3, last_at: NOW } },
+      mood_history: [{ ts: NOW, mood: 'happy', trigger: 'init' }],
     }),
   )
   // 缩略图

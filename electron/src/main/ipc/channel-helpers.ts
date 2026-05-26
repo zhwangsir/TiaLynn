@@ -20,3 +20,8 @@ export function handleInvoke<P, R>(
   ipcMain.handle(channel.name, wrapped)
   return () => ipcMain.removeHandler(channel.name)
 }
+
+/** 把未知异常标准化为 IPC 错误对象 */
+export function toIpcError(err: unknown): { ok: false; error: string } {
+  return { ok: false, error: err instanceof Error ? err.message : String(err) }
+}

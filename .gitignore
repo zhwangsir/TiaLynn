@@ -25,8 +25,15 @@ sprite_sheet_part*.png
 # Live2D 模型库（受 Live2D 商业授权约束，使用者各自获取）
 electron/models-library/
 HuTao-Live2D/
+# Live2D 原始研究 clone（17GB,Live2D Inc 官方仓库镜像,本地学习用）
+Live2d-model-master/
+# Live2D 运行时素材（1.7GB,各 character 立绘 + motion,体积大不入仓）
+public/live2d/
 # 用户私人录音样本
 example_voice/
+
+# --- 备份残留 ---
+*.bak
 
 # --- Python sidecar venv ---
 sidecar/**/.venv/
