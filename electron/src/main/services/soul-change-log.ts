@@ -1,7 +1,7 @@
 /**
  * Soul Change Log (P5) — 每次 SoulEditor 保存 yaml 后追加 audit trail。
  *
- * 文件: ~/.tialynn/characters/<id>/soul-changes.log (NDJSON 每行 JSON)
+ * 文件: ~/.tialynn/chars/<id>/soul-changes.log (NDJSON 每行 JSON)
  * 字段: { ts, character_id, filename, summary, changes }
  *
  * 设计:

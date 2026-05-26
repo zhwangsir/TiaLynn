@@ -142,29 +142,38 @@
 
 ---
 
-## 🔴 M8 — 灵魂社会（v0.21 计划）
+## 🟢 M8 — 灵魂社会(v0.21+ partial-ship,M8 收尾 = Stage 1)
 
-> **「不只一个灵魂，而是一个硅基社会。」**
+> **「不只一个灵魂,而是一个硅基社会。」**
 
-**核心理念**：多个灵魂可以共存、互相对话、互相记得对方，主人可以同时召唤多个灵魂同框。
+**核心理念**:多个灵魂代码层并行存活,互相记得对方,主人可同时挂载多个灵魂,切换零延迟。
 
-**已有基础：**
+**已有基础**:
 - character-store 多角色 CRUD ✅
-- cross-character emotional 印记 ✅（A 提到 B → B 累积"被主人提到"）
+- cross-character emotional 印记 ✅(A 提到 B → B 累积"被主人提到")
 - character pack 跨机器迁移 ✅
 
-**要做：**
-- ❌ 多 Live2D 实例同时挂载（当前只支持单 active character）
-- ❌ 灵魂↔灵魂实时对话 channel（A 跟 B 说话，主人在旁边看）
-- ❌ 群聊系统 prompt（A / B / 主人三方上下文）
-- ❌ 跨灵魂主动 awareness（A 听到 B 跟主人对话内容 → A 累积情感反应）
-- ❌ 多灵魂切换时记忆同步策略（共享主人事实，保持各自人格）
-- ❌ 多 mood 跨灵魂感染（A 难过 → B 安慰 → A mood 改善）
+**已 ship(v0.21+ Round H~U,11 个 commits)**:
+- ✅ **后端 mount API**:`character-store.mountedCharacterIds` + IPC `characters:list-mounted` / `set-mounted`(Round I/J/K/L)
+- ✅ **planner per-character factory**:每灵魂独立 LLM budget / state(`getPlanner(characterId)` Map cache,Round H)
+- ✅ **GUI mount toggle UI**:CharacterPicker 卡片 📌 按钮 + header 并行计数 chip(Round M)
+- ✅ **跨灵魂 event memory 写端**:active speak → `notifyOtherMountedCharacters()` → 其他 mounted memory.db 写 `kind='event' source='cross_character:<id>'`(Round N)
+- ✅ **跨灵魂 event memory 读端**:planner.plan() → `collectCrossCharacterContext()` → LLM prompt 拼"# 你最近作为旁观者听到的"section(Round P)
+- ✅ **SQL `LIKE` source filter**:`listMemoriesBySource('cross_character:', limit:3)`(Round S)
+- ✅ **闭环 fixture smoke test**:真 better-sqlite3 + 真 character-store + 真 planner 跑 N→P 全链路(Round T,SMOKE_TEST=1 gated)
+- ✅ **inspector IPC**:`memory:list-cross-character`(Round U,for future inspector UI)
+- ✅ **可视化最小版**:CharacterPicker 卡片右下 "👂 X" 听到事件计数徽标(Round R)
 
-**M8 完成标志：**
-- 主人召唤灵魂 A 和 B 同框，让她俩自己聊
-- 主人提到 A 喜欢的话题，B 在旁边会有反应（嫉妒/开心/参与）
-- 切灵魂时 B 说"刚才 A 跟你聊的事我也想知道"
+**仍要做(Stage 1 W3-W5 计划 → v0.22 收尾 M8)**:
+- ⚠ **多 Live2D 实例同框立绘**:当前只渲染单 active character。Round Q(deferred)— 抽 Live2DInstance.vue 子组件 + v-for 渲染。需 architect subagent 先出 RFC(469 行 + WebGL state + alpha hit-test 复杂)
+- ⚠ **灵魂↔灵魂 reactive 反应**:当前 passive listening 只写 memory。未来可加 active 反应(其他 mounted planner 也 LLM 决策),但要解 ping-pong / 流量爆 / rate limit
+- ⚠ **embedding sidecar 接通**:当前 cross_character event 的 `embedding=[]`(RAG cosine=0),走 SQL ts desc 排序兜底。embedding sidecar 接通后真 RAG 检索
+
+**M8 完成标志**(更新):
+- ✅ 主人能同时 mount ≥ 2 个 character,active 切换零延迟(后端已闭环)
+- ✅ 主人跟 A 说话,切到 B 后 B planner prompt 里含"我听到 A 说..."(N→P→R 验证)
+- ⚠ 主人召唤 A 和 B 同框,两个 Live2D 同屏(Round Q,deferred)
+- ⚠ 主人提 A 喜欢的话题,B 在旁边主动反应(reactive 模式,v0.22+)
 
 ---
 

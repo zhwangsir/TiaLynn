@@ -2,7 +2,7 @@
 /**
  * SoulChangeLogPanel.vue (P5 落地) — soul yaml 改动审计列表。
  *
- * 显示 ~/.tialynn/characters/<id>/soul-changes.log 内容:
+ * 显示 ~/.tialynn/chars/<id>/soul-changes.log 内容:
  *   每条 entry: timestamp + filename + summary + N 条 changes (path / kind / before → after)
  * 折叠展示，点开看明细。
  */

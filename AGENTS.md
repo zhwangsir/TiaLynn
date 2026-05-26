@@ -295,18 +295,25 @@ preload 用 `ReturnType<TialynnApi[ns][method]>` 自动同步类型，确保 pre
 ```
 ~/.tialynn/
 ├── config.json                    # RuntimeConfig（LLM/TTS/RVC/vision 等）
-├── history.sqlite                 # 对话历史（better-sqlite3，WAL mode）
-├── characters/<id>/memory.db      # 角色长期记忆（per-character，v0.17+）
-├── soul/                          # 用户自定义灵魂档案（多文件 YAML）
+├── active-character.json          # 当前 active character id + mounted_ids(M8)
+├── chars/<id>/                    # 每角色独立目录(v0.14+ multi-character)
+│   ├── character.json             # 元数据(名字/亲密度/last_chat_at)
+│   ├── soul/                      # 这个角色的灵魂 yaml(覆盖 ~/.tialynn/soul/)
+│   ├── history.sqlite             # 这个角色的对话历史(隔离)
+│   ├── memory.db                  # 长期向量记忆(v0.17+,M8 跨灵魂 event 也写这)
+│   ├── preferences.json           # scale / offset_y / 其他
+│   ├── emotional-state.json       # 情感状态(mood / topic_imprints)
+│   └── soul-changes.log           # SoulEditor 改动 NDJSON audit
+├── soul/                          # 全局灵魂档案(被 per-character 覆盖)
 ├── model-scan-cache.json          # 模型扫描 mtime 缓存
 ├── model-favorites.json           # 收藏 + 最近使用
 ├── model-preferences.json         # 每模型 scale / offset_y
 ├── character-enriched.json        # LLM 角色中文名+简介缓存
 ├── model-descriptions.json        # AI 生成的模型描述
-├── thumbs/                        # Live2D 缩略图（~10 MB）
-├── logs/main.log                  # 主进程日志（10 MB 轮转 + 敏感字段脱敏）
+├── thumbs/                        # Live2D 缩略图(~10 MB)
+├── logs/main.log                  # 主进程日志(10 MB 轮转 + 敏感字段脱敏)
 ├── voice_clones/                  # 用户上传的 RVC 训练样本
-├── models-tts/                    # TTS 模型（4-6 GB）
+├── models-tts/                    # TTS 模型(4-6 GB)
 └── window-state.json              # 窗口位置 / always-on-top
 ```
 

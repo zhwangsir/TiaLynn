@@ -1,7 +1,7 @@
 /**
  * EmotionalState 持久化 (Phase 1 J) — 按 character_id 一个文件。
  *
- * 文件: ~/.tialynn/characters/<id>/emotional-state.json
+ * 文件: ~/.tialynn/chars/<id>/emotional-state.json
  * 跟 character preferences / soul 并列。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
