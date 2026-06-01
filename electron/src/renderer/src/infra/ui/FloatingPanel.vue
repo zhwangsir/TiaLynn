@@ -112,6 +112,22 @@ const panelClass = computed(() => [
   --sp-5: 20px;
   --radius: 6px;
   transition: box-shadow 0.2s;
+  /* UI 修复(P0-3):panel 此前裸 v-if 硬切闪现 —— 加入场动画跟 bubble/dock/toast 一致。
+     transform 动画只在挂载 0.26s 内,结束后无残留 transform(默认 fill: none),
+     不干扰拖拽(拖拽用 top/left 不用 transform)。 */
+  animation: fp-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fp-enter {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+/* 尊重系统「减少动态效果」无障碍设置 */
+@media (prefers-reduced-motion: reduce) {
+  .fp-panel { animation: none; }
+}
+/* 拖拽 / resize 进行中不重播入场动画(避免 panelStyle 变化触发重渲染时闪) */
+.fp-panel.fp-dragging {
+  animation: none;
 }
 .fp-panel.fp-compact {
   --sp-1: 3px;
@@ -131,7 +147,7 @@ const panelClass = computed(() => [
 }
 .fp-panel.fp-theme-dark .fp-header {
   border-bottom: 1px solid #2a2e3a;
-  background: linear-gradient(180deg, rgba(96, 165, 250, 0.06), transparent);
+  background: linear-gradient(180deg, oklch(72% 0.18 18 /0.06), transparent);
 }
 
 /* 主题：浅色（资源商店风） */
@@ -152,7 +168,7 @@ const panelClass = computed(() => [
   user-select: none;
 }
 .fp-panel.fp-theme-dark.fp-dragging {
-  box-shadow: 0 28px 100px rgba(96, 165, 250, 0.25), 0 0 0 1px rgba(96, 165, 250, 0.4);
+  box-shadow: 0 28px 100px oklch(72% 0.18 18 /0.25), 0 0 0 1px oklch(72% 0.18 18 /0.4);
 }
 
 /* === 8 个 resize handle === */
@@ -162,7 +178,7 @@ const panelClass = computed(() => [
   background: transparent;
   transition: background 0.1s;
 }
-.fp-rh:hover { background: rgba(96, 165, 250, 0.35); }
+.fp-rh:hover { background: oklch(72% 0.18 18 /0.35); }
 .fp-rh-t { top: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
 .fp-rh-b { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
 .fp-rh-l { top: 8px; bottom: 8px; left: 0; width: 6px; cursor: ew-resize; }
@@ -180,10 +196,10 @@ const panelClass = computed(() => [
   right: 0;
   cursor: nwse-resize;
   border-radius: 0 0 16px 0;
-  background: linear-gradient(135deg, transparent 50%, rgba(96, 165, 250, 0.4) 50%);
+  background: linear-gradient(135deg, transparent 50%, oklch(72% 0.18 18 /0.4) 50%);
 }
 .fp-rh-br:hover {
-  background: linear-gradient(135deg, transparent 50%, rgba(96, 165, 250, 0.85) 50%);
+  background: linear-gradient(135deg, transparent 50%, oklch(72% 0.18 18 /0.85) 50%);
 }
 
 /* === Header === */
@@ -246,9 +262,9 @@ const panelClass = computed(() => [
   min-width: 24px;
   transition: background 0.15s, opacity 0.15s;
 }
-.fp-z-btn:hover { background: rgba(96, 165, 250, 0.15); opacity: 1; }
+.fp-z-btn:hover { background: oklch(72% 0.18 18 /0.15); opacity: 1; }
 .fp-z-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.fp-z-btn.on { background: rgba(96, 165, 250, 0.2); color: #60a5fa; opacity: 1; }
+.fp-z-btn.on { background: oklch(72% 0.18 18 /0.2); color: var(--color-accent); opacity: 1; }
 .fp-z-label { min-width: 44px; }
 
 .fp-size-tag {
