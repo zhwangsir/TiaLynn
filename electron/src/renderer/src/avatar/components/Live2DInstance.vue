@@ -16,19 +16,29 @@
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Live2DRenderer } from '../render/live2d-renderer'
 import { AlphaSampler } from '../interaction/alpha-hit'
+import type { InstanceLayout } from '../layout'
 import { useConfigStore } from '../../infra/stores/config'
 import { bus } from '../../infra/eventbus'
 
-defineProps<{
-  /** M8 character id — Q1 未在内部使用,Q2 v-for :key + 模型来源参数化时启用 */
+const props = defineProps<{
+  /** M8 character id */
   characterId: string
-  /** 是否 active — Q1 恒 true,Q3 驱动视觉降级(scale/opacity/saturate) */
+  /** 是否 active — Q3 将驱动视觉降级(scale/opacity/saturate) */
   isActive: boolean
+  /** 舞台 slot 布局(Q2 横排)。N=1 时为填满整舞台,行为与 Q1 等价 */
+  layoutHint: InstanceLayout
+  /**
+   * Q2:非 active instance 加载「自己角色」的模型(来自 Character.live2d_model_dir)。
+   * active instance 不传 → 走原 cfg.soul 路径(逐字不变,N=1 安全)。
+   * 显式 `| undefined`:exactOptionalPropertyTypes 下允许模板 `:model-dir="cond ? undefined : x"`。
+   */
+  modelDir?: string | undefined
+  modelFile?: string | undefined
 }>()
 
 const emit = defineEmits<{
-  /** 渲染就绪 → 上报 renderer + sampler 给 Live2DStage 装配 WindowInteraction */
-  ready: [payload: { renderer: Live2DRenderer; sampler: AlphaSampler }]
+  /** 渲染就绪 → 上报 characterId + renderer + sampler 给 Live2DStage 装配 WindowInteraction */
+  ready: [payload: { characterId: string; renderer: Live2DRenderer; sampler: AlphaSampler }]
 }>()
 
 const cfg = useConfigStore()
@@ -58,7 +68,7 @@ onMounted(async () => {
   sampler = new AlphaSampler(renderer)
 
   // RFC §3.4: 上报 sampler/renderer 给父级 Live2DStage 装配窗口级 WindowInteraction
-  emit('ready', { renderer, sampler })
+  emit('ready', { characterId: props.characterId, renderer, sampler })
 
   // 嘴型驱动 —— 监听总线
   const lipsyncHandler = ({ value }: { value: number }): void => {
@@ -132,6 +142,18 @@ watch(
   () => cfg.soul?.avatar.model_dir,
   async (dir, prev) => {
     if (!renderer) return
+    // Q2:非 active instance(有 modelDir)不跟 active soul 变化走 — cfg.soul 是 active 的
+    if (props.modelDir) return
+    if (!dir || dir === prev) return
+    await pickAndLoad()
+  },
+)
+
+// Q2:非 active instance 的角色模型变化(用户编辑了该角色 live2d_model_dir)→ 重载
+watch(
+  () => props.modelDir,
+  async (dir, prev) => {
+    if (!renderer) return
     if (!dir || dir === prev) return
     await pickAndLoad()
   },
@@ -179,8 +201,56 @@ bus.on('avatar:zoom', onZoom)
 const failedDirs = new Set<string>()
 const MAX_FALLBACK_ATTEMPTS = 3
 
+/**
+ * Q2:非 active instance 的模型加载 — 按 props.modelDir 加载「自己角色」的模型。
+ * 不碰 active soul(无 saveAvatar)、不做 cubism2 自动切换、不刷 toast — 这些
+ * 副作用只属于 active 的 pickAndLoad。失败仅置 error 状态 + console。
+ *
+ * reviewer Q2-MEDIUM(Q4 前置条件):本函数复用既有 renderer(只 loadModel 换 model,
+ * 不重建 renderer/sampler)→ 上报给 Stage 的 sampler 引用始终有效,无需 re-emit ready。
+ * 若 Q4/Q5 改成重建 renderer,则必须重新 emit('ready') 让 Stage 更新 WindowInteraction sampler。
+ */
+async function loadSpecificModel(modelDir: string, modelFile: string | undefined): Promise<void> {
+  if (!renderer) return
+  status.value = 'loading'
+  try {
+    if (cfg.models.length === 0) await cfg.rescanModels()
+    const found =
+      cfg.models.find(
+        (m) => m.dir === modelDir && (!modelFile || m.model_file === modelFile),
+      ) ?? cfg.models.find((m) => m.dir === modelDir)
+    if (!found || found.cubism !== 'cubism4' || !found.meta?.has_core) {
+      status.value = 'error'
+      errorMsg.value = `角色模型「${modelDir}」未找到或不完整`
+      console.warn('[live2d] non-active model load failed:', modelDir, found?.cubism, found?.meta?.has_core)
+      return
+    }
+    // per-character preference(M8 已 per-character,按 character_id 隔离)
+    let userHint = 1.0
+    let offsetY = 0
+    const prefCharId = found.meta?.character_id
+    if (prefCharId) {
+      const pref = await window.api.models.getPreference(prefCharId)
+      if (pref) {
+        userHint = pref.scale
+        offsetY = pref.offset_y
+      }
+    }
+    await renderer.loadModel(found.file_url, { scale: userHint, offsetY })
+    status.value = 'ready'
+  } catch (e) {
+    console.error('[live2d] non-active load failed', e)
+    status.value = 'error'
+    errorMsg.value = String(e)
+  }
+}
+
 async function pickAndLoad(): Promise<void> {
   if (!renderer) return
+  // Q2:非 active instance 走简化的按角色加载路径(不碰 active soul)
+  if (props.modelDir) {
+    return loadSpecificModel(props.modelDir, props.modelFile)
+  }
   status.value = 'loading'
   try {
     if (cfg.models.length === 0) await cfg.rescanModels()
@@ -346,7 +416,13 @@ onBeforeUnmount(() => {
     class="live2d-instance"
     :data-state="status"
     :data-emotion="currentEmotion"
-    :style="{ '--emotion-intensity': currentIntensity }"
+    :style="{
+      '--emotion-intensity': currentIntensity,
+      left: layoutHint.leftPercent + '%',
+      width: layoutHint.widthPercent + '%',
+      top: layoutHint.topPercent + '%',
+      height: layoutHint.heightPercent + '%',
+    }"
   >
     <canvas ref="canvasRef" class="live2d-canvas" />
     <!-- v0.15 A2: 切换 character 时的 shimmer 过渡层 -->
@@ -367,7 +443,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .live2d-instance {
   position: absolute;
-  inset: 0;
+  /* Q2: left/width/top/height 由 layoutHint inline style 驱动(N=1 = 0/100/0/100 即 inset:0)。
+     不再写死 inset:0 — 多实例横排时各占自己 slot。 */
   background: transparent;
   /* Q1: instance 不接 DOM 鼠标事件 — 命中由主进程 cursor poll + alpha sampler 处理。
      设 none 确保即使 elementsFromPoint 命中此 wrapper 也被 window-interaction 跳过(防穿透误判)。 */
