@@ -170,6 +170,17 @@ export const useDialogStore = defineStore('dialog', () => {
       bus.emit('ui:toast', { kind: 'error', message: '配置未加载，无法发送' })
       return
     }
+    // UX:LLM 未配置时,别让用户发出去再吃一个 cryptic "对话失败" —— 友好引导去连大脑。
+    // (审计 P1:新用户跳过 onboarding 后卡在"她不理我")
+    if (!cfg.config.llm_endpoint || !cfg.config.llm_model) {
+      bus.emit('ui:toast', {
+        kind: 'warn',
+        message: '我还没连上大脑呢～ 配一下 LLM 才能跟你聊天哦',
+        ttl_ms: 8000,
+        action: { label: '去连大脑', do: () => bus.emit('ui:open-onboarding') },
+      })
+      return
+    }
 
     const userTurn: DialogTurn = {
       id: uid(),

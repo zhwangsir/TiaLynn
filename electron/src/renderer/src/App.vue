@@ -237,6 +237,7 @@ let offInstalledFn: (() => void) | null = null
 let offAttentionPlanFn: (() => void) | null = null
 let offTrayFn: (() => void) | null = null
 let offCharSwitchedFn: (() => void) | null = null
+let offOpenOnboardingFn: (() => void) | null = null
 const dragOver = ref(false)
 
 /** Plan 执行入口：从 Live2DStage 拿 renderer + container 引用 */
@@ -358,6 +359,11 @@ onMounted(async () => {
   }
   bus.on('character:switched', charSwitchedHandler)
   offCharSwitchedFn = () => bus.off('character:switched', charSwitchedHandler)
+
+  // UX:任意处(如 dialog 检测 LLM 未配置)请求打开引导
+  const openOnboardingHandler = (): void => { onboardingOpen.value = true }
+  bus.on('ui:open-onboarding', openOnboardingHandler)
+  offOpenOnboardingFn = () => bus.off('ui:open-onboarding', openOnboardingHandler)
 
   // v0.13 首次启动引导：LLM 未配置就弹出
   if (!cfg.config?.llm_endpoint || !cfg.config?.llm_model) {
@@ -518,6 +524,7 @@ onBeforeUnmount(() => {
   offAttentionPlanFn?.()
   offTrayFn?.()
   offCharSwitchedFn?.()
+  offOpenOnboardingFn?.()
   window.removeEventListener('keydown', onScaleKey)
   if (discoveryTimer) {
     clearTimeout(discoveryTimer)

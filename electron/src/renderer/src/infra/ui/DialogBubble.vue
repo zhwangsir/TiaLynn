@@ -45,6 +45,36 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null
 let scrollRaf: number | null = null
 
 /**
+ * UX:thinking 模型(本地 qwen3.6 等)首 token 前要 20-50s 推理,期间只有三点
+ * 像卡死。计时显示「正在认真想 Ns」让用户知道她在想、没死机。
+ * 仅在 streaming 且还没吐出任何 text 的阶段计时;有 token / 结束即清零。
+ */
+const thinkingSec = ref(0)
+let thinkingTimer: ReturnType<typeof setInterval> | null = null
+/** 是否处于"思考中(streaming 但无 text)"阶段 */
+const isThinking = computed<boolean>(
+  () => !!latest.value?.streaming && !latest.value?.text && !latest.value?.error,
+)
+watch(
+  isThinking,
+  (thinking) => {
+    if (thinkingTimer) {
+      clearInterval(thinkingTimer)
+      thinkingTimer = null
+    }
+    if (thinking) {
+      thinkingSec.value = 0
+      thinkingTimer = setInterval(() => {
+        thinkingSec.value += 1
+      }, 1000)
+    } else {
+      thinkingSec.value = 0
+    }
+  },
+  { immediate: true },
+)
+
+/**
  * R52+R56: 流式回复时自动滚到底部, 但尊重用户手动向上滚 — 行业标准聊天 UI 做法。
  * 若用户已经向上滚 > 20px (即不在底部), 不强制滚 → 让用户阅读不被打断。
  */
@@ -115,6 +145,7 @@ onBeforeUnmount(() => {
   if (hideTimer) clearTimeout(hideTimer)
   if (scrollRaf !== null) cancelAnimationFrame(scrollRaf)
   if (copiedFlashTimer) clearTimeout(copiedFlashTimer)
+  if (thinkingTimer) clearInterval(thinkingTimer)
   mql?.removeEventListener('change', systemListener)
 })
 
@@ -265,11 +296,13 @@ async function copyText(): Promise<void> {
       <span
         v-if="latest.streaming && !latest.text"
         class="typing-indicator"
-        aria-label="正在输入"
+        :aria-label="thinkingSec >= 2 ? `正在认真想，已 ${thinkingSec} 秒` : '正在输入'"
       >
         <span class="dot"></span>
         <span class="dot"></span>
         <span class="dot"></span>
+        <!-- UX:thinking 模型推理久(20-50s),超 2s 显示「正在认真想 Ns」让用户安心 -->
+        <span v-if="thinkingSec >= 2" class="thinking-hint">正在认真想… {{ thinkingSec }}s</span>
       </span>
       <span
         v-if="latest.emotion && latest.emotion !== 'neutral' && emotionLabel[latest.emotion]"
@@ -399,6 +432,19 @@ async function copyText(): Promise<void> {
 }
 .typing-indicator .dot:nth-child(3) {
   animation-delay: 0.3s;
+}
+/* UX:thinking 模型久等时的"正在认真想 Ns"提示 — 柔和淡入,不抢戏 */
+.thinking-hint {
+  margin-left: 6px;
+  font-size: var(--text-xs, 12px);
+  color: var(--color-muted);
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+  animation: thinking-hint-in 0.3s var(--ease-out-expo, ease-out);
+}
+@keyframes thinking-hint-in {
+  from { opacity: 0; }
+  to { opacity: 0.85; }
 }
 
 .emo-tag {

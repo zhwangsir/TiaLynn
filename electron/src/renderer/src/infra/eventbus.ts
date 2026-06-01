@@ -41,6 +41,8 @@ export type BusEventMap = {
   /* 配置 */
   'infra:config-changed': void
   'infra:soul-reloaded': void
+  /** UX:任意组件/store 请求打开 onboarding 引导(如 dialog 检测到 LLM 未配置) */
+  'ui:open-onboarding': void
   /* 通知 — R98: 可选 action 让用户从 toast 直接触发修复 */
   'ui:toast': {
     kind: 'info' | 'warn' | 'error' | 'success'
