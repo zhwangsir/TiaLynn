@@ -22,6 +22,14 @@ import { triggerScreenSnapshot } from '../perception'
 
 let getWindow: (() => BrowserWindow | null) | null = null
 
+/**
+ * P0-2 修复:planner 决策是否正在进行中。
+ * 慢模型(thinking)下一次 plan 要几十秒,而 scheduler 每 10s tick 都可能触发
+ * (focus_on_master>0.8 几乎恒满足)→ 不加护栏会并发叠加 N 个 LLM 调用,实测把
+ * 单次延迟从 ~22s 堆到 53s。这里串行化:上一个 plan 没算完就跳过新触发。
+ */
+let planInFlight = false
+
 export function startAttention(
   winGetter: () => BrowserWindow | null,
   initialConfig: Partial<AttentionConfig> = {},
@@ -29,6 +37,12 @@ export function startAttention(
   getWindow = winGetter
   scheduler.updateConfig(initialConfig)
   scheduler.onTrigger(async (decision: SchedulerDecision) => {
+    // P0-2:planner 还在算上一个 plan → 跳过本次触发,避免 LLM 并发堆积
+    if (planInFlight) {
+      console.log(`[attention] skip "${decision.reason}" — plan still in flight`)
+      return
+    }
+    planInFlight = true
     try {
       console.log(`[attention] trigger: ${decision.reason}`)
       // v0.8.2: proactive trigger 时先抓一张屏给 planner 看
@@ -63,6 +77,8 @@ export function startAttention(
       notifyOtherMountedCharacters(targetId, plan)
     } catch (e) {
       console.warn('[attention] planner failed:', e)
+    } finally {
+      planInFlight = false
     }
   })
   scheduler.start()
