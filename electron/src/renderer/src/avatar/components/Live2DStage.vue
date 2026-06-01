@@ -17,9 +17,12 @@
 import { onBeforeUnmount, ref, watch, computed } from 'vue'
 import type { Live2DRenderer } from '../render/live2d-renderer'
 import type { AlphaSampler } from '../interaction/alpha-hit'
+import type { BehaviorPlan } from '@shared/attention'
 import { WindowInteraction } from '../interaction/window-interaction'
+import { executePlan } from '../plan-executor'
 import { computeInstanceLayout } from '../layout'
 import { useCharacterStore } from '../../infra/stores/character'
+import { bus } from '../../infra/eventbus'
 import type { Character } from '@shared/character'
 import Live2DInstance from './Live2DInstance.vue'
 
@@ -31,6 +34,18 @@ const character = useCharacterStore()
 const containerRef = ref<HTMLDivElement | null>(null)
 
 let interaction: WindowInteraction | null = null
+/**
+ * 当前 active instance 的 renderer —— plan-executor 执行 BehaviorPlan 时需要它
+ * (play_motion / play_group / glance / change_emotion 等动作直接操作 renderer)。
+ * 由 onInstanceReady 在 active instance 就绪时存入。
+ *
+ * N=1 当前安全:Vue 父先于子 unmount,Stage.onBeforeUnmount 先把它置 null,
+ * 之后 Live2DInstance 才 destroy renderer,onExecutePlan 的 `!activeRenderer` guard 拦住。
+ * ⚠️ Q4 前置(reviewer Q-MEDIUM):active hot-swap(切角色不 unmount Stage)时,旧
+ * instance destroy 到新 instance ready 之间有窗口期,activeRenderer 指向已销毁 renderer。
+ * Q4 实施时须在 character.active 变化时(watch)清 activeRenderer=null 关掉这个窗口。
+ */
+let activeRenderer: Live2DRenderer | null = null
 
 const passthrough = computed(() => props.passthroughEnabled !== false)
 
@@ -59,6 +74,8 @@ function onInstanceReady(payload: {
   // Q2:只 wire active 的 sampler。非 active 的 hit-test 路由(first-hit-wins)留 Q4。
   if (payload.characterId !== (character.active?.id ?? '')) return
   if (!containerRef.value) return
+  // 存 active renderer 供 plan-executor 用(主动行为 / dialog reply actions 执行)
+  activeRenderer = payload.renderer
   // 防御性销毁旧的(Q4 active hot-swap 时复用此路径)。
   // reviewer Q1-Point2:destroy() 必须先完成(set destroyed=true + 停 cursor poll)
   // 再用新 sampler,否则旧 poll tick 可能命中已 destroy 的 sampler。Q4 hot-swap load-bearing。
@@ -71,13 +88,30 @@ function onInstanceReady(payload: {
   })
 }
 
+/**
+ * 主体性执行链接通(修 pre-existing 断点):App.vue 把 main 算出的 BehaviorPlan
+ * (主动巡视)和 dialog reply 内联 actions 都 emit 成 `attention:execute-plan`,
+ * 但此前**无人监听** → plan-executor.executePlan 从未被调用 → 主动行为(speak /
+ * play_motion / change_emotion / generate_sticker / agent_task)全部丢弃。
+ *
+ * 这里由协调器接住,用 active instance 的 renderer + 舞台 container 执行。
+ * executePlan 内部自带 abort-old-on-new,并发 plan 安全。
+ */
+const onExecutePlan = ({ plan }: { plan: BehaviorPlan }): void => {
+  if (!activeRenderer || !containerRef.value) return
+  void executePlan(plan, { renderer: activeRenderer, container: containerRef.value })
+}
+bus.on('attention:execute-plan', onExecutePlan)
+
 watch(passthrough, (on) => {
   interaction?.forceInteractive(!on)
 })
 
 onBeforeUnmount(() => {
+  bus.off('attention:execute-plan', onExecutePlan)
   interaction?.destroy()
   interaction = null
+  activeRenderer = null
 })
 </script>
 
