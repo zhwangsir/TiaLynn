@@ -104,11 +104,13 @@ onMounted(async () => {
 
   // v0.17：鼠标 hover 立绘像素时的微反应 — 让她"感受到"主人
   //   - 鼠标进入 alpha 命中区（不是只进窗口）→ 12 秒冷却内 35% 概率触发一次小动作
-  //   - 随机选 FlickLeft/FlickRight/Tap 之一，配 shy/happy emotion
   //   - 冷却 12 秒避免来回 hover 时疯狂触发
+  // 修复(实测 model 无 FlickLeft/FlickUp → playMotionGroup no-op,hover 不动):
+  //   不再硬编码组名,从模型「实际拥有的组」里选 —— 优先轻反应组(Tap/Flick*),
+  //   模型没有这些就退回任意可用组,保证任何模型都能动起来。
   let lastHoverReactAt = 0
   const HOVER_REACT_COOLDOWN_MS = 12_000
-  const HOVER_REACT_GROUPS = ['FlickLeft', 'FlickRight', 'Tap', 'FlickUp']
+  const HOVER_REACT_PREFERRED = ['FlickLeft', 'FlickRight', 'Tap', 'FlickUp', 'TapBody', 'Flick']
   const HOVER_REACT_EMOTIONS: Array<'shy' | 'happy' | 'tease'> = ['shy', 'happy', 'tease']
   const hoverHandler = ({ inside }: { inside: boolean }): void => {
     if (!inside) return
@@ -116,8 +118,12 @@ onMounted(async () => {
     const now = Date.now()
     if (now - lastHoverReactAt < HOVER_REACT_COOLDOWN_MS) return
     if (Math.random() > 0.35) return
+    const available = renderer.listMotionGroups()
+    if (available.length === 0) return // 模型无任何动作组 → 不强行
+    const preferred = HOVER_REACT_PREFERRED.filter((g) => available.includes(g))
+    const pool = preferred.length > 0 ? preferred : available
     lastHoverReactAt = now
-    const group = HOVER_REACT_GROUPS[Math.floor(Math.random() * HOVER_REACT_GROUPS.length)]!
+    const group = pool[Math.floor(Math.random() * pool.length)]!
     const emo = HOVER_REACT_EMOTIONS[Math.floor(Math.random() * HOVER_REACT_EMOTIONS.length)]!
     renderer.playMotionGroup(group)
     bus.emit('brain:emotion-changed', { emotion: emo, intensity: 0.5 })

@@ -135,13 +135,21 @@ export function registerWindowControlIpc(getWindow: () => BrowserWindow | null):
     pollTimer = setInterval(() => {
       const win = getWindow()
       if (!win || win.isDestroyed() || !win.isVisible()) return
+      // 修复 10× "Render frame was disposed":窗口活着但 webContents frame 可能在
+      // HMR 热重载 / 导航时被 dispose,50ms poll 照发会抛。先查 frame,再 try/catch
+      // 兜底 check→send 之间的竞态。
+      if (win.webContents.isDestroyed()) return
       const cursor = screen.getCursorScreenPoint()
       const b = win.getBounds()
       const x = cursor.x - b.x
       const y = cursor.y - b.y
       // 只把窗口内的 cursor 推给 renderer；窗口外不推（让 renderer 默认 ignore=true）
       const inside = x >= 0 && y >= 0 && x < b.width && y < b.height
-      win.webContents.send('cursor:tick', { x, y, inside })
+      try {
+        win.webContents.send('cursor:tick', { x, y, inside })
+      } catch {
+        /* frame disposed mid-tick(HMR / teardown 竞态)— 忽略,下个 tick 自然恢复 */
+      }
     }, 50)
   }
   function stopCursorPolling(): void {

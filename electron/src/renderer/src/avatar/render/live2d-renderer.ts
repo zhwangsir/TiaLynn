@@ -254,6 +254,27 @@ export class Live2DRenderer {
   }
 
   /**
+   * 列出模型实际拥有的 motion group 名(motions 对象的 key)。
+   * 用途:hover 微反应 / 情绪动作 从「模型真有的组」里选,而非硬编码 FlickLeft 等 —
+   * 不同模型命名差异大(官方 Mark 用 TapBody,胡桃用 Flick*),硬编码会大量 no-op。
+   */
+  listMotionGroups(): string[] {
+    if (!this.model) return []
+    try {
+      const m = this.model as ExtLive2DModel
+      const settings = m.internalModel?.settings
+      const motions: Record<string, unknown[]> =
+        settings?.motions ?? settings?.json?.FileReferences?.Motions ?? {}
+      return Object.keys(motions).filter((k) => {
+        const arr = motions[k]
+        return Array.isArray(arr) && arr.length > 0
+      })
+    } catch {
+      return []
+    }
+  }
+
+  /**
    * P5: 列出模型所有 expression id (优先 settings.expressions 数组；fallback FileReferences.Expressions)。
    * 返回 expressionId/filename 列表 — pixi-live2d-display setExpression() 接受这些。
    */
