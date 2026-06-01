@@ -3,7 +3,31 @@
 **作者**: TiaLynn architect subagent
 **创建**: 2026-05-26
 **Tier**: 2(multi-file behavior preservation + new component surface)
-**状态**: **Draft / Awaiting Master Review**
+**状态**: **Q1 ✅ + Q2 ✅ 已实施(N=1 安全,N>1 死路径待 GUI 真测);Q3-Q5 待 GUI session**
+
+## 实施进度
+
+| Round | 状态 | commit | 备注 |
+|---|---|---|---|
+| Q1 抽 Live2DInstance.vue | ✅ | `0e0c134ce` | 纯重构,N=1 逐字等价,reviewer 过 |
+| Q2 v-for + 按角色模型 | ✅ | `666f6619e` | + avatar/layout.ts 纯函数 + 7 单测,reviewer 过 |
+| Q3 视觉强调(active 居中/降色) | ⏳ 待 GUI | — | 需 ≥2 character + GUI 真测 |
+| Q4 hit-test first-hit-wins + bus characterId 过滤 + 拖拽路由 | ⏳ 待 GUI | — | 同上 |
+| Q5 edge + 性能验证 + docs | ⏳ 待 GUI | — | 同上 |
+
+**实施中浮现的关键设计决策(补充 §3 / §4)**:
+> **模型来源分流** — active instance **不传 modelDir**,走原 `pickAndLoad` 的 cfg.soul
+> 路径(保证 N=1 逐字不变 + 保留 cubism2 自动切换/fallback chain/saveAvatar 等
+> active 专属副作用)。非 active instance 传 `Character.live2d_model_dir/file`,走新增的
+> `loadSpecificModel()` 简化路径(不碰 active soul、无 saveAvatar、无 toast)。
+> 这是 RFC §4.2 props 未细化的部分 —— 原 RFC 假设所有 instance 同质,实际 active
+> 与非 active 的「模型来源 + 副作用」必须分流,否则非 active 会覆写 active 的 soul。
+
+**Q3-Q5 GUI session 前置条件**:
+> 1. 用户先创建第 2 个 character(当前 `~/.tialynn/chars/` 仅 `default` 一个)
+> 2. 在 CharacterPicker mount 两个 → 验证横排同框真出现两个不同立绘
+> 3. Q4 前置(reviewer Q2-MEDIUM):若 Q4/Q5 改成在 model 切换时重建 renderer,
+>    `loadSpecificModel` 必须重新 `emit('ready')` 让 Stage 更新 WindowInteraction sampler
 
 ---
 
