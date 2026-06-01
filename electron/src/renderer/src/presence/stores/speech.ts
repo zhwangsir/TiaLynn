@@ -97,27 +97,43 @@ export const useSpeechStore = defineStore('speech', () => {
     bus.on('brain:reply-end', async ({ stream_id, full_text, emotion }) => {
       const cfg = useConfigStore()
       if (!cfg.config || cfg.config.tts_provider === 'none') return
-      if (stream_id !== activeStream) return
       const finalEmotion = emotion ?? lastKnownEmotion
 
-      if (streamHadSentence) {
-        // 流式已经播过 — 把残余 flush
-        const cleanText = parsePartialText(buffer) || full_text
-        const remaining = cleanText.slice(spokenUpTo).trim()
-        if (remaining.length > 0) {
-          enqueueTTS(remaining, finalEmotion, speakToken)
+      // 路径 A:流式回复结束(用户打字 → LLM 流式 → reply-end,stream_id 已注册)
+      if (stream_id === activeStream) {
+        if (streamHadSentence) {
+          // 流式已经播过 — 把残余 flush
+          const cleanText = parsePartialText(buffer) || full_text
+          const remaining = cleanText.slice(spokenUpTo).trim()
+          if (remaining.length > 0) {
+            enqueueTTS(remaining, finalEmotion, speakToken)
+          }
+        } else {
+          // 流式没切出任何句子（极短回复 / 无标点） — 整段一次性播
+          if (full_text.trim()) {
+            enqueueTTS(full_text.trim(), finalEmotion, speakToken)
+          }
         }
-      } else {
-        // 流式没切出任何句子（极短回复 / 无标点） — 整段一次性播
-        if (full_text.trim()) {
-          enqueueTTS(full_text.trim(), finalEmotion, speakToken)
-        }
+        // reset 本 stream
+        activeStream = null
+        buffer = ''
+        spokenUpTo = 0
+        streamHadSentence = false
+        return
       }
-      // reset 本 stream
-      activeStream = null
-      buffer = ''
-      spokenUpTo = 0
-      streamHadSentence = false
+
+      // 路径 B:非流式直接 emit —— 主动说话(plan-executor doSpeak)/ agent_task 汇报 /
+      // brain:inject-utterance。这类 reply-end 带 `proactive-*` / `agent-*` 等全新 stream_id,
+      // 从未经过流式前奏,所以 stream_id 永远 !== activeStream。
+      // 【修复】之前在此被 `stream_id !== activeStream` 直接 return → 主动说话永远没声音。
+      // 仅在「当前没有活跃流式播放」时一次性合成,避免打断正在播的对话流。
+      if (activeStream === null && full_text.trim()) {
+        enqueueTTS(full_text.trim(), finalEmotion, speakToken)
+      } else if (activeStream !== null && full_text.trim()) {
+        // reviewer-MEDIUM:主动说话撞上正在播的流式对话 → 故意忽略(不打断)。
+        // 留 warn 以便未来"主动说话又没声音"时能定位到是被这条吞了,而非 line-100 类 bug 复发。
+        console.warn(`[speech] proactive speak dropped (stream active): "${full_text.slice(0, 30)}…"`)
+      }
     })
   }
 
